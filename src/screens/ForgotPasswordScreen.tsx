@@ -14,17 +14,18 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { useTheme } from '../contexts/ThemeContext';
 import api from '../api/client';
 
 export default function ForgotPasswordScreen() {
   const navigation = useNavigation();
+  const { colors, isDark } = useTheme();
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [emailFocused, setEmailFocused] = useState(false);
 
   const handleSubmit = async () => {
-    // Validate email
     if (!email.trim()) {
       Alert.alert('Error', 'Please enter your email address.');
       return;
@@ -36,7 +37,6 @@ export default function ForgotPasswordScreen() {
 
     setLoading(true);
     try {
-      // Call your backend API – adjust endpoint as needed
       await api.post('/auth/forgot-password', { email: email.trim() });
       setSuccess(true);
     } catch (error: any) {
@@ -53,17 +53,20 @@ export default function ForgotPasswordScreen() {
 
   if (success) {
     return (
-      <SafeAreaView style={styles.successContainer}>
+      <SafeAreaView style={[styles.successContainer, { backgroundColor: colors.background }]}>
         <Feather name="check-circle" size={64} color="#22c55e" />
-        <Text style={styles.successTitle}>Check your email</Text>
-        <Text style={styles.successSubtitle}>
+        <Text style={[styles.successTitle, { color: colors.text }]}>Check your email</Text>
+        <Text style={[styles.successSubtitle, { color: colors.textSecondary }]}>
           We've sent a password reset link to{' '}
-          <Text style={styles.successEmail}>{email}</Text>
+          <Text style={[styles.successEmail, { color: colors.text }]}>{email}</Text>
         </Text>
-        <Text style={styles.successSubtitle}>
+        <Text style={[styles.successSubtitle, { color: colors.textSecondary }]}>
           If you don't see it, check your spam folder.
         </Text>
-        <TouchableOpacity style={styles.backToLoginButton} onPress={handleGoBack}>
+        <TouchableOpacity
+          style={[styles.backToLoginButton, { backgroundColor: colors.primary }]}
+          onPress={handleGoBack}
+        >
           <Text style={styles.backToLoginText}>Back to Login</Text>
         </TouchableOpacity>
       </SafeAreaView>
@@ -71,7 +74,7 @@ export default function ForgotPasswordScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
@@ -83,13 +86,13 @@ export default function ForgotPasswordScreen() {
         >
           {/* ---- Back Button ---- */}
           <TouchableOpacity style={styles.backButton} onPress={handleGoBack}>
-            <Feather name="arrow-left" size={24} color="#1f2937" />
+            <Feather name="arrow-left" size={24} color={colors.text} />
           </TouchableOpacity>
 
           {/* ---- Header ---- */}
           <View style={styles.headerContainer}>
-            <Text style={styles.title}>Forgot Password?</Text>
-            <Text style={styles.subtitle}>
+            <Text style={[styles.title, { color: colors.text }]}>Forgot Password?</Text>
+            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
               Enter your email address and we'll send you a link to reset your password.
             </Text>
           </View>
@@ -97,18 +100,22 @@ export default function ForgotPasswordScreen() {
           {/* ---- Form ---- */}
           <View style={styles.formContainer}>
             <View style={styles.inputWrapper}>
-              <Text style={styles.inputLabel}>Email Address</Text>
+              <Text style={[styles.inputLabel, { color: colors.text }]}>Email Address</Text>
               <View
                 style={[
                   styles.inputContainer,
+                  { 
+                    backgroundColor: colors.input, 
+                    borderColor: emailFocused ? colors.primary : colors.inputBorder 
+                  },
                   emailFocused && styles.inputFocused,
                 ]}
               >
-                <Feather name="mail" size={20} color="#9ca3af" style={styles.inputIcon} />
+                <Feather name="mail" size={20} color={colors.textMuted} style={styles.inputIcon} />
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, { color: colors.text }]}
                   placeholder="you@example.com"
-                  placeholderTextColor="#9ca3af"
+                  placeholderTextColor={colors.placeholder}
                   value={email}
                   onChangeText={setEmail}
                   onFocus={() => setEmailFocused(true)}
@@ -123,7 +130,7 @@ export default function ForgotPasswordScreen() {
 
             {/* ---- Submit Button ---- */}
             <TouchableOpacity
-              style={[styles.submitButton, loading && styles.submitButtonDisabled]}
+              style={[styles.submitButton, { backgroundColor: colors.primary }, loading && styles.submitButtonDisabled]}
               onPress={handleSubmit}
               disabled={loading}
               activeOpacity={0.8}
@@ -137,7 +144,7 @@ export default function ForgotPasswordScreen() {
 
             {/* ---- Back to Login ---- */}
             <TouchableOpacity style={styles.backToLogin} onPress={handleGoBack} disabled={loading}>
-              <Text style={styles.backToLoginTextLink}>← Back to Login</Text>
+              <Text style={[styles.backToLoginTextLink, { color: colors.primary }]}>← Back to Login</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
@@ -149,7 +156,6 @@ export default function ForgotPasswordScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: 'white',
   },
   keyboardView: {
     flex: 1,
@@ -171,12 +177,10 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: '700',
-    color: '#1f2937',
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 16,
-    color: '#6b7280',
     lineHeight: 24,
   },
   formContainer: {
@@ -188,22 +192,18 @@ const styles = StyleSheet.create({
   inputLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#374151',
     marginBottom: 6,
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f9fafb',
     borderRadius: 12,
     borderWidth: 1.5,
-    borderColor: '#e5e7eb',
     paddingHorizontal: 14,
     height: 52,
   },
   inputFocused: {
     borderColor: '#6C63FF',
-    backgroundColor: 'white',
   },
   inputIcon: {
     marginRight: 12,
@@ -211,11 +211,9 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     fontSize: 16,
-    color: '#1f2937',
     paddingVertical: 12,
   },
   submitButton: {
-    backgroundColor: '#6C63FF',
     borderRadius: 12,
     height: 52,
     alignItems: 'center',
@@ -242,37 +240,30 @@ const styles = StyleSheet.create({
   },
   backToLoginTextLink: {
     fontSize: 16,
-    color: '#6C63FF',
     fontWeight: '500',
   },
-  // ---- Success state ----
   successContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 32,
-    backgroundColor: 'white',
   },
   successTitle: {
     fontSize: 24,
     fontWeight: '700',
-    color: '#1f2937',
     marginTop: 16,
   },
   successSubtitle: {
     fontSize: 16,
-    color: '#6b7280',
     textAlign: 'center',
     marginTop: 8,
     lineHeight: 24,
   },
   successEmail: {
     fontWeight: '600',
-    color: '#1f2937',
   },
   backToLoginButton: {
     marginTop: 32,
-    backgroundColor: '#6C63FF',
     paddingHorizontal: 32,
     paddingVertical: 12,
     borderRadius: 8,

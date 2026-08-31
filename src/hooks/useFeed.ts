@@ -1,3 +1,4 @@
+// src/hooks/useFeed.ts
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../api/client';
 import { resolveMediaUrl } from '../lib/media';
@@ -5,7 +6,10 @@ import { resolveMediaUrl } from '../lib/media';
 const PAGE_SIZE = 20;
 
 // ── Normalize a single post ──
-function normalizePost(raw: any): any {
+// Exported so other hooks (e.g. useExplore) that fetch posts from different
+// endpoints can produce the exact same shape PostCard expects, instead of
+// re-implementing this field-mapping logic a second time.
+export function normalizePost(raw: any): any {
   // Build user from possible fields
   const rawUser = raw.user || raw.author || raw.creator || {};
   const user = {
@@ -62,55 +66,42 @@ export const useFeed = (tab: 'global' | 'following' = 'global') => {
   return useInfiniteQuery({
     queryKey: ['feed', tab],
     queryFn: async ({ pageParam = 1 }) => {
-      try {
-        console.log('📦 Fetching feed:', tab, 'page:', pageParam);
-        const response = await api.get('/posts', {
-          params: {
-            feed: tab,
-            page: pageParam,
-            limit: PAGE_SIZE,
-          },
-        });
+      const response = await api.get('/posts', {
+        params: {
+          feed: tab,
+          page: pageParam,
+          limit: PAGE_SIZE,
+        },
+      });
 
-        console.log('📦 Feed response status:', response.status);
+      let posts = [];
+      let hasMore = false;
 
-        let posts = [];
-        let hasMore = false;
-
-        // Parse different response structures
-        if (response?.data?.data?.posts) {
-          posts = response.data.data.posts;
-          hasMore = response.data.data.hasMore ?? posts.length === PAGE_SIZE;
-        } else if (response?.data?.posts) {
-          posts = response.data.posts;
-          hasMore = response.data.pagination?.hasMore || posts.length === PAGE_SIZE;
-        } else if (Array.isArray(response?.data)) {
-          posts = response.data;
-          hasMore = posts.length === PAGE_SIZE;
-        } else if (Array.isArray(response)) {
-          posts = response;
-          hasMore = posts.length === PAGE_SIZE;
-        }
-
-        if (!Array.isArray(posts)) posts = [];
-
-        console.log(`📦 Found ${posts.length} posts`);
-
-        const normalized = posts.map(normalizePost);
-
-        return {
-          posts: normalized,
-          nextPage: hasMore ? pageParam + 1 : null,
-        };
-      } catch (error) {
-        console.error('❌ Error fetching feed:', error);
-        throw error;
+      if (response?.data?.data?.posts) {
+        posts = response.data.data.posts;
+        hasMore = response.data.data.hasMore ?? posts.length === PAGE_SIZE;
+      } else if (response?.data?.posts) {
+        posts = response.data.posts;
+        hasMore = response.data.pagination?.hasMore || posts.length === PAGE_SIZE;
+      } else if (Array.isArray(response?.data)) {
+        posts = response.data;
+        hasMore = posts.length === PAGE_SIZE;
+      } else if (Array.isArray(response)) {
+        posts = response;
+        hasMore = posts.length === PAGE_SIZE;
       }
+
+      if (!Array.isArray(posts)) posts = [];
+
+      const normalized = posts.map(normalizePost);
+
+      return {
+        posts: normalized,
+        nextPage: hasMore ? pageParam + 1 : null,
+      };
     },
     getNextPageParam: (lastPage) => lastPage.nextPage,
     initialPageParam: 1,
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    refetchOnWindowFocus: false,
   });
 };
 
@@ -118,52 +109,23 @@ export const usePostActions = () => {
   const queryClient = useQueryClient();
 
   const likePost = async (postId: string) => {
-    try {
-      console.log('👍 Liking post:', postId);
-      const response = await api.post(`/posts/${postId}/like`);
-      console.log('✅ Like response:', response.status);
-      // Invalidate both global and following feeds
-      queryClient.invalidateQueries({ queryKey: ['feed'] });
-    } catch (error: any) {
-      console.error('❌ Like failed:', error.response?.status, error.response?.data);
-      throw error;
-    }
+    await api.post(`/posts/${postId}/like`);
+    queryClient.invalidateQueries({ queryKey: ['feed'] });
   };
 
   const unlikePost = async (postId: string) => {
-    try {
-      console.log('👎 Unliking post:', postId);
-      const response = await api.post(`/posts/${postId}/like`); // toggle
-      console.log('✅ Unlike response:', response.status);
-      queryClient.invalidateQueries({ queryKey: ['feed'] });
-    } catch (error: any) {
-      console.error('❌ Unlike failed:', error.response?.status, error.response?.data);
-      throw error;
-    }
+    await api.post(`/posts/${postId}/like`);
+    queryClient.invalidateQueries({ queryKey: ['feed'] });
   };
 
   const repost = async (postId: string) => {
-    try {
-      console.log('🔁 Reposting:', postId);
-      const response = await api.post(`/posts/${postId}/repost`);
-      console.log('✅ Repost response:', response.status);
-      queryClient.invalidateQueries({ queryKey: ['feed'] });
-    } catch (error: any) {
-      console.error('❌ Repost failed:', error.response?.status, error.response?.data);
-      throw error;
-    }
+    await api.post(`/posts/${postId}/repost`);
+    queryClient.invalidateQueries({ queryKey: ['feed'] });
   };
 
   const addComment = async (postId: string, text: string) => {
-    try {
-      console.log('💬 Adding comment to:', postId);
-      const response = await api.post(`/posts/${postId}/comment`, { text });
-      console.log('✅ Comment response:', response.status);
-      queryClient.invalidateQueries({ queryKey: ['feed'] });
-    } catch (error: any) {
-      console.error('❌ Comment failed:', error.response?.status, error.response?.data);
-      throw error;
-    }
+    await api.post(`/posts/${postId}/comment`, { text });
+    queryClient.invalidateQueries({ queryKey: ['feed'] });
   };
 
   return { likePost, unlikePost, repost, addComment };

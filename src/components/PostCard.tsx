@@ -19,13 +19,35 @@ import { Video, ResizeMode } from 'expo-av';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
 import { usePostActions } from '../hooks/useFeed';
+import { useTheme } from '../contexts/ThemeContext';
 import { Avatar } from './Avatar';
 import { timeAgo, formatNumber, safeString } from '../utils/helpers';
 import { extractMentions } from '../lib/formatText';
 import api from '../api/client';
-import * as SecureStore from 'expo-secure-store';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+// ── Throttle helper ──
+function throttle(fn: Function, limit: number) {
+  let lastCall = 0;
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  let pending = false;
+
+  return function (...args: any[]) {
+    const now = Date.now();
+    
+    if (!pending) {
+      pending = true;
+      timeoutId = setTimeout(() => {
+        pending = false;
+        if (now - lastCall >= limit) {
+          lastCall = now;
+          fn(...args);
+        }
+      }, limit);
+    }
+  };
+}
 
 function SafeText({ children, style, numberOfLines }: any) {
   return <Text style={style} numberOfLines={numberOfLines}>{safeString(children)}</Text>;
@@ -69,7 +91,11 @@ interface PostCardProps {
   showFollowButton?: boolean;
   isFollowing?: boolean;
   onFollowToggle?: () => void;
+  isVisible?: boolean;
 }
+
+// ── Shared throttle instance for link previews ──
+const throttleLinkPreview = throttle((fn: Function) => fn(), 500);
 
 function PostCard({
   post,
@@ -80,18 +106,19 @@ function PostCard({
   showFollowButton = false,
   isFollowing = false,
   onFollowToggle,
+  isVisible = true,
 }: PostCardProps) {
   const navigation = useNavigation();
   const { user: currentUser } = useAuth();
+  const { colors, isDark } = useTheme();
   const { likePost, unlikePost, repost: repostPost } = usePostActions();
-  if (!post) return null;
 
   const {
-    id, text, image, video, createdAt, likes = [], comments = [], reposts = [],
+    id = '', text = '', image = null, video = null, createdAt = '', likes = [], comments = [], reposts = [],
     shares = 0, viewCount = 0, videoViews = 0, isLive = false, liveSessionId = null,
     commentCount = 0, repostCount = 0, isRepost = false, originalPost = null,
-    groupId = null, reasons = [], user
-  } = post;
+    groupId = null, reasons = [], user = undefined
+  } = post || {};
 
   const safeLikes = Array.isArray(likes) ? likes : [];
   const safeReposts = Array.isArray(reposts) ? reposts : [];
@@ -123,6 +150,12 @@ function PostCard({
   const videoViewRecorded = useRef(false);
   const [lightboxVisible, setLightboxVisible] = useState(false);
 
+  const isMentionedInText = useMemo(() => {
+    if (!currentUser || !text) return false;
+    const mentions = extractMentions(text);
+    return mentions.some((m: string) => m.toLowerCase() === currentUser.username?.toLowerCase());
+  }, [text, currentUser]);
+
   const goToProfile = () => {
     if (username) (navigation.navigate as any)('Profile', { username });
     else if (userId) (navigation.navigate as any)('Profile', { userId });
@@ -133,23 +166,56 @@ function PostCard({
     (navigation.navigate as any)('EditPost', { postId: id });
   };
 
+  // ── Throttled link preview fetch ──
+  const previewFetchedRef = useRef(false);
+
   useEffect(() => {
+    if (!post || !isVisible || previewFetchedRef.current) return;
     if (image || video || !text) return;
     const urlMatch = text.match(/(https?:\/\/[^\s]+)/);
     if (!urlMatch) return;
     const url = urlMatch[0];
-    setPreviewLoading(true);
-    setPreviewError(false);
-    api.get(`/link-preview?url=${encodeURIComponent(url)}`)
-      .then((res) => {
-        const data = res.data;
-        if (data && (data.title || data.description || data.image)) {
-          setPreviewData({ ...data, url });
-        } else setPreviewError(true);
-      })
-      .catch(() => setPreviewError(true))
-      .finally(() => setPreviewLoading(false));
-  }, [id, text, image, video]);
+
+    previewFetchedRef.current = true;
+    
+    const controller = new AbortController();
+    
+    throttleLinkPreview(() => {
+      if (!post || !isVisible || previewFetchedRef.current === false) return;
+      
+      setPreviewLoading(true);
+      setPreviewError(false);
+      
+      api.get(`/link-preview?url=${encodeURIComponent(url)}`, { signal: controller.signal })
+        .then((res) => {
+          const data = res.data;
+          if (data && (data.title || data.description || data.image)) {
+            setPreviewData({ ...data, url });
+          } else {
+            setPreviewError(true);
+          }
+        })
+        .catch((err: any) => {
+          if (err?.name === 'CanceledError' || err?.name === 'AbortError') {
+            previewFetchedRef.current = false;
+          } else {
+            setPreviewError(true);
+          }
+        })
+        .finally(() => setPreviewLoading(false));
+    });
+
+    return () => {
+      controller.abort();
+      previewFetchedRef.current = false;
+    };
+  }, [id, text, image, video, isVisible]);
+
+  useEffect(() => {
+    if (!isVisible) {
+      videoRef.current?.pauseAsync?.().catch(() => {});
+    }
+  }, [isVisible]);
 
   const handleVideoPlaybackStatus = (status: any) => {
     if (!status.isLoaded || videoViewRecorded.current) return;
@@ -159,7 +225,6 @@ function PostCard({
     }
   };
 
-  // ── Like handler with auth error handling ──
   const handleLike = async () => {
     if (!currentUser) {
       Alert.alert(
@@ -212,16 +277,11 @@ function PostCard({
   const closeLightbox = () => setLightboxVisible(false);
 
   const renderMentionBadge = () => {
-    const isMentionedInText = useMemo(() => {
-      if (!currentUser || !text) return false;
-      const mentions = extractMentions(text);
-      return mentions.some((m: string) => m.toLowerCase() === currentUser.username?.toLowerCase());
-    }, [text, currentUser]);
     if (!isMentionedInText && !isMentioned) return null;
     return (
-      <View style={styles.mentionBadge}>
+      <View style={[styles.mentionBadge, { backgroundColor: isDark ? '#374151' : '#eff6ff' }]}>
         <Feather name="info" size={12} color="#3b82f6" />
-        <Text style={styles.mentionBadgeText}>Mentioned</Text>
+        <Text style={[styles.mentionBadgeText, { color: '#3b82f6' }]}>Mentioned</Text>
       </View>
     );
   };
@@ -231,11 +291,11 @@ function PostCard({
       return (
         <View style={styles.mediaContainer}>
           {videoError ? (
-            <View style={styles.videoErrorContainer}>
-              <Feather name="video-off" size={32} color="#6b7280" />
-              <Text style={styles.videoErrorText}>Video failed to load</Text>
+            <View style={[styles.videoErrorContainer, { backgroundColor: isDark ? '#1f2937' : '#f3f4f6' }]}>
+              <Feather name="video-off" size={32} color={colors.textMuted} />
+              <Text style={[styles.videoErrorText, { color: colors.textSecondary }]}>Video failed to load</Text>
             </View>
-          ) : (
+          ) : isVisible ? (
             <Video
               ref={videoRef}
               source={{ uri: video }}
@@ -247,6 +307,10 @@ function PostCard({
               onError={() => setVideoError(true)}
               onPlaybackStatusUpdate={handleVideoPlaybackStatus}
             />
+          ) : (
+            <View style={[styles.videoPlaceholder, { backgroundColor: isDark ? '#374151' : '#1f2937' }]}>
+              <Feather name="play-circle" size={40} color={colors.textMuted} />
+            </View>
           )}
         </View>
       );
@@ -256,8 +320,8 @@ function PostCard({
         <TouchableOpacity activeOpacity={0.9} onPress={openLightbox} style={styles.mediaContainer}>
           <Image
             source={{ uri: image }}
-            style={styles.mediaImage}
-            contentFit="cover"
+            style={[styles.mediaImage, { backgroundColor: isDark ? '#1f2937' : '#f3f4f6' }]}
+            contentFit="contain"
             transition={200}
             cachePolicy="memory-disk"
             recyclingKey={image}
@@ -274,8 +338,8 @@ function PostCard({
     if (count === 0) return null;
     return (
       <View style={styles.viewCountRow}>
-        <Feather name="eye" size={14} color="#9ca3af" />
-        <Text style={styles.viewCountText}>{formatNumber(count)}</Text>
+        <Feather name="eye" size={14} color={colors.textMuted} />
+        <Text style={[styles.viewCountText, { color: colors.textMuted }]}>{formatNumber(count)}</Text>
       </View>
     );
   };
@@ -285,13 +349,17 @@ function PostCard({
     return (
       <View ref={reasonRef}>
         <TouchableOpacity onPress={() => setShowReasons(!showReasons)} style={styles.reasonButton}>
-          <Feather name="info" size={16} color="#9ca3af" />
+          <Feather name="info" size={16} color={colors.textMuted} />
         </TouchableOpacity>
         {showReasons && (
-          <View style={styles.reasonPopover}>
-            <Text style={styles.reasonTitle}>Why you're seeing this</Text>
+          <View style={[styles.reasonPopover, { 
+            backgroundColor: colors.surface, 
+            borderColor: colors.border,
+            shadowColor: isDark ? 'transparent' : '#000',
+          }]}>
+            <Text style={[styles.reasonTitle, { color: colors.text }]}>Why you're seeing this</Text>
             {reasons.map((reason: string, i: number) => (
-              <Text key={i} style={styles.reasonItem}>• {reason}</Text>
+              <Text key={i} style={[styles.reasonItem, { color: colors.textSecondary }]}>• {reason}</Text>
             ))}
           </View>
         )}
@@ -302,33 +370,37 @@ function PostCard({
   const renderDropdown = () => (
     <View ref={dropdownRef}>
       <TouchableOpacity onPress={() => setIsDropdownOpen(!isDropdownOpen)} style={styles.dropdownButton}>
-        <Feather name="more-horizontal" size={20} color="#6b7280" />
+        <Feather name="more-horizontal" size={20} color={colors.textMuted} />
       </TouchableOpacity>
       {isDropdownOpen && (
-        <View style={styles.dropdownMenu}>
+        <View style={[styles.dropdownMenu, { 
+          backgroundColor: colors.surface, 
+          borderColor: colors.border,
+          shadowColor: isDark ? 'transparent' : '#000',
+        }]}>
           <TouchableOpacity onPress={() => { Alert.alert('Download', 'Image download not implemented yet.'); setIsDropdownOpen(false); }} style={styles.dropdownItem}>
-            <Feather name="download" size={16} color="#374151" />
-            <Text style={styles.dropdownItemText}>Download as Image</Text>
+            <Feather name="download" size={16} color={colors.text} />
+            <Text style={[styles.dropdownItemText, { color: colors.text }]}>Download as Image</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => { Alert.alert('Share', 'Image sharing not implemented yet.'); setIsDropdownOpen(false); }} style={styles.dropdownItem}>
-            <Feather name="share" size={16} color="#374151" />
-            <Text style={styles.dropdownItemText}>Share as Image</Text>
+            <Feather name="share" size={16} color={colors.text} />
+            <Text style={[styles.dropdownItemText, { color: colors.text }]}>Share as Image</Text>
           </TouchableOpacity>
           {image && (
             <>
-              <View style={styles.dropdownDivider} />
+              <View style={[styles.dropdownDivider, { backgroundColor: colors.border }]} />
               <TouchableOpacity onPress={() => { Alert.alert('Download', 'Original image download not implemented yet.'); setIsDropdownOpen(false); }} style={styles.dropdownItem}>
-                <Feather name="image" size={16} color="#374151" />
-                <Text style={styles.dropdownItemText}>Download Original</Text>
+                <Feather name="image" size={16} color={colors.text} />
+                <Text style={[styles.dropdownItemText, { color: colors.text }]}>Download Original</Text>
               </TouchableOpacity>
             </>
           )}
           {userId === currentUser?.id && (
             <>
-              <View style={styles.dropdownDivider} />
+              <View style={[styles.dropdownDivider, { backgroundColor: colors.border }]} />
               <TouchableOpacity onPress={handleEditPost} style={styles.dropdownItem}>
-                <Feather name="edit-2" size={16} color="#374151" />
-                <Text style={styles.dropdownItemText}>Edit Post</Text>
+                <Feather name="edit-2" size={16} color={colors.text} />
+                <Text style={[styles.dropdownItemText, { color: colors.text }]}>Edit Post</Text>
               </TouchableOpacity>
             </>
           )}
@@ -337,26 +409,34 @@ function PostCard({
     </View>
   );
 
+  if (!post) return null;
+
   if (isRepost && (!text || text.trim() === '') && originalPost) {
     return (
-      <View style={styles.repostWrapper}>
+      <View style={[styles.repostWrapper, { 
+        backgroundColor: isDark ? '#1f2937' : '#f9fafb',
+        borderBottomColor: colors.border 
+      }]}>
         <View style={styles.repostBanner}>
-          <Feather name="repeat" size={14} color="#6b7280" />
-          <Text style={styles.repostBannerText}>{displayName} reposted</Text>
-          <Text style={styles.repostBannerTime}>{relativeTime}</Text>
+          <Feather name="repeat" size={14} color={colors.textMuted} />
+          <Text style={[styles.repostBannerText, { color: colors.textSecondary }]}>{displayName} reposted</Text>
+          <Text style={[styles.repostBannerTime, { color: colors.textMuted }]}>{relativeTime}</Text>
         </View>
-        <PostCard post={originalPost} groupMap={groupMap} onComment={onComment} onQuote={onQuote} isMentioned={isMentioned} />
+        <PostCard post={originalPost} groupMap={groupMap} onComment={onComment} onQuote={onQuote} isMentioned={isMentioned} isVisible={isVisible} />
       </View>
     );
   }
 
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, { 
+      backgroundColor: colors.surface, 
+      borderBottomColor: colors.border 
+    }]}>
       {isRepost && originalPost && (
         <View style={styles.repostBanner}>
-          <Feather name="repeat" size={14} color="#6b7280" />
-          <Text style={styles.repostBannerText}>{displayName} quoted</Text>
-          <Text style={styles.repostBannerTime}>{relativeTime}</Text>
+          <Feather name="repeat" size={14} color={colors.textMuted} />
+          <Text style={[styles.repostBannerText, { color: colors.textSecondary }]}>{displayName} quoted</Text>
+          <Text style={[styles.repostBannerTime, { color: colors.textMuted }]}>{relativeTime}</Text>
         </View>
       )}
 
@@ -369,7 +449,7 @@ function PostCard({
           <View style={styles.headerRow}>
             <View style={styles.userInfo}>
               <TouchableOpacity onPress={goToProfile} style={styles.nameContainer}>
-                <Text style={styles.name}>
+                <Text style={[styles.name, { color: colors.text }]}>
                   {displayName}
                   {isVerified && <Feather name="check-circle" size={14} color="#3b82f6" />}
                 </Text>
@@ -377,13 +457,13 @@ function PostCard({
               {renderMentionBadge()}
               {username && (
                 <TouchableOpacity onPress={goToProfile}>
-                  <Text style={styles.username}>@{username}</Text>
+                  <Text style={[styles.username, { color: colors.textSecondary }]}>@{username}</Text>
                 </TouchableOpacity>
               )}
-              <Text style={styles.time}>· {relativeTime}</Text>
+              <Text style={[styles.time, { color: colors.textMuted }]}>· {relativeTime}</Text>
               {groupTopic && (
-                <View style={styles.groupBadge}>
-                  <Text style={styles.groupBadgeText}>{groupTopic}</Text>
+                <View style={[styles.groupBadge, { backgroundColor: isDark ? '#374151' : '#eff6ff' }]}>
+                  <Text style={[styles.groupBadgeText, { color: '#3b82f6' }]}>{groupTopic}</Text>
                 </View>
               )}
             </View>
@@ -395,41 +475,41 @@ function PostCard({
           </View>
 
           <TouchableOpacity activeOpacity={0.8} onPress={goToPostDetail}>
-            <Text style={styles.postText} numberOfLines={shouldTruncate ? 3 : undefined}>
+            <Text style={[styles.postText, { color: colors.text }]} numberOfLines={shouldTruncate ? 3 : undefined}>
               {text || ''}
             </Text>
             {shouldTruncate && (
               <TouchableOpacity onPress={toggleExpand}>
-                <Text style={styles.showMore}>Show more</Text>
+                <Text style={[styles.showMore, { color: colors.primary }]}>Show more</Text>
               </TouchableOpacity>
             )}
             {isExpanded && text?.length > 200 && (
               <TouchableOpacity onPress={toggleExpand}>
-                <Text style={styles.showMore}>Show less</Text>
+                <Text style={[styles.showMore, { color: colors.primary }]}>Show less</Text>
               </TouchableOpacity>
             )}
             {renderMedia()}
           </TouchableOpacity>
 
-          <View style={styles.engagementBar}>
+          <View style={[styles.engagementBar, { borderTopColor: colors.border }]}>
             <TouchableOpacity style={styles.engagementButton} onPress={handleLike}>
-              <Feather name={liked ? 'heart' : 'heart'} size={22} color={liked ? '#ef4444' : '#6b7280'} />
-              <Text style={styles.engagementText}>{likeCount}</Text>
+              <Feather name={liked ? 'heart' : 'heart'} size={22} color={liked ? '#ef4444' : colors.textMuted} />
+              <Text style={[styles.engagementText, { color: colors.textSecondary }]}>{likeCount}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.engagementButton} onPress={handleComment}>
-              <Feather name="message-circle" size={22} color="#6b7280" />
-              <Text style={styles.engagementText}>{commentCount ?? safeComments.length}</Text>
+              <Feather name="message-circle" size={22} color={colors.textMuted} />
+              <Text style={[styles.engagementText, { color: colors.textSecondary }]}>{commentCount ?? safeComments.length}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.engagementButton} onPress={handleRepost}>
-              <Feather name="repeat" size={22} color={reposted ? '#3b82f6' : '#6b7280'} />
-              <Text style={styles.engagementText}>{repostCount ?? safeReposts.length}</Text>
+              <Feather name="repeat" size={22} color={reposted ? '#3b82f6' : colors.textMuted} />
+              <Text style={[styles.engagementText, { color: colors.textSecondary }]}>{repostCount ?? safeReposts.length}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.engagementButton} onPress={handleShare}>
-              <Feather name="share-2" size={22} color="#6b7280" />
-              <Text style={styles.engagementText}>{shares || 0}</Text>
+              <Feather name="share-2" size={22} color={colors.textMuted} />
+              <Text style={[styles.engagementText, { color: colors.textSecondary }]}>{shares || 0}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.engagementButton} onPress={handleQuote}>
-              <Feather name="message-square" size={22} color="#6b7280" />
+              <Feather name="message-square" size={22} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
         </View>
@@ -460,20 +540,15 @@ function PostCard({
 export default React.memo(PostCard);
 
 const styles = StyleSheet.create({
-  // ... (styles remain the same as before)
   card: {
-    backgroundColor: 'white',
     borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
-    paddingHorizontal: 16,
+    paddingHorizontal: 0,
     paddingVertical: 12,
   },
   repostWrapper: {
-    backgroundColor: '#f9fafb',
-    paddingHorizontal: 16,
+    paddingHorizontal: 0,
     paddingVertical: 8,
     borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
   },
   repostBanner: {
     flexDirection: 'row',
@@ -483,17 +558,16 @@ const styles = StyleSheet.create({
   },
   repostBannerText: {
     fontSize: 12,
-    color: '#6b7280',
     marginLeft: 4,
   },
   repostBannerTime: {
     fontSize: 12,
-    color: '#9ca3af',
     marginLeft: 8,
   },
   cardInner: {
     flexDirection: 'row',
     alignItems: 'flex-start',
+    paddingHorizontal: 16,
   },
   avatarTouch: {
     marginRight: 12,
@@ -519,20 +593,16 @@ const styles = StyleSheet.create({
   name: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#1f2937',
   },
   username: {
     fontSize: 13,
-    color: '#6b7280',
     marginLeft: 4,
   },
   time: {
     fontSize: 13,
-    color: '#9ca3af',
     marginLeft: 4,
   },
   groupBadge: {
-    backgroundColor: '#eff6ff',
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 12,
@@ -540,7 +610,6 @@ const styles = StyleSheet.create({
   },
   groupBadgeText: {
     fontSize: 11,
-    color: '#2563eb',
   },
   actionsRow: {
     flexDirection: 'row',
@@ -553,7 +622,6 @@ const styles = StyleSheet.create({
   },
   viewCountText: {
     fontSize: 12,
-    color: '#9ca3af',
     marginLeft: 4,
   },
   reasonButton: {
@@ -563,12 +631,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 28,
     right: 0,
-    backgroundColor: 'white',
     borderWidth: 1,
-    borderColor: '#e5e7eb',
     borderRadius: 8,
     padding: 12,
-    shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
@@ -579,12 +644,10 @@ const styles = StyleSheet.create({
   reasonTitle: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#374151',
     marginBottom: 6,
   },
   reasonItem: {
     fontSize: 12,
-    color: '#4b5563',
     marginTop: 4,
   },
   dropdownButton: {
@@ -594,11 +657,8 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 0,
     top: 28,
-    backgroundColor: 'white',
     borderWidth: 1,
-    borderColor: '#e5e7eb',
     borderRadius: 8,
-    shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
@@ -615,18 +675,15 @@ const styles = StyleSheet.create({
   },
   dropdownItemText: {
     fontSize: 14,
-    color: '#374151',
     marginLeft: 12,
   },
   dropdownDivider: {
     height: 1,
-    backgroundColor: '#f3f4f6',
     marginVertical: 4,
   },
   mentionBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#eff6ff',
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 12,
@@ -634,42 +691,43 @@ const styles = StyleSheet.create({
   },
   mentionBadgeText: {
     fontSize: 11,
-    color: '#2563eb',
     marginLeft: 4,
   },
   postText: {
     fontSize: 15,
     lineHeight: 22,
-    color: '#1f2937',
     marginTop: 6,
   },
   showMore: {
-    color: '#2563eb',
     fontSize: 14,
     marginTop: 4,
   },
   mediaContainer: {
     marginTop: 12,
-    marginHorizontal: -16,
-    backgroundColor: '#000',
+    marginHorizontal: 0,
     overflow: 'hidden',
+    width: SCREEN_WIDTH,
   },
   mediaPlayer: {
-    width: '100%',
-    aspectRatio: 16 / 9,
+    width: SCREEN_WIDTH,
+    height: SCREEN_WIDTH * 0.5625,
   },
   mediaImage: {
-    width: '100%',
-    aspectRatio: 16 / 9,
-    backgroundColor: '#e5e7eb',
+    width: SCREEN_WIDTH,
+    minHeight: 300,
+    maxHeight: 500,
+  },
+  videoPlaceholder: {
+    width: SCREEN_WIDTH,
+    height: SCREEN_WIDTH * 0.5625,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   videoErrorContainer: {
     padding: 24,
     alignItems: 'center',
-    backgroundColor: '#f3f4f6',
   },
   videoErrorText: {
-    color: '#6b7280',
     fontSize: 14,
     marginTop: 8,
   },
@@ -679,7 +737,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: '#f3f4f6',
+    paddingHorizontal: 16,
   },
   engagementButton: {
     flexDirection: 'row',
@@ -687,7 +745,6 @@ const styles = StyleSheet.create({
   },
   engagementText: {
     fontSize: 14,
-    color: '#6b7280',
     marginLeft: 6,
   },
   lightbox: {

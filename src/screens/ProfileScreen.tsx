@@ -11,22 +11,41 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { Avatar } from '../components/Avatar';
 import PostCard, { Post } from '../components/PostCard';
+import { useTabBarHeight } from '../hooks/useTabBarHeight';
 import api from '../api/client';
 import { formatNumber, safeString } from '../utils/helpers';
 import { resolveMediaUrl } from '../lib/media';
 
 type ProfileTab = 'posts' | 'replies' | 'media';
 
+interface ProfileData {
+  id: string;
+  name: string;
+  username: string;
+  avatar?: string | null;
+  coverImage?: string | null;
+  bio?: string;
+  postsCount: number;
+  followersCount: number;
+  followingCount: number;
+  isFollowed?: boolean;
+  isCurrentUser: boolean;
+}
+
 export default function ProfileScreen() {
   const navigation = useNavigation();
   const { user, logout } = useAuth();
+  const { colors, isDark } = useTheme();
+  const insets = useSafeAreaInsets();
+  const { contentBottomPadding } = useTabBarHeight();
   const [activeTab, setActiveTab] = useState<ProfileTab>('posts');
   const [refreshing, setRefreshing] = useState(false);
 
@@ -40,7 +59,11 @@ export default function ProfileScreen() {
     queryKey: ['profile', user?.id],
     queryFn: async () => {
       if (!user) throw new Error('Not logged in');
+      console.log('👤 Fetching profile for user:', user.id);
+      
       const response = await api.get(`/users/${user.id}/profile`);
+      console.log('📦 Profile response:', JSON.stringify(response.data, null, 2));
+      
       const data = response.data;
       const profileData = data.data || data;
       
@@ -56,13 +79,13 @@ export default function ProfileScreen() {
         followingCount: Number(profileData.followingCount || profileData.following || 0),
         isFollowed: !!profileData.isFollowed,
         isCurrentUser: true,
-      };
+      } as ProfileData;
     },
     enabled: !!user,
     retry: 2,
   });
 
-  // ── Fetch user's posts ──
+  // ── Fetch ONLY the current user's posts ──
   const {
     data: posts = [],
     isLoading: postsLoading,
@@ -71,14 +94,41 @@ export default function ProfileScreen() {
     queryKey: ['user-posts', user?.id],
     queryFn: async () => {
       if (!user) return [];
+      console.log('📰 Fetching posts for user:', user.id);
+      
       try {
         let response;
         try {
-          response = await api.get(`/posts?authorId=${user.id}&limit=30`);
+          response = await api.get(`/posts`, {
+            params: { authorId: user.id, limit: 30 }
+          });
         } catch {
-          response = await api.get(`/posts?userId=${user.id}&limit=30`);
+          try {
+            response = await api.get(`/posts`, {
+              params: { userId: user.id, limit: 30 }
+            });
+          } catch {
+            response = await api.get(`/posts`, {
+              params: { user_id: user.id, limit: 30 }
+            });
+          }
         }
-        const postsData = response.data.data?.posts || response.data.posts || response.data.data || [];
+        
+        console.log('📦 Posts response:', JSON.stringify(response.data, null, 2));
+        
+        let postsData = [];
+        if (response.data.data?.posts) {
+          postsData = response.data.data.posts;
+        } else if (response.data.posts) {
+          postsData = response.data.posts;
+        } else if (response.data.data && Array.isArray(response.data.data)) {
+          postsData = response.data.data;
+        } else if (Array.isArray(response.data)) {
+          postsData = response.data;
+        } else {
+          postsData = [];
+        }
+        
         return postsData.map((p: any) => ({
           ...p,
           id: String(p.id || ''),
@@ -119,12 +169,14 @@ export default function ProfileScreen() {
     enabled: !!user,
   });
 
+  // ── Pull to refresh ──
   const handleRefresh = async () => {
     setRefreshing(true);
     await Promise.all([refetchProfile(), refetchPosts()]);
     setRefreshing(false);
   };
 
+  // ── Logout handler ──
   const handleLogout = () => {
     Alert.alert(
       'Logout',
@@ -146,6 +198,12 @@ export default function ProfileScreen() {
     );
   };
 
+  // ── Navigate to Edit Profile ──
+  const handleEditProfile = () => {
+    (navigation.navigate as any)('EditProfile');
+  };
+
+  // ── Render post item ──
   const renderPostItem = ({ item }: { item: Post }) => {
     const postWithUser = {
       ...item,
@@ -161,16 +219,17 @@ export default function ProfileScreen() {
     return <PostCard post={postWithUser} />;
   };
 
+  // ── Not logged in ──
   if (!user) {
     return (
-      <SafeAreaView style={styles.placeholderContainer}>
-        <Feather name="user" size={64} color="#d1d5db" />
-        <Text style={styles.placeholderTitle}>Not signed in</Text>
-        <Text style={styles.placeholderSubtitle}>
+      <SafeAreaView style={[styles.placeholderContainer, { backgroundColor: colors.background }]} edges={['top']}>
+        <Feather name="user" size={64} color={colors.textMuted} />
+        <Text style={[styles.placeholderTitle, { color: colors.text }]}>Not signed in</Text>
+        <Text style={[styles.placeholderSubtitle, { color: colors.textSecondary }]}>
           Sign in to view and edit your profile.
         </Text>
         <TouchableOpacity
-          style={styles.signInButton}
+          style={[styles.signInButton, { backgroundColor: colors.primary }]}
           onPress={() => (navigation.navigate as any)('Login')}
         >
           <Text style={styles.signInButtonText}>Sign In</Text>
@@ -179,61 +238,77 @@ export default function ProfileScreen() {
     );
   }
 
+  // ── Loading ──
   if (profileLoading) {
     return (
-      <SafeAreaView style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#6C63FF" />
+      <SafeAreaView style={[styles.loadingContainer, { backgroundColor: colors.background }]} edges={['top']}>
+        <ActivityIndicator size="large" color={colors.primary} />
       </SafeAreaView>
     );
   }
 
+  // ── Error ──
   if (profileError || !profile) {
     return (
-      <SafeAreaView style={styles.errorContainer}>
+      <SafeAreaView style={[styles.errorContainer, { backgroundColor: colors.background }]} edges={['top']}>
         <Feather name="alert-circle" size={48} color="#ef4444" />
-        <Text style={styles.errorTitle}>Failed to load profile</Text>
-        <Text style={styles.errorSubtitle}>Please try again later.</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={handleRefresh}>
+        <Text style={[styles.errorTitle, { color: colors.text }]}>Failed to load profile</Text>
+        <Text style={[styles.errorSubtitle, { color: colors.textSecondary }]}>Please try again later.</Text>
+        <TouchableOpacity style={[styles.retryButton, { backgroundColor: colors.primary }]} onPress={handleRefresh}>
           <Text style={styles.retryButtonText}>Retry</Text>
         </TouchableOpacity>
       </SafeAreaView>
     );
   }
 
+  // ── Main render ──
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#6C63FF" />
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} />
         }
         showsVerticalScrollIndicator={false}
+        contentContainerStyle={{
+          paddingBottom: contentBottomPadding,
+        }}
       >
+        {/* ─── Cover Image ─── */}
         {profile.coverImage ? (
           <View style={styles.coverContainer}>
             <Image source={{ uri: profile.coverImage }} style={styles.coverImage} resizeMode="cover" />
-            <View style={styles.coverOverlay} />
+            <View style={[styles.coverOverlay, { backgroundColor: 'rgba(0,0,0,0.2)' }]} />
           </View>
         ) : (
-          <View style={styles.coverPlaceholder} />
+          <View style={[styles.coverPlaceholder, { backgroundColor: isDark ? '#374151' : '#e5e7eb' }]} />
         )}
 
+        {/* ─── Profile Header ─── */}
         <View style={styles.header}>
           <View style={styles.avatarRow}>
-            <View style={styles.avatarBorder}>
+            <View style={[styles.avatarBorder, { borderColor: colors.surface, backgroundColor: colors.surface }]}>
               <Avatar source={profile.avatar} size={80} fallback={profile.name} />
             </View>
             <View style={styles.headerActions}>
               {profile.isCurrentUser && (
-                <TouchableOpacity
-                  style={styles.settingsButton}
-                  onPress={() => (navigation.navigate as any)('Settings')}
-                >
-                  <Feather name="settings" size={22} color="#1f2937" />
-                </TouchableOpacity>
+                <>
+                  <TouchableOpacity
+                    style={[styles.editButton, { borderColor: colors.border }]}
+                    onPress={handleEditProfile}
+                  >
+                    <Text style={[styles.editButtonText, { color: colors.text }]}>Edit Profile</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.settingsButton, { backgroundColor: isDark ? '#374151' : '#f3f4f6' }]}
+                    onPress={() => (navigation.navigate as any)('Settings')}
+                  >
+                    <Feather name="settings" size={22} color={colors.text} />
+                  </TouchableOpacity>
+                </>
               )}
               {!profile.isCurrentUser && (
                 <TouchableOpacity
-                  style={[styles.followButton, profile.isFollowed && styles.followButtonActive]}
+                  style={[styles.followButton, { backgroundColor: profile.isFollowed ? (isDark ? '#374151' : '#e5e7eb') : colors.primary }, profile.isFollowed && styles.followButtonActive]}
                   onPress={() => console.log('Toggle follow')}
                 >
                   <Text
@@ -246,41 +321,43 @@ export default function ProfileScreen() {
             </View>
           </View>
 
-          <Text style={styles.name}>{safeString(profile.name)}</Text>
-          <Text style={styles.username}>@{safeString(profile.username)}</Text>
+          <Text style={[styles.name, { color: colors.text }]}>{safeString(profile.name)}</Text>
+          <Text style={[styles.username, { color: colors.textSecondary }]}>@{safeString(profile.username)}</Text>
 
-          {profile.bio && <Text style={styles.bio}>{safeString(profile.bio)}</Text>}
+          {profile.bio && <Text style={[styles.bio, { color: colors.text }]}>{safeString(profile.bio)}</Text>}
 
-          <View style={styles.statsRow}>
+          <View style={[styles.statsRow, { borderTopColor: colors.border }]}>
             <TouchableOpacity style={styles.statItem}>
-              <Text style={styles.statNumber}>{formatNumber(profile.postsCount)}</Text>
-              <Text style={styles.statLabel}>Posts</Text>
+              <Text style={[styles.statNumber, { color: colors.text }]}>{formatNumber(profile.postsCount)}</Text>
+              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Posts</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.statItem}>
-              <Text style={styles.statNumber}>{formatNumber(profile.followersCount)}</Text>
-              <Text style={styles.statLabel}>Followers</Text>
+              <Text style={[styles.statNumber, { color: colors.text }]}>{formatNumber(profile.followersCount)}</Text>
+              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Followers</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.statItem}>
-              <Text style={styles.statNumber}>{formatNumber(profile.followingCount)}</Text>
-              <Text style={styles.statLabel}>Following</Text>
+              <Text style={[styles.statNumber, { color: colors.text }]}>{formatNumber(profile.followingCount)}</Text>
+              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Following</Text>
             </TouchableOpacity>
           </View>
         </View>
 
-        <View style={styles.tabsRow}>
+        {/* ─── Tabs ─── */}
+        <View style={[styles.tabsRow, { borderBottomColor: colors.border }]}>
           {(['posts', 'replies', 'media'] as ProfileTab[]).map((tab) => (
             <TouchableOpacity
               key={tab}
               style={[styles.tab, activeTab === tab && styles.tabActive]}
               onPress={() => setActiveTab(tab)}
             >
-              <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
+              <Text style={[styles.tabText, { color: colors.textSecondary }, activeTab === tab && styles.tabTextActive]}>
                 {tab.charAt(0).toUpperCase() + tab.slice(1)}
               </Text>
             </TouchableOpacity>
           ))}
         </View>
 
+        {/* ─── Content ─── */}
         <View style={styles.content}>
           {activeTab === 'posts' && (
             <FlatList
@@ -291,66 +368,60 @@ export default function ProfileScreen() {
               contentContainerStyle={styles.postsContainer}
               ListEmptyComponent={
                 <View style={styles.emptyState}>
-                  <Feather name="file-text" size={48} color="#d1d5db" />
-                  <Text style={styles.emptyTitle}>No posts yet</Text>
-                  <Text style={styles.emptySubtitle}>When you post, they'll appear here.</Text>
+                  <Feather name="file-text" size={48} color={colors.textMuted} />
+                  <Text style={[styles.emptyTitle, { color: colors.text }]}>No posts yet</Text>
+                  <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>When you post, they'll appear here.</Text>
                 </View>
               }
             />
           )}
           {activeTab === 'replies' && (
             <View style={styles.emptyState}>
-              <Feather name="message-circle" size={48} color="#d1d5db" />
-              <Text style={styles.emptyTitle}>No replies yet</Text>
-              <Text style={styles.emptySubtitle}>When you reply to posts, they'll appear here.</Text>
+              <Feather name="message-circle" size={48} color={colors.textMuted} />
+              <Text style={[styles.emptyTitle, { color: colors.text }]}>No replies yet</Text>
+              <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>When you reply to posts, they'll appear here.</Text>
             </View>
           )}
           {activeTab === 'media' && (
             <View style={styles.emptyState}>
-              <Feather name="image" size={48} color="#d1d5db" />
-              <Text style={styles.emptyTitle}>No media yet</Text>
-              <Text style={styles.emptySubtitle}>Your photos and videos will show up here.</Text>
+              <Feather name="image" size={48} color={colors.textMuted} />
+              <Text style={[styles.emptyTitle, { color: colors.text }]}>No media yet</Text>
+              <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>Your photos and videos will show up here.</Text>
             </View>
           )}
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: 'white',
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'white',
   },
   placeholderContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 32,
-    backgroundColor: 'white',
   },
   placeholderTitle: {
     fontSize: 20,
     fontWeight: '600',
-    color: '#1f2937',
     marginTop: 16,
   },
   placeholderSubtitle: {
     fontSize: 14,
-    color: '#6b7280',
     textAlign: 'center',
     marginTop: 4,
   },
   signInButton: {
     marginTop: 24,
-    backgroundColor: '#6C63FF',
     paddingHorizontal: 32,
     paddingVertical: 12,
     borderRadius: 8,
@@ -365,23 +436,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 32,
-    backgroundColor: 'white',
   },
   errorTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#1f2937',
     marginTop: 12,
   },
   errorSubtitle: {
     fontSize: 14,
-    color: '#6b7280',
     textAlign: 'center',
     marginTop: 4,
   },
   retryButton: {
     marginTop: 20,
-    backgroundColor: '#6C63FF',
     paddingHorizontal: 32,
     paddingVertical: 10,
     borderRadius: 8,
@@ -399,7 +466,6 @@ const styles = StyleSheet.create({
   coverPlaceholder: {
     height: 60,
     width: '100%',
-    backgroundColor: '#e5e7eb',
   },
   coverImage: {
     width: '100%',
@@ -411,7 +477,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.2)',
   },
   header: {
     paddingHorizontal: 16,
@@ -426,25 +491,31 @@ const styles = StyleSheet.create({
   },
   avatarBorder: {
     borderWidth: 4,
-    borderColor: 'white',
     borderRadius: 100,
-    backgroundColor: 'white',
   },
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
+  editButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 100,
+    borderWidth: 1,
+  },
+  editButtonText: {
+    fontWeight: '600',
+    fontSize: 14,
+  },
   settingsButton: {
     padding: 8,
-    backgroundColor: '#f3f4f6',
     borderRadius: 100,
   },
   followButton: {
     paddingHorizontal: 20,
     paddingVertical: 8,
     borderRadius: 100,
-    backgroundColor: '#6C63FF',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -464,16 +535,13 @@ const styles = StyleSheet.create({
   name: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#1f2937',
     marginTop: 8,
   },
   username: {
     fontSize: 14,
-    color: '#6b7280',
   },
   bio: {
     fontSize: 14,
-    color: '#374151',
     marginTop: 4,
     lineHeight: 20,
   },
@@ -483,7 +551,6 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: '#f3f4f6',
   },
   statItem: {
     alignItems: 'center',
@@ -491,18 +558,15 @@ const styles = StyleSheet.create({
   statNumber: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#1f2937',
   },
   statLabel: {
     fontSize: 12,
-    color: '#6b7280',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   tabsRow: {
     flexDirection: 'row',
     borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
     marginTop: 12,
   },
   tab: {
@@ -517,14 +581,12 @@ const styles = StyleSheet.create({
   tabText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#6b7280',
   },
   tabTextActive: {
     color: '#6C63FF',
   },
   content: {
     paddingHorizontal: 4,
-    paddingBottom: 16,
   },
   postsContainer: {
     paddingVertical: 4,
@@ -534,13 +596,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   emptyTitle: {
-    color: '#9ca3af',
     textAlign: 'center',
     marginTop: 8,
     fontSize: 16,
   },
   emptySubtitle: {
-    color: '#9ca3af',
     textAlign: 'center',
     fontSize: 14,
     marginTop: 4,

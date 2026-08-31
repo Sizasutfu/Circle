@@ -10,19 +10,21 @@ import {
   ScrollView,
   Alert,
   StyleSheet,
-  Image, // 👈 Required for the logo
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 
-// 👇 Import your logo (adjust path if needed)
+// 👇 Import your logo
 const logo = require('../../assets/icon.png');
 
 export default function LoginScreen() {
   const navigation = useNavigation();
   const { login } = useAuth();
+  const { colors, isDark } = useTheme();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -66,7 +68,7 @@ export default function LoginScreen() {
   const togglePasswordVisibility = () => setShowPassword(!showPassword);
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
@@ -78,28 +80,31 @@ export default function LoginScreen() {
         >
           {/* Logo / Branding */}
           <View style={styles.brandContainer}>
-            {/* 👇 Custom logo image */}
             <Image source={logo} style={styles.logoImage} resizeMode="contain" />
-            <Text style={styles.appName}>Circle</Text>
-            <Text style={styles.tagline}>Connect with your community</Text>
+            <Text style={[styles.appName, { color: colors.text }]}>Circle</Text>
+            <Text style={[styles.tagline, { color: colors.textSecondary }]}>Connect with your community</Text>
           </View>
 
           {/* Form */}
           <View style={styles.formContainer}>
             {/* Email Input */}
             <View style={styles.inputWrapper}>
-              <Text style={styles.inputLabel}>Email</Text>
+              <Text style={[styles.inputLabel, { color: colors.text }]}>Email</Text>
               <View
                 style={[
                   styles.inputContainer,
+                  { 
+                    backgroundColor: colors.input, 
+                    borderColor: emailFocused ? colors.primary : colors.inputBorder 
+                  },
                   emailFocused && styles.inputFocused,
                 ]}
               >
-                <Feather name="mail" size={20} color="#9ca3af" style={styles.inputIcon} />
+                <Feather name="mail" size={20} color={colors.textMuted} style={styles.inputIcon} />
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, { color: colors.text }]}
                   placeholder="you@example.com"
-                  placeholderTextColor="#9ca3af"
+                  placeholderTextColor={colors.placeholder}
                   value={email}
                   onChangeText={setEmail}
                   onFocus={() => setEmailFocused(true)}
@@ -114,18 +119,22 @@ export default function LoginScreen() {
 
             {/* Password Input */}
             <View style={styles.inputWrapper}>
-              <Text style={styles.inputLabel}>Password</Text>
+              <Text style={[styles.inputLabel, { color: colors.text }]}>Password</Text>
               <View
                 style={[
                   styles.inputContainer,
+                  { 
+                    backgroundColor: colors.input, 
+                    borderColor: passwordFocused ? colors.primary : colors.inputBorder 
+                  },
                   passwordFocused && styles.inputFocused,
                 ]}
               >
-                <Feather name="lock" size={20} color="#9ca3af" style={styles.inputIcon} />
+                <Feather name="lock" size={20} color={colors.textMuted} style={styles.inputIcon} />
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, { color: colors.text }]}
                   placeholder="••••••••"
-                  placeholderTextColor="#9ca3af"
+                  placeholderTextColor={colors.placeholder}
                   value={password}
                   onChangeText={setPassword}
                   onFocus={() => setPasswordFocused(true)}
@@ -142,7 +151,7 @@ export default function LoginScreen() {
                   <Feather
                     name={showPassword ? 'eye' : 'eye-off'}
                     size={20}
-                    color="#9ca3af"
+                    color={colors.textMuted}
                   />
                 </TouchableOpacity>
               </View>
@@ -154,12 +163,12 @@ export default function LoginScreen() {
               style={styles.forgotButton}
               disabled={loading}
             >
-              <Text style={styles.forgotText}>Forgot password?</Text>
+              <Text style={[styles.forgotText, { color: colors.primary }]}>Forgot password?</Text>
             </TouchableOpacity>
 
             {/* Login Button */}
             <TouchableOpacity
-              style={[styles.loginButton, loading && styles.loginButtonDisabled]}
+              style={[styles.loginButton, { backgroundColor: colors.primary }, loading && styles.loginButtonDisabled]}
               onPress={handleLogin}
               disabled={loading}
               activeOpacity={0.8}
@@ -173,29 +182,38 @@ export default function LoginScreen() {
 
             {/* Sign Up Link */}
             <View style={styles.signupContainer}>
-              <Text style={styles.signupText}>Don't have an account? </Text>
+              <Text style={[styles.signupText, { color: colors.textSecondary }]}>Don't have an account? </Text>
               <TouchableOpacity onPress={handleSignUp} disabled={loading}>
-                <Text style={styles.signupLink}>Sign Up</Text>
+                <Text style={[styles.signupLink, { color: colors.primary }]}>Sign Up</Text>
               </TouchableOpacity>
             </View>
 
             {/* Social Login Divider */}
             <View style={styles.dividerContainer}>
-              <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>or continue with</Text>
-              <View style={styles.dividerLine} />
+              <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
+              <Text style={[styles.dividerText, { color: colors.textMuted }]}>or continue with</Text>
+              <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
             </View>
 
             {/* Social Buttons */}
             <View style={styles.socialContainer}>
-              <TouchableOpacity style={styles.socialButton} disabled={loading}>
-                <Feather name="github" size={24} color="#1f2937" />
+              <TouchableOpacity style={[styles.socialButton, { 
+                backgroundColor: isDark ? '#374151' : '#f3f4f6',
+                borderColor: colors.border 
+              }]} disabled={loading}>
+                <Feather name="github" size={24} color={colors.text} />
               </TouchableOpacity>
-              <TouchableOpacity style={styles.socialButton} disabled={loading}>
-                <Feather name="mail" size={24} color="#1f2937" />
+              <TouchableOpacity style={[styles.socialButton, { 
+                backgroundColor: isDark ? '#374151' : '#f3f4f6',
+                borderColor: colors.border 
+              }]} disabled={loading}>
+                <Feather name="mail" size={24} color={colors.text} />
               </TouchableOpacity>
-              <TouchableOpacity style={styles.socialButton} disabled={loading}>
-                <Feather name="twitter" size={24} color="#1f2937" />
+              <TouchableOpacity style={[styles.socialButton, { 
+                backgroundColor: isDark ? '#374151' : '#f3f4f6',
+                borderColor: colors.border 
+              }]} disabled={loading}>
+                <Feather name="twitter" size={24} color={colors.text} />
               </TouchableOpacity>
             </View>
           </View>
@@ -208,7 +226,6 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: 'white',
   },
   keyboardView: {
     flex: 1,
@@ -223,24 +240,18 @@ const styles = StyleSheet.create({
     marginTop: Platform.OS === 'ios' ? 60 : 40,
     marginBottom: 40,
   },
-  // 👇 Logo image style
   logoImage: {
     width: 120,
     height: 120,
     marginBottom: 16,
-    // Optional: if you want a circular container, uncomment:
-    // borderRadius: 60,
-    // backgroundColor: '#6C63FF', // fallback
   },
   appName: {
     fontSize: 28,
     fontWeight: '700',
-    color: '#1f2937',
     letterSpacing: 1,
   },
   tagline: {
     fontSize: 14,
-    color: '#6b7280',
     marginTop: 4,
   },
   formContainer: {
@@ -253,22 +264,18 @@ const styles = StyleSheet.create({
   inputLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#374151',
     marginBottom: 6,
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f9fafb',
     borderRadius: 12,
     borderWidth: 1.5,
-    borderColor: '#e5e7eb',
     paddingHorizontal: 14,
     height: 52,
   },
   inputFocused: {
     borderColor: '#6C63FF',
-    backgroundColor: 'white',
   },
   inputIcon: {
     marginRight: 12,
@@ -276,7 +283,6 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     fontSize: 16,
-    color: '#1f2937',
     paddingVertical: 12,
   },
   eyeButton: {
@@ -288,11 +294,9 @@ const styles = StyleSheet.create({
   },
   forgotText: {
     fontSize: 14,
-    color: '#6C63FF',
     fontWeight: '500',
   },
   loginButton: {
-    backgroundColor: '#6C63FF',
     borderRadius: 12,
     height: 52,
     alignItems: 'center',
@@ -319,11 +323,9 @@ const styles = StyleSheet.create({
   },
   signupText: {
     fontSize: 14,
-    color: '#6b7280',
   },
   signupLink: {
     fontSize: 14,
-    color: '#6C63FF',
     fontWeight: '600',
   },
   dividerContainer: {
@@ -335,11 +337,9 @@ const styles = StyleSheet.create({
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: '#e5e7eb',
   },
   dividerText: {
     fontSize: 12,
-    color: '#9ca3af',
     paddingHorizontal: 16,
   },
   socialContainer: {
@@ -351,10 +351,8 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 26,
-    backgroundColor: '#f3f4f6',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#e5e7eb',
   },
 });

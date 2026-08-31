@@ -18,6 +18,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import api from '../api/client';
 
 // ===== TYPES =====
@@ -31,6 +32,7 @@ export default function EditPostScreen() {
   const navigation = useNavigation();
   const { postId } = route.params as RouteParams;
   const { user } = useAuth();
+  const { colors, isDark } = useTheme();
   const queryClient = useQueryClient();
 
   const [text, setText] = useState('');
@@ -85,7 +87,7 @@ export default function EditPostScreen() {
 
     if (!result.canceled && result.assets[0]) {
       setImageUri(result.assets[0].uri);
-      setExistingImage(null); // remove existing image
+      setExistingImage(null);
       setVideoUri(null);
       setExistingVideo(null);
     }
@@ -106,7 +108,7 @@ export default function EditPostScreen() {
 
     if (!result.canceled && result.assets[0]) {
       setVideoUri(result.assets[0].uri);
-      setExistingVideo(null); // remove existing video
+      setExistingVideo(null);
       setImageUri(null);
       setExistingImage(null);
     }
@@ -156,7 +158,6 @@ export default function EditPostScreen() {
       return;
     }
 
-    // Check if anything changed
     const textChanged = trimmedText !== (post?.text || '');
     const imageChanged =
       imageUri !== null || existingImage !== (post?.image || null);
@@ -179,10 +180,8 @@ export default function EditPostScreen() {
             setIsSaving(true);
             const formData = new FormData();
 
-            // Append text
             formData.append('text', trimmedText);
 
-            // Append new image if selected
             if (imageUri) {
               const filename = imageUri.split('/').pop() || 'photo.jpg';
               const fileType = filename.endsWith('.png') ? 'image/png' : 'image/jpeg';
@@ -192,11 +191,9 @@ export default function EditPostScreen() {
                 type: fileType,
               } as any);
             } else if (existingImage === null && post?.image) {
-              // If image was removed
               formData.append('removeImage', 'true');
             }
 
-            // Append new video if selected
             if (videoUri) {
               const filename = videoUri.split('/').pop() || 'video.mp4';
               formData.append('video', {
@@ -205,7 +202,6 @@ export default function EditPostScreen() {
                 type: 'video/mp4',
               } as any);
             } else if (existingVideo === null && post?.video) {
-              // If video was removed
               formData.append('removeVideo', 'true');
             }
 
@@ -238,8 +234,8 @@ export default function EditPostScreen() {
   // ---- Loading state ----
   if (isLoading) {
     return (
-      <SafeAreaView style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#6C63FF" />
+      <SafeAreaView style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
       </SafeAreaView>
     );
   }
@@ -247,14 +243,14 @@ export default function EditPostScreen() {
   // ---- Error state ----
   if (isError || !post) {
     return (
-      <SafeAreaView style={styles.errorContainer}>
+      <SafeAreaView style={[styles.errorContainer, { backgroundColor: colors.background }]}>
         <Feather name="alert-circle" size={48} color="#ef4444" />
-        <Text style={styles.errorTitle}>Post not found</Text>
-        <Text style={styles.errorSubtitle}>
+        <Text style={[styles.errorTitle, { color: colors.text }]}>Post not found</Text>
+        <Text style={[styles.errorSubtitle, { color: colors.textSecondary }]}>
           The post you're trying to edit doesn't exist.
         </Text>
         <TouchableOpacity
-          style={styles.goBackButton}
+          style={[styles.goBackButton, { backgroundColor: colors.primary }]}
           onPress={() => navigation.goBack()}
         >
           <Text style={styles.goBackText}>Go Back</Text>
@@ -267,14 +263,14 @@ export default function EditPostScreen() {
   const isAuthor = user?.id === post.user?.id;
   if (!isAuthor) {
     return (
-      <SafeAreaView style={styles.errorContainer}>
+      <SafeAreaView style={[styles.errorContainer, { backgroundColor: colors.background }]}>
         <Feather name="lock" size={48} color="#ef4444" />
-        <Text style={styles.errorTitle}>Unauthorized</Text>
-        <Text style={styles.errorSubtitle}>
+        <Text style={[styles.errorTitle, { color: colors.text }]}>Unauthorized</Text>
+        <Text style={[styles.errorSubtitle, { color: colors.textSecondary }]}>
           You don't have permission to edit this post.
         </Text>
         <TouchableOpacity
-          style={styles.goBackButton}
+          style={[styles.goBackButton, { backgroundColor: colors.primary }]}
           onPress={() => navigation.goBack()}
         >
           <Text style={styles.goBackText}>Go Back</Text>
@@ -285,22 +281,25 @@ export default function EditPostScreen() {
 
   // ---- Main render ----
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <KeyboardAvoidingView
         style={styles.keyboardView}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
       >
         {/* ---- Header ---- */}
-        <View style={styles.header}>
+        <View style={[styles.header, { 
+          backgroundColor: colors.surface, 
+          borderBottomColor: colors.border 
+        }]}>
           <TouchableOpacity onPress={handleCancel} disabled={isSaving}>
-            <Text style={styles.cancelButton}>Cancel</Text>
+            <Text style={[styles.cancelButton, { color: colors.textSecondary }]}>Cancel</Text>
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Edit Post</Text>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>Edit Post</Text>
           <TouchableOpacity
             onPress={handleSubmit}
             disabled={isSaving}
-            style={[styles.saveButton, isSaving && styles.saveButtonDisabled]}
+            style={[styles.saveButton, { backgroundColor: colors.primary }, isSaving && styles.saveButtonDisabled]}
           >
             {isSaving ? (
               <ActivityIndicator size="small" color="white" />
@@ -313,9 +312,12 @@ export default function EditPostScreen() {
         <ScrollView style={styles.body} keyboardShouldPersistTaps="handled">
           {/* ---- Text Input ---- */}
           <TextInput
-            style={styles.textInput}
+            style={[styles.textInput, { 
+              color: colors.text,
+              backgroundColor: colors.background 
+            }]}
             placeholder="What's on your mind?"
-            placeholderTextColor="#9ca3af"
+            placeholderTextColor={colors.placeholder}
             multiline
             numberOfLines={6}
             value={text}
@@ -325,25 +327,21 @@ export default function EditPostScreen() {
 
           {/* ---- Media Preview ---- */}
           {(imageUri || videoUri || existingImage || existingVideo) && (
-            <View style={styles.mediaPreview}>
-              {/* Show existing image if no new image selected */}
+            <View style={[styles.mediaPreview, { backgroundColor: isDark ? '#1f2937' : '#f3f4f6' }]}>
               {!imageUri && !videoUri && existingImage && (
                 <Image source={{ uri: existingImage }} style={styles.mediaImage} resizeMode="cover" />
               )}
-              {/* Show new image if selected */}
               {imageUri && (
                 <Image source={{ uri: imageUri }} style={styles.mediaImage} resizeMode="cover" />
               )}
-              {/* Show existing video if no new video selected */}
               {!videoUri && !imageUri && existingVideo && (
-                <View style={styles.videoPreview}>
+                <View style={[styles.videoPreview, { backgroundColor: '#000' }]}>
                   <Feather name="play-circle" size={48} color="white" />
                   <Text style={styles.videoLabel}>Video</Text>
                 </View>
               )}
-              {/* Show new video if selected */}
               {videoUri && (
-                <View style={styles.videoPreview}>
+                <View style={[styles.videoPreview, { backgroundColor: '#000' }]}>
                   <Feather name="play-circle" size={48} color="white" />
                   <Text style={styles.videoLabel}>Video</Text>
                 </View>
@@ -357,27 +355,31 @@ export default function EditPostScreen() {
           {/* ---- Media Buttons ---- */}
           <View style={styles.mediaButtons}>
             <TouchableOpacity
-              style={[styles.mediaButton, (isSaving || videoUri || existingVideo) && styles.mediaButtonDisabled]}
+              style={[styles.mediaButton, { 
+                backgroundColor: isDark ? '#374151' : '#f3f4f6' 
+              }, (isSaving || videoUri || existingVideo) && styles.mediaButtonDisabled]}
               onPress={pickImage}
               disabled={isSaving || !!videoUri || !!existingVideo}
             >
-              <Feather name="image" size={24} color="#6b7280" />
-              <Text style={styles.mediaButtonText}>Change Photo</Text>
+              <Feather name="image" size={24} color={colors.textSecondary} />
+              <Text style={[styles.mediaButtonText, { color: colors.textSecondary }]}>Change Photo</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.mediaButton, (isSaving || imageUri || existingImage) && styles.mediaButtonDisabled]}
+              style={[styles.mediaButton, { 
+                backgroundColor: isDark ? '#374151' : '#f3f4f6' 
+              }, (isSaving || imageUri || existingImage) && styles.mediaButtonDisabled]}
               onPress={pickVideo}
               disabled={isSaving || !!imageUri || !!existingImage}
             >
-              <Feather name="video" size={24} color="#6b7280" />
-              <Text style={styles.mediaButtonText}>Change Video</Text>
+              <Feather name="video" size={24} color={colors.textSecondary} />
+              <Text style={[styles.mediaButtonText, { color: colors.textSecondary }]}>Change Video</Text>
             </TouchableOpacity>
           </View>
 
           {/* ---- Post Info ---- */}
-          <View style={styles.infoContainer}>
-            <Text style={styles.infoLabel}>Posted on</Text>
-            <Text style={styles.infoValue}>
+          <View style={[styles.infoContainer, { borderTopColor: colors.border }]}>
+            <Text style={[styles.infoLabel, { color: colors.textMuted }]}>Posted on</Text>
+            <Text style={[styles.infoValue, { color: colors.text }]}>
               {new Date(post.createdAt).toLocaleDateString('en-US', {
                 month: 'long',
                 day: 'numeric',
@@ -394,7 +396,6 @@ export default function EditPostScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: 'white',
   },
   keyboardView: {
     flex: 1,
@@ -403,30 +404,25 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'white',
   },
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 32,
-    backgroundColor: 'white',
   },
   errorTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#1f2937',
     marginTop: 16,
   },
   errorSubtitle: {
     fontSize: 14,
-    color: '#6b7280',
     textAlign: 'center',
     marginTop: 8,
   },
   goBackButton: {
     marginTop: 24,
-    backgroundColor: '#6C63FF',
     paddingHorizontal: 24,
     paddingVertical: 10,
     borderRadius: 8,
@@ -442,19 +438,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
   },
   cancelButton: {
     fontSize: 16,
-    color: '#6b7280',
   },
   headerTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#1f2937',
   },
   saveButton: {
-    backgroundColor: '#6C63FF',
     paddingHorizontal: 20,
     paddingVertical: 8,
     borderRadius: 20,
@@ -477,7 +469,6 @@ const styles = StyleSheet.create({
   textInput: {
     fontSize: 16,
     lineHeight: 24,
-    color: '#1f2937',
     minHeight: 120,
     textAlignVertical: 'top',
   },
@@ -486,7 +477,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: 'hidden',
     position: 'relative',
-    backgroundColor: '#f3f4f6',
     minHeight: 100,
   },
   mediaImage: {
@@ -496,7 +486,6 @@ const styles = StyleSheet.create({
   videoPreview: {
     width: '100%',
     height: 200,
-    backgroundColor: '#000',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -521,7 +510,6 @@ const styles = StyleSheet.create({
   mediaButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f3f4f6',
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 8,
@@ -532,21 +520,17 @@ const styles = StyleSheet.create({
   },
   mediaButtonText: {
     fontSize: 14,
-    color: '#374151',
   },
   infoContainer: {
     marginTop: 24,
     paddingVertical: 12,
     borderTopWidth: 1,
-    borderTopColor: '#f3f4f6',
   },
   infoLabel: {
     fontSize: 12,
-    color: '#9ca3af',
   },
   infoValue: {
     fontSize: 14,
-    color: '#374151',
     marginTop: 2,
   },
 });

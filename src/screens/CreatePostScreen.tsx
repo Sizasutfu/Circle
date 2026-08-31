@@ -16,12 +16,14 @@ import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from '@react-navigation/native';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import api from '../api/client';
 
 export default function CreatePostScreen() {
   const navigation = useNavigation();
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const { colors, isDark } = useTheme();
 
   const [text, setText] = useState('');
   const [imageUri, setImageUri] = useState<string | null>(null);
@@ -31,22 +33,25 @@ export default function CreatePostScreen() {
   // ---- Check if logged in ----
   if (!user) {
     return (
-      <SafeAreaView style={styles.container} edges={['top']}>
-        <View style={styles.header}>
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+        <View style={[styles.header, { 
+          backgroundColor: colors.surface, 
+          borderBottomColor: colors.border 
+        }]}>
           <TouchableOpacity onPress={() => (navigation.navigate as any)('Login')}>
-            <Text style={styles.cancelButton}>Cancel</Text>
+            <Text style={[styles.cancelButton, { color: colors.textSecondary }]}>Cancel</Text>
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>New Post</Text>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>New Post</Text>
           <View style={{ width: 60 }} />
         </View>
         <View style={styles.notLoggedInContainer}>
-          <Feather name="lock" size={48} color="#9ca3af" />
-          <Text style={styles.notLoggedInTitle}>Please sign in</Text>
-          <Text style={styles.notLoggedInSubtitle}>
+          <Feather name="lock" size={48} color={colors.textMuted} />
+          <Text style={[styles.notLoggedInTitle, { color: colors.text }]}>Please sign in</Text>
+          <Text style={[styles.notLoggedInSubtitle, { color: colors.textSecondary }]}>
             You need to be logged in to create a post.
           </Text>
           <TouchableOpacity
-            style={styles.signInButton}
+            style={[styles.signInButton, { backgroundColor: colors.primary }]}
             onPress={() => (navigation.navigate as any)('Login')}
           >
             <Text style={styles.signInButtonText}>Sign In</Text>
@@ -166,16 +171,19 @@ export default function CreatePostScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+      <View style={[styles.header, { 
+        backgroundColor: colors.surface, 
+        borderBottomColor: colors.border 
+      }]}>
         <TouchableOpacity onPress={handleCancel} disabled={loading}>
-          <Text style={styles.cancelButton}>Cancel</Text>
+          <Text style={[styles.cancelButton, { color: colors.textSecondary }]}>Cancel</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>New Post</Text>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>New Post</Text>
         <TouchableOpacity
           onPress={handleSubmit}
           disabled={loading}
-          style={[styles.postButton, loading && styles.postButtonDisabled]}
+          style={[styles.postButton, { backgroundColor: colors.primary }, loading && styles.postButtonDisabled]}
         >
           {loading ? (
             <ActivityIndicator size="small" color="white" />
@@ -187,9 +195,12 @@ export default function CreatePostScreen() {
 
       <ScrollView style={styles.body} keyboardShouldPersistTaps="handled">
         <TextInput
-          style={styles.textInput}
+          style={[styles.textInput, { 
+            color: colors.text,
+            backgroundColor: colors.background 
+          }]}
           placeholder="What's on your mind?"
-          placeholderTextColor="#9ca3af"
+          placeholderTextColor={colors.placeholder}
           multiline
           numberOfLines={6}
           value={text}
@@ -198,12 +209,12 @@ export default function CreatePostScreen() {
         />
 
         {(imageUri || videoUri) && (
-          <View style={styles.mediaPreview}>
+          <View style={[styles.mediaPreview, { backgroundColor: isDark ? '#1f2937' : '#f3f4f6' }]}>
             {imageUri && (
               <Image source={{ uri: imageUri }} style={styles.mediaImage} resizeMode="cover" />
             )}
             {videoUri && (
-              <View style={styles.videoPreview}>
+              <View style={[styles.videoPreview, { backgroundColor: '#000' }]}>
                 <Feather name="play-circle" size={48} color="white" />
                 <Text style={styles.videoLabel}>Video</Text>
               </View>
@@ -216,20 +227,24 @@ export default function CreatePostScreen() {
 
         <View style={styles.mediaButtons}>
           <TouchableOpacity
-            style={styles.mediaButton}
+            style={[styles.mediaButton, { 
+              backgroundColor: isDark ? '#374151' : '#f3f4f6' 
+            }]}
             onPress={pickImage}
             disabled={loading || !!videoUri}
           >
-            <Feather name="image" size={24} color="#6b7280" />
-            <Text style={styles.mediaButtonText}>Photo</Text>
+            <Feather name="image" size={24} color={colors.textSecondary} />
+            <Text style={[styles.mediaButtonText, { color: colors.textSecondary }]}>Photo</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={styles.mediaButton}
+            style={[styles.mediaButton, { 
+              backgroundColor: isDark ? '#374151' : '#f3f4f6' 
+            }]}
             onPress={pickVideo}
             disabled={loading || !!imageUri}
           >
-            <Feather name="video" size={24} color="#6b7280" />
-            <Text style={styles.mediaButtonText}>Video</Text>
+            <Feather name="video" size={24} color={colors.textSecondary} />
+            <Text style={[styles.mediaButtonText, { color: colors.textSecondary }]}>Video</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -240,7 +255,6 @@ export default function CreatePostScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: 'white',
   },
   header: {
     flexDirection: 'row',
@@ -249,19 +263,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
   },
   cancelButton: {
     fontSize: 16,
-    color: '#6b7280',
   },
   headerTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#1f2937',
   },
   postButton: {
-    backgroundColor: '#6C63FF',
     paddingHorizontal: 20,
     paddingVertical: 8,
     borderRadius: 20,
@@ -284,7 +294,6 @@ const styles = StyleSheet.create({
   textInput: {
     fontSize: 16,
     lineHeight: 24,
-    color: '#1f2937',
     minHeight: 120,
     textAlignVertical: 'top',
   },
@@ -293,7 +302,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: 'hidden',
     position: 'relative',
-    backgroundColor: '#f3f4f6',
     minHeight: 100,
   },
   mediaImage: {
@@ -303,7 +311,6 @@ const styles = StyleSheet.create({
   videoPreview: {
     width: '100%',
     height: 200,
-    backgroundColor: '#000',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -328,7 +335,6 @@ const styles = StyleSheet.create({
   mediaButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f3f4f6',
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 8,
@@ -336,7 +342,6 @@ const styles = StyleSheet.create({
   },
   mediaButtonText: {
     fontSize: 14,
-    color: '#374151',
   },
   // ── Not logged in styles ──
   notLoggedInContainer: {
@@ -348,18 +353,15 @@ const styles = StyleSheet.create({
   notLoggedInTitle: {
     fontSize: 20,
     fontWeight: '600',
-    color: '#1f2937',
     marginTop: 16,
   },
   notLoggedInSubtitle: {
     fontSize: 14,
-    color: '#6b7280',
     textAlign: 'center',
     marginTop: 8,
   },
   signInButton: {
     marginTop: 24,
-    backgroundColor: '#6C63FF',
     paddingHorizontal: 32,
     paddingVertical: 12,
     borderRadius: 8,

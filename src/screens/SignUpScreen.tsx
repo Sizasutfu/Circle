@@ -15,10 +15,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 
 export default function SignUpScreen() {
   const navigation = useNavigation();
   const { register } = useAuth();
+  const { colors, isDark } = useTheme();
 
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
@@ -99,7 +101,7 @@ export default function SignUpScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
@@ -110,25 +112,33 @@ export default function SignUpScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <TouchableOpacity style={styles.backButton} onPress={goToLogin}>
-            <Feather name="arrow-left" size={24} color="#1f2937" />
+            <Feather name="arrow-left" size={24} color={colors.text} />
           </TouchableOpacity>
 
           <View style={styles.headerContainer}>
-            <Text style={styles.title}>Create Account</Text>
-            <Text style={styles.subtitle}>
+            <Text style={[styles.title, { color: colors.text }]}>Create Account</Text>
+            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
               Join the Circle community and start connecting.
             </Text>
           </View>
 
           <View style={styles.formContainer}>
+            {/* Full Name */}
             <View style={styles.inputWrapper}>
-              <Text style={styles.inputLabel}>Full Name</Text>
-              <View style={[styles.inputContainer, nameFocused && styles.inputFocused]}>
-                <Feather name="user" size={20} color="#9ca3af" style={styles.inputIcon} />
+              <Text style={[styles.inputLabel, { color: colors.text }]}>Full Name</Text>
+              <View style={[
+                styles.inputContainer, 
+                { 
+                  backgroundColor: colors.input, 
+                  borderColor: nameFocused ? colors.primary : colors.inputBorder 
+                },
+                nameFocused && styles.inputFocused
+              ]}>
+                <Feather name="user" size={20} color={colors.textMuted} style={styles.inputIcon} />
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, { color: colors.text }]}
                   placeholder="John Doe"
-                  placeholderTextColor="#9ca3af"
+                  placeholderTextColor={colors.placeholder}
                   value={name}
                   onChangeText={setName}
                   onFocus={() => setNameFocused(true)}
@@ -139,14 +149,22 @@ export default function SignUpScreen() {
               </View>
             </View>
 
+            {/* Username */}
             <View style={styles.inputWrapper}>
-              <Text style={styles.inputLabel}>Username</Text>
-              <View style={[styles.inputContainer, usernameFocused && styles.inputFocused]}>
-                <Feather name="at-sign" size={20} color="#9ca3af" style={styles.inputIcon} />
+              <Text style={[styles.inputLabel, { color: colors.text }]}>Username</Text>
+              <View style={[
+                styles.inputContainer, 
+                { 
+                  backgroundColor: colors.input, 
+                  borderColor: usernameFocused ? colors.primary : colors.inputBorder 
+                },
+                usernameFocused && styles.inputFocused
+              ]}>
+                <Feather name="at-sign" size={20} color={colors.textMuted} style={styles.inputIcon} />
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, { color: colors.text }]}
                   placeholder="johndoe"
-                  placeholderTextColor="#9ca3af"
+                  placeholderTextColor={colors.placeholder}
                   value={username}
                   onChangeText={setUsername}
                   onFocus={() => setUsernameFocused(true)}
@@ -156,17 +174,25 @@ export default function SignUpScreen() {
                   editable={!loading}
                 />
               </View>
-              <Text style={styles.helperText}>Letters, numbers, and underscores only.</Text>
+              <Text style={[styles.helperText, { color: colors.textMuted }]}>Letters, numbers, and underscores only.</Text>
             </View>
 
+            {/* Email */}
             <View style={styles.inputWrapper}>
-              <Text style={styles.inputLabel}>Email</Text>
-              <View style={[styles.inputContainer, emailFocused && styles.inputFocused]}>
-                <Feather name="mail" size={20} color="#9ca3af" style={styles.inputIcon} />
+              <Text style={[styles.inputLabel, { color: colors.text }]}>Email</Text>
+              <View style={[
+                styles.inputContainer, 
+                { 
+                  backgroundColor: colors.input, 
+                  borderColor: emailFocused ? colors.primary : colors.inputBorder 
+                },
+                emailFocused && styles.inputFocused
+              ]}>
+                <Feather name="mail" size={20} color={colors.textMuted} style={styles.inputIcon} />
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, { color: colors.text }]}
                   placeholder="you@example.com"
-                  placeholderTextColor="#9ca3af"
+                  placeholderTextColor={colors.placeholder}
                   value={email}
                   onChangeText={setEmail}
                   onFocus={() => setEmailFocused(true)}
@@ -179,14 +205,22 @@ export default function SignUpScreen() {
               </View>
             </View>
 
+            {/* Password */}
             <View style={styles.inputWrapper}>
-              <Text style={styles.inputLabel}>Password</Text>
-              <View style={[styles.inputContainer, passwordFocused && styles.inputFocused]}>
-                <Feather name="lock" size={20} color="#9ca3af" style={styles.inputIcon} />
+              <Text style={[styles.inputLabel, { color: colors.text }]}>Password</Text>
+              <View style={[
+                styles.inputContainer, 
+                { 
+                  backgroundColor: colors.input, 
+                  borderColor: passwordFocused ? colors.primary : colors.inputBorder 
+                },
+                passwordFocused && styles.inputFocused
+              ]}>
+                <Feather name="lock" size={20} color={colors.textMuted} style={styles.inputIcon} />
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, { color: colors.text }]}
                   placeholder="••••••••"
-                  placeholderTextColor="#9ca3af"
+                  placeholderTextColor={colors.placeholder}
                   value={password}
                   onChangeText={setPassword}
                   onFocus={() => setPasswordFocused(true)}
@@ -197,20 +231,28 @@ export default function SignUpScreen() {
                   editable={!loading}
                 />
                 <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeButton}>
-                  <Feather name={showPassword ? 'eye' : 'eye-off'} size={20} color="#9ca3af" />
+                  <Feather name={showPassword ? 'eye' : 'eye-off'} size={20} color={colors.textMuted} />
                 </TouchableOpacity>
               </View>
-              <Text style={styles.helperText}>Must be at least 8 characters.</Text>
+              <Text style={[styles.helperText, { color: colors.textMuted }]}>Must be at least 8 characters.</Text>
             </View>
 
+            {/* Confirm Password */}
             <View style={styles.inputWrapper}>
-              <Text style={styles.inputLabel}>Confirm Password</Text>
-              <View style={[styles.inputContainer, confirmFocused && styles.inputFocused]}>
-                <Feather name="lock" size={20} color="#9ca3af" style={styles.inputIcon} />
+              <Text style={[styles.inputLabel, { color: colors.text }]}>Confirm Password</Text>
+              <View style={[
+                styles.inputContainer, 
+                { 
+                  backgroundColor: colors.input, 
+                  borderColor: confirmFocused ? colors.primary : colors.inputBorder 
+                },
+                confirmFocused && styles.inputFocused
+              ]}>
+                <Feather name="lock" size={20} color={colors.textMuted} style={styles.inputIcon} />
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, { color: colors.text }]}
                   placeholder="••••••••"
-                  placeholderTextColor="#9ca3af"
+                  placeholderTextColor={colors.placeholder}
                   value={confirmPassword}
                   onChangeText={setConfirmPassword}
                   onFocus={() => setConfirmFocused(true)}
@@ -221,13 +263,14 @@ export default function SignUpScreen() {
                   editable={!loading}
                 />
                 <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)} style={styles.eyeButton}>
-                  <Feather name={showConfirmPassword ? 'eye' : 'eye-off'} size={20} color="#9ca3af" />
+                  <Feather name={showConfirmPassword ? 'eye' : 'eye-off'} size={20} color={colors.textMuted} />
                 </TouchableOpacity>
               </View>
             </View>
 
+            {/* Sign Up Button */}
             <TouchableOpacity
-              style={[styles.signUpButton, loading && styles.signUpButtonDisabled]}
+              style={[styles.signUpButton, { backgroundColor: colors.primary }, loading && styles.signUpButtonDisabled]}
               onPress={handleSignUp}
               disabled={loading}
               activeOpacity={0.8}
@@ -239,15 +282,17 @@ export default function SignUpScreen() {
               )}
             </TouchableOpacity>
 
-            <Text style={styles.termsText}>
+            {/* Terms */}
+            <Text style={[styles.termsText, { color: colors.textSecondary }]}>
               By signing up, you agree to our{' '}
-              <Text style={styles.termsLink}>Terms of Service</Text> and{' '}
-              <Text style={styles.termsLink}>Privacy Policy</Text>.
+              <Text style={[styles.termsLink, { color: colors.primary }]}>Terms of Service</Text> and{' '}
+              <Text style={[styles.termsLink, { color: colors.primary }]}>Privacy Policy</Text>.
             </Text>
 
+            {/* Login Link */}
             <TouchableOpacity style={styles.loginLink} onPress={goToLogin} disabled={loading}>
-              <Text style={styles.loginLinkText}>
-                Already have an account? <Text style={styles.loginLinkHighlight}>Log In</Text>
+              <Text style={[styles.loginLinkText, { color: colors.textSecondary }]}>
+                Already have an account? <Text style={[styles.loginLinkHighlight, { color: colors.primary }]}>Log In</Text>
               </Text>
             </TouchableOpacity>
           </View>
@@ -260,7 +305,6 @@ export default function SignUpScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: 'white',
   },
   keyboardView: {
     flex: 1,
@@ -282,12 +326,10 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: '700',
-    color: '#1f2937',
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 16,
-    color: '#6b7280',
     lineHeight: 24,
   },
   formContainer: {
@@ -299,22 +341,18 @@ const styles = StyleSheet.create({
   inputLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#374151',
     marginBottom: 6,
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f9fafb',
     borderRadius: 12,
     borderWidth: 1.5,
-    borderColor: '#e5e7eb',
     paddingHorizontal: 14,
     height: 52,
   },
   inputFocused: {
     borderColor: '#6C63FF',
-    backgroundColor: 'white',
   },
   inputIcon: {
     marginRight: 12,
@@ -322,7 +360,6 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     fontSize: 16,
-    color: '#1f2937',
     paddingVertical: 12,
   },
   eyeButton: {
@@ -330,11 +367,9 @@ const styles = StyleSheet.create({
   },
   helperText: {
     fontSize: 12,
-    color: '#9ca3af',
     marginTop: 4,
   },
   signUpButton: {
-    backgroundColor: '#6C63FF',
     borderRadius: 12,
     height: 52,
     alignItems: 'center',
@@ -357,13 +392,11 @@ const styles = StyleSheet.create({
   },
   termsText: {
     fontSize: 13,
-    color: '#6b7280',
     textAlign: 'center',
     marginTop: 20,
     lineHeight: 20,
   },
   termsLink: {
-    color: '#6C63FF',
     fontWeight: '500',
   },
   loginLink: {
@@ -372,10 +405,8 @@ const styles = StyleSheet.create({
   },
   loginLinkText: {
     fontSize: 16,
-    color: '#6b7280',
   },
   loginLinkHighlight: {
-    color: '#6C63FF',
     fontWeight: '600',
   },
 });

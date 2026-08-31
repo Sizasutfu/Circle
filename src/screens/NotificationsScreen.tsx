@@ -11,8 +11,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { Avatar } from '../components/Avatar';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
+import { Avatar } from '../components/Avatar';
 import {
   useNotifications,
   useMarkNotificationRead,
@@ -24,6 +25,7 @@ import { timeAgo, safeString } from '../utils/helpers';
 export default function NotificationsScreen() {
   const navigation = useNavigation();
   const { user } = useAuth();
+  const { colors, isDark } = useTheme();
   const userId = user?.id || '';
 
   const { data: notifications = [], isLoading, isError, refetch } = useNotifications(userId);
@@ -56,7 +58,6 @@ export default function NotificationsScreen() {
   };
 
   const renderNotification = ({ item }: { item: Notification }) => {
-    // Safely extract user with fallback
     const notificationUser = item.user || { id: '', name: 'Unknown', username: 'unknown', avatar: undefined };
     const { type, postText, commentText, createdAt, read, text } = item;
     const time = timeAgo(createdAt);
@@ -84,7 +85,7 @@ export default function NotificationsScreen() {
       case 'follow':
         actionText = text || 'started following you';
         iconName = 'user-plus';
-        iconColor = '#6C63FF';
+        iconColor = colors.primary;
         break;
       case 'mention':
         actionText = text || 'mentioned you in a post';
@@ -97,7 +98,14 @@ export default function NotificationsScreen() {
 
     return (
       <TouchableOpacity
-        style={[styles.notificationItem, !read && styles.unread]}
+        style={[
+          styles.notificationItem,
+          { 
+            backgroundColor: read ? colors.surface : (isDark ? '#1f2937' : '#f0f4ff'),
+            borderBottomColor: colors.border 
+          },
+          !read && styles.unread,
+        ]}
         onPress={() => handleNotificationPress(item)}
         activeOpacity={0.7}
       >
@@ -109,23 +117,28 @@ export default function NotificationsScreen() {
         </View>
 
         <View style={styles.content}>
-          <Text style={styles.text}>
-            <Text style={styles.userName}>{safeString(notificationUser.name)}</Text>
+          <Text style={[styles.text, { color: colors.text }]}>
+            <Text style={[styles.userName, { color: colors.text }]}>{safeString(notificationUser.name)}</Text>
             {' '}
-            <Text style={styles.actionText}>{actionText}</Text>
+            <Text style={[styles.actionText, { color: colors.textSecondary }]}>{actionText}</Text>
           </Text>
 
           {postText && type !== 'follow' && (
-            <Text style={styles.postPreview} numberOfLines={2}>
+            <Text style={[styles.postPreview, { color: colors.textSecondary }]} numberOfLines={2}>
               "{safeString(postText)}"
             </Text>
           )}
           {commentText && type === 'comment' && (
-            <Text style={styles.commentText}>💬 {safeString(commentText)}</Text>
+            <Text style={[styles.commentText, { 
+              color: colors.text,
+              backgroundColor: isDark ? '#374151' : '#f3f4f6' 
+            }]}>
+              💬 {safeString(commentText)}
+            </Text>
           )}
 
           <View style={styles.metaRow}>
-            <Text style={styles.timestamp}>{time}</Text>
+            <Text style={[styles.timestamp, { color: colors.textMuted }]}>{time}</Text>
           </View>
         </View>
       </TouchableOpacity>
@@ -134,9 +147,9 @@ export default function NotificationsScreen() {
 
   const renderEmpty = () => (
     <View style={styles.emptyContainer}>
-      <Feather name="bell-off" size={64} color="#d1d5db" />
-      <Text style={styles.emptyTitle}>No notifications yet</Text>
-      <Text style={styles.emptySubtitle}>
+      <Feather name="bell-off" size={64} color={colors.textMuted} />
+      <Text style={[styles.emptyTitle, { color: colors.text }]}>No notifications yet</Text>
+      <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
         When someone interacts with you, it'll show up here.
       </Text>
     </View>
@@ -144,18 +157,18 @@ export default function NotificationsScreen() {
 
   if (isLoading) {
     return (
-      <SafeAreaView style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#6C63FF" />
+      <SafeAreaView style={[styles.loadingContainer, { backgroundColor: colors.background }]} edges={['top']}>
+        <ActivityIndicator size="large" color={colors.primary} />
       </SafeAreaView>
     );
   }
 
   if (isError) {
     return (
-      <SafeAreaView style={styles.errorContainer}>
+      <SafeAreaView style={[styles.errorContainer, { backgroundColor: colors.background }]} edges={['top']}>
         <Feather name="alert-circle" size={48} color="#ef4444" />
-        <Text style={styles.errorTitle}>Failed to load notifications</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={() => refetch()}>
+        <Text style={[styles.errorTitle, { color: colors.text }]}>Failed to load notifications</Text>
+        <TouchableOpacity style={[styles.retryButton, { backgroundColor: colors.primary }]} onPress={() => refetch()}>
           <Text style={styles.retryButtonText}>Retry</Text>
         </TouchableOpacity>
       </SafeAreaView>
@@ -165,12 +178,15 @@ export default function NotificationsScreen() {
   const hasUnread = (notifications || []).some(n => !n.read);
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Notifications</Text>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+      <View style={[styles.header, { 
+        backgroundColor: colors.surface, 
+        borderBottomColor: colors.border 
+      }]}>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>Notifications</Text>
         {hasUnread && (
           <TouchableOpacity onPress={handleMarkAllRead}>
-            <Text style={styles.markAllRead}>Mark all as read</Text>
+            <Text style={[styles.markAllRead, { color: colors.primary }]}>Mark all as read</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -180,10 +196,13 @@ export default function NotificationsScreen() {
         keyExtractor={(item) => item.id}
         renderItem={renderNotification}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#6C63FF" />
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} />
         }
         ListEmptyComponent={renderEmpty}
-        contentContainerStyle={!notifications || notifications.length === 0 ? { flex: 1 } : { paddingBottom: 16 }}
+        contentContainerStyle={[
+          !notifications || notifications.length === 0 ? { flex: 1 } : { paddingBottom: 16 },
+          { backgroundColor: colors.background }
+        ]}
         showsVerticalScrollIndicator={false}
       />
     </SafeAreaView>
@@ -191,28 +210,124 @@ export default function NotificationsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f9fafb' },
-  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'white' },
-  errorContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32, backgroundColor: 'white' },
-  errorTitle: { fontSize: 18, fontWeight: '600', color: '#1f2937', marginTop: 12 },
-  retryButton: { marginTop: 20, backgroundColor: '#6C63FF', paddingHorizontal: 32, paddingVertical: 10, borderRadius: 8 },
-  retryButtonText: { color: 'white', fontWeight: '600', fontSize: 16 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: 'white', borderBottomWidth: 1, borderBottomColor: '#e5e7eb' },
-  headerTitle: { fontSize: 20, fontWeight: '700', color: '#1f2937' },
-  markAllRead: { fontSize: 14, color: '#6C63FF', fontWeight: '500' },
-  notificationItem: { flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: 'white', borderBottomWidth: 1, borderBottomColor: '#f3f4f6' },
-  unread: { backgroundColor: '#f0f4ff' },
-  avatarContainer: { position: 'relative', marginRight: 12 },
-  iconBadge: { position: 'absolute', bottom: -4, right: -4, width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'white' },
-  content: { flex: 1 },
-  text: { fontSize: 14, lineHeight: 20, color: '#1f2937' },
-  userName: { fontWeight: '700' },
-  actionText: { color: '#4b5563' },
-  postPreview: { fontSize: 13, color: '#6b7280', marginTop: 2, fontStyle: 'italic' },
-  commentText: { fontSize: 13, color: '#374151', marginTop: 2, backgroundColor: '#f3f4f6', padding: 6, borderRadius: 6 },
-  metaRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 12 },
-  timestamp: { fontSize: 12, color: '#9ca3af' },
-  emptyContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
-  emptyTitle: { fontSize: 18, fontWeight: '600', color: '#374151', marginTop: 16 },
-  emptySubtitle: { fontSize: 14, color: '#9ca3af', textAlign: 'center', marginTop: 8 },
+  container: { 
+    flex: 1 
+  },
+  loadingContainer: { 
+    flex: 1, 
+    justifyContent: 'center', 
+    alignItems: 'center' 
+  },
+  errorContainer: { 
+    flex: 1, 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    paddingHorizontal: 32 
+  },
+  errorTitle: { 
+    fontSize: 18, 
+    fontWeight: '600', 
+    marginTop: 12 
+  },
+  retryButton: { 
+    marginTop: 20, 
+    paddingHorizontal: 32, 
+    paddingVertical: 10, 
+    borderRadius: 8 
+  },
+  retryButtonText: { 
+    color: 'white', 
+    fontWeight: '600', 
+    fontSize: 16 
+  },
+  header: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center', 
+    paddingHorizontal: 16, 
+    paddingVertical: 12, 
+    borderBottomWidth: 1 
+  },
+  headerTitle: { 
+    fontSize: 20, 
+    fontWeight: '700' 
+  },
+  markAllRead: { 
+    fontSize: 14, 
+    fontWeight: '500' 
+  },
+  notificationItem: { 
+    flexDirection: 'row', 
+    paddingHorizontal: 16, 
+    paddingVertical: 12, 
+    borderBottomWidth: 1 
+  },
+  unread: { 
+    backgroundColor: '#f0f4ff' 
+  },
+  avatarContainer: { 
+    position: 'relative', 
+    marginRight: 12 
+  },
+  iconBadge: { 
+    position: 'absolute', 
+    bottom: -4, 
+    right: -4, 
+    width: 22, 
+    height: 22, 
+    borderRadius: 11, 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    borderWidth: 2, 
+    borderColor: 'white' 
+  },
+  content: { 
+    flex: 1 
+  },
+  text: { 
+    fontSize: 14, 
+    lineHeight: 20 
+  },
+  userName: { 
+    fontWeight: '700' 
+  },
+  actionText: { 
+    color: '#4b5563' 
+  },
+  postPreview: { 
+    fontSize: 13, 
+    marginTop: 2, 
+    fontStyle: 'italic' 
+  },
+  commentText: { 
+    fontSize: 13, 
+    marginTop: 2, 
+    padding: 6, 
+    borderRadius: 6 
+  },
+  metaRow: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    marginTop: 4, 
+    gap: 12 
+  },
+  timestamp: { 
+    fontSize: 12 
+  },
+  emptyContainer: { 
+    flex: 1, 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    paddingHorizontal: 32 
+  },
+  emptyTitle: { 
+    fontSize: 18, 
+    fontWeight: '600', 
+    marginTop: 16 
+  },
+  emptySubtitle: { 
+    fontSize: 14, 
+    textAlign: 'center', 
+    marginTop: 8 
+  },
 });

@@ -9,13 +9,15 @@ import {
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
-  SafeAreaView,
+  Share,
   Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import PostCard, { Post } from '../components/PostCard';
 import { Avatar } from '../components/Avatar';
 import api from '../api/client';
@@ -45,6 +47,7 @@ export default function PostDetailScreen() {
   const navigation = useNavigation();
   const { postId } = route.params as RouteParams;
   const { user: currentUser } = useAuth();
+  const { colors, isDark } = useTheme();
   const queryClient = useQueryClient();
 
   const [commentText, setCommentText] = useState('');
@@ -84,9 +87,8 @@ export default function PostDetailScreen() {
       commentsData = [];
     }
     
-    // Map comments to the expected format - FIXED: use author fields
+    // Map comments to the expected format
     const mappedComments = commentsData.map((c: any) => {
-      // The comment might have user object, or author fields directly
       const commentUser = c.user || {};
       
       return {
@@ -95,11 +97,8 @@ export default function PostDetailScreen() {
         createdAt: c.createdAt || c.created_at || new Date().toISOString(),
         user: {
           id: String(commentUser.id || c.userId || c.authorId || ''),
-          // ✅ Try multiple fields for name
           name: commentUser.name || c.author || c.user?.name || c.user?.username || 'Anonymous',
-          // ✅ Try multiple fields for username
           username: commentUser.username || c.authorUsername || c.user?.username || '',
-          // ✅ Try multiple fields for avatar
           avatar: resolveMediaUrl(commentUser.avatar || commentUser.picture || c.authorPicture || c.user?.avatar || null),
         },
       };
@@ -135,6 +134,20 @@ export default function PostDetailScreen() {
     };
   };
 
+  // ---- Share post ----
+  const handleShare = async () => {
+    try {
+      const shareMessage = post?.text || 'Check out this post on Circle!';
+      const shareUrl = `https://circle.com/post/${postId}`;
+      await Share.share({
+        message: `${shareMessage}\n\n${shareUrl}`,
+        title: 'Share Post',
+      });
+    } catch (error) {
+      console.warn('Share failed:', error);
+    }
+  };
+
   // ---- Add comment mutation ----
   const addCommentMutation = useMutation({
     mutationFn: async (text: string) => {
@@ -142,7 +155,6 @@ export default function PostDetailScreen() {
       return response.data;
     },
     onSuccess: () => {
-      // Refetch the post to get updated comments
       refetchPost();
       setCommentText('');
     },
@@ -150,11 +162,6 @@ export default function PostDetailScreen() {
       Alert.alert('Error', error.response?.data?.message || 'Failed to add comment. Please try again.');
     },
   });
-
-  // ---- Interaction handlers ----
-  const handleComment = () => {
-    inputRef.current?.focus();
-  };
 
   // ---- Submit comment ----
   const handleSendComment = async () => {
@@ -176,15 +183,18 @@ export default function PostDetailScreen() {
   const renderComment = ({ item }: { item: Comment }) => {
     const user = item.user || { id: '', name: 'Unknown', username: '', avatar: null };
     return (
-      <View style={styles.commentItem}>
+      <View style={[styles.commentItem, { 
+        backgroundColor: colors.surface, 
+        borderBottomColor: colors.border 
+      }]}>
         <Avatar source={user.avatar} size={36} fallback={user.name} />
         <View style={styles.commentContent}>
           <View style={styles.commentHeader}>
-            <Text style={styles.commentName}>{user.name}</Text>
-            <Text style={styles.commentUsername}>@{user.username}</Text>
-            <Text style={styles.commentTime}>· {timeAgo(item.createdAt)}</Text>
+            <Text style={[styles.commentName, { color: colors.text }]}>{user.name}</Text>
+            <Text style={[styles.commentUsername, { color: colors.textSecondary }]}>@{user.username}</Text>
+            <Text style={[styles.commentTime, { color: colors.textMuted }]}>· {timeAgo(item.createdAt)}</Text>
           </View>
-          <Text style={styles.commentText}>{item.text}</Text>
+          <Text style={[styles.commentText, { color: colors.text }]}>{item.text}</Text>
         </View>
       </View>
     );
@@ -192,18 +202,18 @@ export default function PostDetailScreen() {
 
   // ---- Render empty comments ----
   const renderEmptyComments = () => (
-    <View style={styles.emptyComments}>
-      <Feather name="message-circle" size={48} color="#d1d5db" />
-      <Text style={styles.emptyTitle}>No comments yet</Text>
-      <Text style={styles.emptySubtitle}>Be the first to start the conversation</Text>
+    <View style={[styles.emptyComments, { backgroundColor: colors.surface }]}>
+      <Feather name="message-circle" size={48} color={colors.textMuted} />
+      <Text style={[styles.emptyTitle, { color: colors.text }]}>No comments yet</Text>
+      <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>Be the first to start the conversation</Text>
     </View>
   );
 
   // ---- Loading state ----
   if (postLoading) {
     return (
-      <SafeAreaView style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#6C63FF" />
+      <SafeAreaView style={[styles.loadingContainer, { backgroundColor: colors.background }]} edges={['top']}>
+        <ActivityIndicator size="large" color={colors.primary} />
       </SafeAreaView>
     );
   }
@@ -211,12 +221,12 @@ export default function PostDetailScreen() {
   // ---- Error state ----
   if (postError || !post) {
     return (
-      <SafeAreaView style={styles.errorContainer}>
+      <SafeAreaView style={[styles.errorContainer, { backgroundColor: colors.background }]} edges={['top']}>
         <Feather name="alert-circle" size={48} color="#ef4444" />
-        <Text style={styles.errorTitle}>Post not found</Text>
-        <Text style={styles.errorSubtitle}>The post you're looking for doesn't exist.</Text>
+        <Text style={[styles.errorTitle, { color: colors.text }]}>Post not found</Text>
+        <Text style={[styles.errorSubtitle, { color: colors.textSecondary }]}>The post you're looking for doesn't exist.</Text>
         <TouchableOpacity
-          style={styles.goBackButton}
+          style={[styles.goBackButton, { backgroundColor: colors.primary }]}
           onPress={() => navigation.goBack()}
         >
           <Text style={styles.goBackText}>Go Back</Text>
@@ -226,11 +236,25 @@ export default function PostDetailScreen() {
   }
 
   // Get comments from the post object
-  const postComments = post.comments || [];
+  const postComments = post?.comments || [];
 
   // ---- Main render ----
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+      {/* ─── Custom Header ─── */}
+      <View style={[styles.header, { 
+        backgroundColor: colors.surface, 
+        borderBottomColor: colors.border 
+      }]}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <Feather name="arrow-left" size={24} color={colors.text} />
+        </TouchableOpacity>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>Post</Text>
+        <TouchableOpacity onPress={handleShare} style={styles.shareButton}>
+          <Feather name="share-2" size={22} color={colors.text} />
+        </TouchableOpacity>
+      </View>
+
       <KeyboardAvoidingView
         style={styles.keyboardView}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -242,26 +266,35 @@ export default function PostDetailScreen() {
           renderItem={renderComment}
           ListHeaderComponent={
             <View style={styles.postContainer}>
-              <PostCard post={post} />
-              <View style={styles.commentsHeader}>
-                <Text style={styles.commentsCount}>
+              {post && <PostCard post={post} />}
+              <View style={[styles.commentsHeader, { 
+                backgroundColor: colors.surface, 
+                borderBottomColor: colors.border 
+              }]}>
+                <Text style={[styles.commentsCount, { color: colors.text }]}>
                   {postComments.length} {postComments.length === 1 ? 'Comment' : 'Comments'}
                 </Text>
               </View>
             </View>
           }
           ListEmptyComponent={renderEmptyComments}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[styles.listContent, { backgroundColor: colors.background }]}
           showsVerticalScrollIndicator={false}
         />
 
         {/* ---- Comment Input Bar ---- */}
-        <View style={styles.inputBar}>
+        <View style={[styles.inputBar, { 
+          backgroundColor: colors.surface, 
+          borderTopColor: colors.border 
+        }]}>
           <TextInput
             ref={inputRef}
-            style={styles.input}
+            style={[styles.input, { 
+              backgroundColor: colors.input, 
+              color: colors.text 
+            }]}
             placeholder="Add a comment..."
-            placeholderTextColor="#9ca3af"
+            placeholderTextColor={colors.placeholder}
             value={commentText}
             onChangeText={setCommentText}
             multiline
@@ -271,6 +304,7 @@ export default function PostDetailScreen() {
           <TouchableOpacity
             style={[
               styles.sendButton,
+              { backgroundColor: colors.primary },
               (!commentText.trim() || isSendingComment) && styles.sendButtonDisabled,
             ]}
             onPress={handleSendComment}
@@ -291,7 +325,6 @@ export default function PostDetailScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f9fafb',
   },
   keyboardView: {
     flex: 1,
@@ -300,30 +333,25 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'white',
   },
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 32,
-    backgroundColor: 'white',
   },
   errorTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#1f2937',
     marginTop: 16,
   },
   errorSubtitle: {
     fontSize: 14,
-    color: '#6b7280',
     textAlign: 'center',
     marginTop: 8,
   },
   goBackButton: {
     marginTop: 24,
-    backgroundColor: '#6C63FF',
     paddingHorizontal: 24,
     paddingVertical: 10,
     borderRadius: 8,
@@ -332,32 +360,45 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: '600',
   },
+  // ─── Custom Header ───
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+  },
+  backButton: {
+    padding: 4,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  shareButton: {
+    padding: 6,
+  },
   listContent: {
     paddingBottom: 80,
   },
   postContainer: {
-    backgroundColor: 'white',
     marginBottom: 8,
   },
   commentsHeader: {
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: 'white',
     borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
   },
   commentsCount: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#1f2937',
   },
   commentItem: {
     flexDirection: 'row',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: 'white',
     borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
   },
   commentContent: {
     flex: 1,
@@ -371,38 +412,31 @@ const styles = StyleSheet.create({
   commentName: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#1f2937',
   },
   commentUsername: {
     fontSize: 13,
-    color: '#6b7280',
     marginLeft: 4,
   },
   commentTime: {
     fontSize: 12,
-    color: '#9ca3af',
     marginLeft: 6,
   },
   commentText: {
     fontSize: 14,
-    color: '#374151',
     marginTop: 2,
     lineHeight: 20,
   },
   emptyComments: {
     paddingVertical: 60,
     alignItems: 'center',
-    backgroundColor: 'white',
   },
   emptyTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#374151',
     marginTop: 12,
   },
   emptySubtitle: {
     fontSize: 14,
-    color: '#9ca3af',
     marginTop: 4,
   },
   loadingMore: {
@@ -418,18 +452,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 12,
     paddingVertical: 8,
-    backgroundColor: 'white',
     borderTopWidth: 1,
-    borderTopColor: '#e5e7eb',
     minHeight: 56,
   },
   input: {
     flex: 1,
     fontSize: 16,
-    color: '#1f2937',
     paddingVertical: 8,
     paddingHorizontal: 12,
-    backgroundColor: '#f3f4f6',
     borderRadius: 20,
     maxHeight: 100,
   },
@@ -437,7 +467,6 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#6C63FF',
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 8,

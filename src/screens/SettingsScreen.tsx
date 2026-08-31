@@ -13,17 +13,19 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { Avatar } from '../components/Avatar';
+import { useTabBarHeight } from '../hooks/useTabBarHeight';
 
-// ===== COMPONENT =====
 export default function SettingsScreen() {
   const navigation = useNavigation();
   const { user, logout } = useAuth();
+  const { colors, isDark, toggleTheme } = useTheme();
+  const { contentBottomPadding } = useTabBarHeight();
 
   // ── State for toggles ──
   const [pushNotifications, setPushNotifications] = useState(true);
   const [emailNotifications, setEmailNotifications] = useState(true);
-  const [darkMode, setDarkMode] = useState(false);
   const [privateAccount, setPrivateAccount] = useState(false);
   const [showOnlineStatus, setShowOnlineStatus] = useState(true);
 
@@ -58,7 +60,9 @@ export default function SettingsScreen() {
 
   // ── Section header ──
   const SectionHeader = ({ title }: { title: string }) => (
-    <Text style={styles.sectionHeader}>{title}</Text>
+    <Text style={[styles.sectionHeader, { color: colors.textSecondary }]}>
+      {title}
+    </Text>
   );
 
   // ── Menu item with icon ──
@@ -69,6 +73,7 @@ export default function SettingsScreen() {
     onPress,
     showArrow = true,
     rightElement,
+    destructive = false,
   }: {
     icon: keyof typeof Feather.glyphMap;
     title: string;
@@ -76,26 +81,33 @@ export default function SettingsScreen() {
     onPress?: () => void;
     showArrow?: boolean;
     rightElement?: React.ReactNode;
+    destructive?: boolean;
   }) => (
     <TouchableOpacity
-      style={styles.menuItem}
+      style={[styles.menuItem, { borderBottomColor: colors.border }]}
       onPress={onPress}
       disabled={!onPress}
       activeOpacity={0.7}
     >
       <View style={styles.menuItemLeft}>
-        <View style={styles.menuIconContainer}>
-          <Feather name={icon} size={20} color="#6C63FF" />
+        <View style={[styles.menuIconContainer, { backgroundColor: isDark ? '#374151' : '#f0f4ff' }]}>
+          <Feather
+            name={icon}
+            size={20}
+            color={destructive ? '#ef4444' : colors.primary}
+          />
         </View>
         <View style={styles.menuItemText}>
-          <Text style={styles.menuItemTitle}>{title}</Text>
-          {subtitle && <Text style={styles.menuItemSubtitle}>{subtitle}</Text>}
+          <Text style={[styles.menuItemTitle, { color: destructive ? '#ef4444' : colors.text }]}>
+            {title}
+          </Text>
+          {subtitle && <Text style={[styles.menuItemSubtitle, { color: colors.textSecondary }]}>{subtitle}</Text>}
         </View>
       </View>
       <View style={styles.menuItemRight}>
         {rightElement}
-        {showArrow && onPress && (
-          <Feather name="chevron-right" size={20} color="#9ca3af" />
+        {showArrow && onPress && !destructive && (
+          <Feather name="chevron-right" size={20} color={colors.textMuted} />
         )}
       </View>
     </TouchableOpacity>
@@ -113,54 +125,59 @@ export default function SettingsScreen() {
     value: boolean;
     onValueChange: (value: boolean) => void;
   }) => (
-    <View style={styles.menuItem}>
+    <View style={[styles.menuItem, { borderBottomColor: colors.border }]}>
       <View style={styles.menuItemLeft}>
-        <View style={styles.menuIconContainer}>
-          <Feather name={icon} size={20} color="#6C63FF" />
+        <View style={[styles.menuIconContainer, { backgroundColor: isDark ? '#374151' : '#f0f4ff' }]}>
+          <Feather name={icon} size={20} color={colors.primary} />
         </View>
-        <Text style={styles.menuItemTitle}>{title}</Text>
+        <Text style={[styles.menuItemTitle, { color: colors.text }]}>{title}</Text>
       </View>
       <Switch
         value={value}
         onValueChange={onValueChange}
-        trackColor={{ false: '#d1d5db', true: '#6C63FF' }}
+        trackColor={{ false: '#d1d5db', true: colors.primary }}
         thumbColor="white"
       />
     </View>
   );
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
       {/* ─── Header ─── */}
-      <View style={styles.header}>
+      <View style={[styles.header, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Feather name="arrow-left" size={24} color="#1f2937" />
+          <Feather name="arrow-left" size={24} color={colors.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Settings</Text>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>Settings</Text>
         <View style={styles.headerRight} />
       </View>
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: contentBottomPadding },
+        ]}
       >
         {/* ─── Profile Section ─── */}
         <TouchableOpacity
-          style={styles.profileSection}
+          style={[styles.profileSection, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}
           onPress={() => (navigation.navigate as any)('Profile')}
           activeOpacity={0.7}
         >
           <Avatar source={user?.avatar} size={56} fallback={user?.name || 'U'} />
           <View style={styles.profileInfo}>
-            <Text style={styles.profileName}>{user?.name || 'User'}</Text>
-            <Text style={styles.profileUsername}>@{user?.username || 'username'}</Text>
+            <Text style={[styles.profileName, { color: colors.text }]}>{user?.name || 'User'}</Text>
+            <Text style={[styles.profileUsername, { color: colors.textSecondary }]}>
+              @{user?.username || 'username'}
+            </Text>
           </View>
-          <Feather name="chevron-right" size={20} color="#9ca3af" />
+          <Feather name="chevron-right" size={20} color={colors.textMuted} />
         </TouchableOpacity>
 
         {/* ─── Account Settings ─── */}
         <SectionHeader title="Account" />
-        <View style={styles.section}>
+        <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <MenuItem
             icon="user"
             title="Edit Profile"
@@ -181,7 +198,7 @@ export default function SettingsScreen() {
 
         {/* ─── Privacy ─── */}
         <SectionHeader title="Privacy" />
-        <View style={styles.section}>
+        <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <ToggleItem
             icon="eye"
             title="Private Account"
@@ -197,7 +214,7 @@ export default function SettingsScreen() {
           <MenuItem
             icon="shield"
             title="Blocked Users"
-            onPress={() => console.log('Blocked users')}
+            onPress={() => (navigation.navigate as any)('BlockedUsers')}
           />
           <MenuItem
             icon="download"
@@ -208,7 +225,7 @@ export default function SettingsScreen() {
 
         {/* ─── Notifications ─── */}
         <SectionHeader title="Notifications" />
-        <View style={styles.section}>
+        <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <ToggleItem
             icon="bell"
             title="Push Notifications"
@@ -225,18 +242,26 @@ export default function SettingsScreen() {
 
         {/* ─── Appearance ─── */}
         <SectionHeader title="Appearance" />
-        <View style={styles.section}>
-          <ToggleItem
-            icon="moon"
-            title="Dark Mode"
-            value={darkMode}
-            onValueChange={setDarkMode}
-          />
+        <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={[styles.menuItem, { borderBottomColor: colors.border }]}>
+            <View style={styles.menuItemLeft}>
+              <View style={[styles.menuIconContainer, { backgroundColor: isDark ? '#374151' : '#f0f4ff' }]}>
+                <Feather name="moon" size={20} color={colors.primary} />
+              </View>
+              <Text style={[styles.menuItemTitle, { color: colors.text }]}>Dark Mode</Text>
+            </View>
+            <Switch
+              value={isDark}
+              onValueChange={toggleTheme}
+              trackColor={{ false: '#d1d5db', true: colors.primary }}
+              thumbColor="white"
+            />
+          </View>
         </View>
 
         {/* ─── Support ─── */}
         <SectionHeader title="Support" />
-        <View style={styles.section}>
+        <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <MenuItem
             icon="help-circle"
             title="Help Center"
@@ -265,13 +290,16 @@ export default function SettingsScreen() {
         </View>
 
         {/* ─── Logout ─── */}
-        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-          <Feather name="log-out" size={20} color="#ef4444" />
-          <Text style={styles.logoutButtonText}>Log Out</Text>
-        </TouchableOpacity>
+        <MenuItem
+          icon="log-out"
+          title="Log Out"
+          onPress={handleLogout}
+          destructive={true}
+          showArrow={false}
+        />
 
         {/* ─── Version ─── */}
-        <Text style={styles.versionText}>Version 1.0.0</Text>
+        <Text style={[styles.versionText, { color: colors.textMuted }]}>Version 1.0.0</Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -280,7 +308,6 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f9fafb',
   },
   header: {
     flexDirection: 'row',
@@ -288,9 +315,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: 'white',
     borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
   },
   backButton: {
     padding: 4,
@@ -298,7 +323,6 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#1f2937',
   },
   headerRight: {
     width: 40,
@@ -306,16 +330,13 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: 32,
   },
-  // ── Profile Section ──
   profileSection: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'white',
     paddingHorizontal: 16,
     paddingVertical: 16,
     marginTop: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
   },
   profileInfo: {
     flex: 1,
@@ -324,18 +345,14 @@ const styles = StyleSheet.create({
   profileName: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#1f2937',
   },
   profileUsername: {
     fontSize: 14,
-    color: '#6b7280',
     marginTop: 2,
   },
-  // ── Section ──
   sectionHeader: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#6b7280',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     paddingHorizontal: 16,
@@ -343,12 +360,9 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   section: {
-    backgroundColor: 'white',
     borderTopWidth: 1,
     borderBottomWidth: 1,
-    borderColor: '#e5e7eb',
   },
-  // ── Menu Item ──
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -356,7 +370,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
   },
   menuItemLeft: {
     flexDirection: 'row',
@@ -367,7 +380,6 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 8,
-    backgroundColor: '#f0f4ff',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -377,11 +389,9 @@ const styles = StyleSheet.create({
   },
   menuItemTitle: {
     fontSize: 15,
-    color: '#1f2937',
   },
   menuItemSubtitle: {
     fontSize: 13,
-    color: '#6b7280',
     marginTop: 1,
   },
   menuItemRight: {
@@ -389,29 +399,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  // ── Logout Button ──
-  logoutButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'white',
-    paddingVertical: 14,
-    marginTop: 20,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: '#e5e7eb',
-    gap: 8,
-  },
-  logoutButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#ef4444',
-  },
-  // ── Version ──
   versionText: {
     textAlign: 'center',
     fontSize: 12,
-    color: '#9ca3af',
     marginTop: 16,
   },
 });
