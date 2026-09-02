@@ -28,15 +28,33 @@ export default function NotificationsScreen() {
   const { colors, isDark } = useTheme();
   const userId = user?.id || '';
 
-  const { data: notifications = [], isLoading, isError, refetch } = useNotifications(userId);
+  const {
+    data,
+    isLoading,
+    isError,
+    refetch,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useNotifications(userId);
+  
   const { mutate: markRead } = useMarkNotificationRead();
   const { mutate: markAllRead } = useMarkAllNotificationsRead(userId);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Flatten all pages of notifications
+  const notifications = data?.pages?.flatMap(page => page.notifications) || [];
 
   const handleRefresh = async () => {
     setRefreshing(true);
     await refetch();
     setRefreshing(false);
+  };
+
+  const handleLoadMore = () => {
+    if (hasNextPage && !isFetchingNextPage) {
+      fetchNextPage();
+    }
   };
 
   const handleNotificationPress = (notification: Notification) => {
@@ -57,10 +75,32 @@ export default function NotificationsScreen() {
     markAllRead();
   };
 
+  const getSafeDisplayName = (notification: Notification): string => {
+    if (notification.user?.name && 
+        notification.user.name !== 'Unknown' && 
+        notification.user.name !== 'null' && 
+        notification.user.name !== 'undefined') {
+      return notification.user.name;
+    }
+    if (notification.user?.username) {
+      return notification.user.username;
+    }
+    if (notification.userId) {
+      return 'User';
+    }
+    return 'Someone';
+  };
+
+  const getSafeAvatar = (notification: Notification): string | undefined => {
+    return notification.user?.avatar || undefined;
+  };
+
   const renderNotification = ({ item }: { item: Notification }) => {
-    const notificationUser = item.user || { id: '', name: 'Unknown', username: 'unknown', avatar: undefined };
     const { type, postText, commentText, createdAt, read, text } = item;
     const time = timeAgo(createdAt);
+    
+    const displayName = getSafeDisplayName(item);
+    const avatar = getSafeAvatar(item);
 
     let actionText = '';
     let iconName: keyof typeof Feather.glyphMap = 'heart';
@@ -110,7 +150,7 @@ export default function NotificationsScreen() {
         activeOpacity={0.7}
       >
         <View style={styles.avatarContainer}>
-          <Avatar source={notificationUser.avatar} size={48} fallback={notificationUser.name} />
+          <Avatar source={avatar} size={48} fallback={displayName} />
           <View style={[styles.iconBadge, { backgroundColor: iconColor }]}>
             <Feather name={iconName} size={12} color="white" />
           </View>
@@ -118,9 +158,13 @@ export default function NotificationsScreen() {
 
         <View style={styles.content}>
           <Text style={[styles.text, { color: colors.text }]}>
-            <Text style={[styles.userName, { color: colors.text }]}>{safeString(notificationUser.name)}</Text>
+            <Text style={[styles.userName, { color: colors.text }]}>
+              {safeString(displayName)}
+            </Text>
             {' '}
-            <Text style={[styles.actionText, { color: colors.textSecondary }]}>{actionText}</Text>
+            <Text style={[styles.actionText, { color: colors.textSecondary }]}>
+              {actionText}
+            </Text>
           </Text>
 
           {postText && type !== 'follow' && (
@@ -155,6 +199,18 @@ export default function NotificationsScreen() {
     </View>
   );
 
+  const renderFooter = () => {
+    if (!isFetchingNextPage) return null;
+    return (
+      <View style={styles.footerLoader}>
+        <ActivityIndicator size="small" color={colors.primary} />
+        <Text style={[styles.footerText, { color: colors.textSecondary }]}>
+          Loading more...
+        </Text>
+      </View>
+    );
+  };
+
   if (isLoading) {
     return (
       <SafeAreaView style={[styles.loadingContainer, { backgroundColor: colors.background }]} edges={['top']}>
@@ -175,7 +231,7 @@ export default function NotificationsScreen() {
     );
   }
 
-  const hasUnread = (notifications || []).some(n => !n.read);
+  const hasUnread = notifications.some(n => !n.read);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
@@ -199,8 +255,11 @@ export default function NotificationsScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} />
         }
         ListEmptyComponent={renderEmpty}
+        ListFooterComponent={renderFooter}
+        onEndReached={handleLoadMore}
+        onEndReachedThreshold={0.3}
         contentContainerStyle={[
-          !notifications || notifications.length === 0 ? { flex: 1 } : { paddingBottom: 16 },
+          notifications.length === 0 ? { flex: 1 } : { paddingBottom: 16 },
           { backgroundColor: colors.background }
         ]}
         showsVerticalScrollIndicator={false}
@@ -329,5 +388,15 @@ const styles = StyleSheet.create({
     fontSize: 14, 
     textAlign: 'center', 
     marginTop: 8 
+  },
+  footerLoader: {
+    paddingVertical: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 12,
+  },
+  footerText: {
+    fontSize: 14,
   },
 });

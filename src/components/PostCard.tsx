@@ -35,7 +35,7 @@ function throttle(fn: Function, limit: number) {
 
   return function (...args: any[]) {
     const now = Date.now();
-    
+
     if (!pending) {
       pending = true;
       timeoutId = setTimeout(() => {
@@ -177,15 +177,15 @@ function PostCard({
     const url = urlMatch[0];
 
     previewFetchedRef.current = true;
-    
+
     const controller = new AbortController();
-    
+
     throttleLinkPreview(() => {
       if (!post || !isVisible || previewFetchedRef.current === false) return;
-      
+
       setPreviewLoading(true);
       setPreviewError(false);
-      
+
       api.get(`/link-preview?url=${encodeURIComponent(url)}`, { signal: controller.signal })
         .then((res) => {
           const data = res.data;
@@ -286,6 +286,7 @@ function PostCard({
     );
   };
 
+  // ── Media now renders full-bleed edge-to-edge (see layout note at bottom of file) ──
   const renderMedia = () => {
     if (video) {
       return (
@@ -321,7 +322,7 @@ function PostCard({
           <Image
             source={{ uri: image }}
             style={[styles.mediaImage, { backgroundColor: isDark ? '#1f2937' : '#f3f4f6' }]}
-            contentFit="contain"
+            contentFit="cover"
             transition={200}
             cachePolicy="memory-disk"
             recyclingKey={image}
@@ -352,8 +353,8 @@ function PostCard({
           <Feather name="info" size={16} color={colors.textMuted} />
         </TouchableOpacity>
         {showReasons && (
-          <View style={[styles.reasonPopover, { 
-            backgroundColor: colors.surface, 
+          <View style={[styles.reasonPopover, {
+            backgroundColor: colors.surface,
             borderColor: colors.border,
             shadowColor: isDark ? 'transparent' : '#000',
           }]}>
@@ -373,8 +374,8 @@ function PostCard({
         <Feather name="more-horizontal" size={20} color={colors.textMuted} />
       </TouchableOpacity>
       {isDropdownOpen && (
-        <View style={[styles.dropdownMenu, { 
-          backgroundColor: colors.surface, 
+        <View style={[styles.dropdownMenu, {
+          backgroundColor: colors.surface,
           borderColor: colors.border,
           shadowColor: isDark ? 'transparent' : '#000',
         }]}>
@@ -413,9 +414,9 @@ function PostCard({
 
   if (isRepost && (!text || text.trim() === '') && originalPost) {
     return (
-      <View style={[styles.repostWrapper, { 
+      <View style={[styles.repostWrapper, {
         backgroundColor: isDark ? '#1f2937' : '#f9fafb',
-        borderBottomColor: colors.border 
+        borderBottomColor: colors.border
       }]}>
         <View style={styles.repostBanner}>
           <Feather name="repeat" size={14} color={colors.textMuted} />
@@ -427,10 +428,12 @@ function PostCard({
     );
   }
 
+  const hasMedia = !!(image || video);
+
   return (
-    <View style={[styles.card, { 
-      backgroundColor: colors.surface, 
-      borderBottomColor: colors.border 
+    <View style={[styles.card, {
+      backgroundColor: colors.surface,
+      borderBottomColor: colors.border
     }]}>
       {isRepost && originalPost && (
         <View style={styles.repostBanner}>
@@ -440,6 +443,7 @@ function PostCard({
         </View>
       )}
 
+      {/* Indented block: avatar + header + text. paddingHorizontal:16 lives here only. */}
       <View style={styles.cardInner}>
         <TouchableOpacity onPress={goToProfile} style={styles.avatarTouch}>
           <Avatar source={avatarUrl} size={40} fallback={displayName} />
@@ -474,26 +478,40 @@ function PostCard({
             </View>
           </View>
 
-          <TouchableOpacity activeOpacity={0.8} onPress={goToPostDetail}>
-            <Text style={[styles.postText, { color: colors.text }]} numberOfLines={shouldTruncate ? 3 : undefined}>
-              {text || ''}
-            </Text>
-            {shouldTruncate && (
-              <TouchableOpacity onPress={toggleExpand}>
-                <Text style={[styles.showMore, { color: colors.primary }]}>Show more</Text>
-              </TouchableOpacity>
-            )}
-            {isExpanded && text?.length > 200 && (
-              <TouchableOpacity onPress={toggleExpand}>
-                <Text style={[styles.showMore, { color: colors.primary }]}>Show less</Text>
-              </TouchableOpacity>
-            )}
-            {renderMedia()}
-          </TouchableOpacity>
+          {!!text && (
+            <TouchableOpacity activeOpacity={0.8} onPress={goToPostDetail}>
+              <Text style={[styles.postText, { color: colors.text }]} numberOfLines={shouldTruncate ? 3 : undefined}>
+                {text}
+              </Text>
+              {shouldTruncate && (
+                <TouchableOpacity onPress={toggleExpand}>
+                  <Text style={[styles.showMore, { color: colors.primary }]}>Show more</Text>
+                </TouchableOpacity>
+              )}
+              {isExpanded && text?.length > 200 && (
+                <TouchableOpacity onPress={toggleExpand}>
+                  <Text style={[styles.showMore, { color: colors.primary }]}>Show less</Text>
+                </TouchableOpacity>
+              )}
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
 
-          <View style={[styles.engagementBar, { borderTopColor: colors.border }]}>
+      {/* Full-bleed block: sits outside cardInner's padding, so it spans the whole card width. */}
+      {hasMedia && (
+        <TouchableOpacity activeOpacity={1} onPress={!video ? goToPostDetail : undefined} style={styles.fullBleedWrapper}>
+          {renderMedia()}
+        </TouchableOpacity>
+      )}
+
+      {/* Back to the indented column for the action row, aligned with the text above. */}
+      <View style={styles.cardInner}>
+        <View style={styles.avatarTouch} />
+        <View style={styles.content}>
+          <View style={[styles.engagementBar, { borderTopColor: colors.border, marginTop: hasMedia ? 12 : 0 }]}>
             <TouchableOpacity style={styles.engagementButton} onPress={handleLike}>
-              <Feather name={liked ? 'heart' : 'heart'} size={22} color={liked ? '#ef4444' : colors.textMuted} />
+              <Feather name="heart" size={22} color={liked ? '#ef4444' : colors.textMuted} />
               <Text style={[styles.engagementText, { color: colors.textSecondary }]}>{likeCount}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.engagementButton} onPress={handleComment}>
@@ -570,6 +588,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   avatarTouch: {
+    width: 40,
     marginRight: 12,
   },
   content: {
@@ -702,23 +721,25 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginTop: 4,
   },
-  mediaContainer: {
+  // ── Full-bleed media: no horizontal padding/margin, so it spans the entire card width ──
+  fullBleedWrapper: {
+    width: '100%',
     marginTop: 12,
-    marginHorizontal: 0,
+  },
+  mediaContainer: {
+    width: '100%',
     overflow: 'hidden',
-    width: SCREEN_WIDTH,
   },
   mediaPlayer: {
-    width: SCREEN_WIDTH,
+    width: '100%',
     height: SCREEN_WIDTH * 0.5625,
   },
   mediaImage: {
-    width: SCREEN_WIDTH,
-    minHeight: 300,
-    maxHeight: 500,
+    width: '100%',
+    height: SCREEN_WIDTH,
   },
   videoPlaceholder: {
-    width: SCREEN_WIDTH,
+    width: '100%',
     height: SCREEN_WIDTH * 0.5625,
     alignItems: 'center',
     justifyContent: 'center',
@@ -734,10 +755,8 @@ const styles = StyleSheet.create({
   engagementBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 12,
     paddingTop: 12,
     borderTopWidth: 1,
-    paddingHorizontal: 16,
   },
   engagementButton: {
     flexDirection: 'row',
