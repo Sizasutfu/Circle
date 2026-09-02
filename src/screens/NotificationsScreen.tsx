@@ -75,6 +75,7 @@ export default function NotificationsScreen() {
     markAllRead();
   };
 
+  // Extra safety helper to get display name
   const getSafeDisplayName = (notification: Notification): string => {
     if (notification.user?.name && 
         notification.user.name !== 'Unknown' && 
@@ -91,6 +92,7 @@ export default function NotificationsScreen() {
     return 'Someone';
   };
 
+  // Extra safety helper to get avatar
   const getSafeAvatar = (notification: Notification): string | undefined => {
     return notification.user?.avatar || undefined;
   };

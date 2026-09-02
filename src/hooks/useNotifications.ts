@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
 import api from '../api/client';
+import { resolveMediaUrl } from '../lib/media';
 
 export interface Notification {
   id: string;
@@ -20,27 +21,18 @@ export interface Notification {
   read: boolean;
 }
 
-export interface NotificationsResponse {
-  success: boolean;
-  message: string;
-  data: {
-    notifications: Notification[];
-    hasMore: boolean;
-    page: number;
-  };
-}
-
 // ── Map raw notification to our format ──
 function mapNotification(raw: any): Notification {
   // Extract user data from various possible locations
   const userId = raw.actorId || raw.userId || raw.user?.id || raw.actor?.id || '';
   const userName = raw.actorName || raw.name || raw.user?.name || raw.actor?.name || '';
   const userUsername = raw.actorUsername || raw.username || raw.user?.username || raw.actor?.username || '';
-  const userAvatar = raw.actorPicture || raw.avatar || raw.user?.avatar || raw.actor?.avatar || undefined;
+  
+  // Use resolveMediaUrl to get the full URL for avatar
+  const avatarUrl = resolveMediaUrl(raw.actorPicture || raw.avatar || raw.user?.avatar || raw.actor?.avatar);
   
   // Determine display name with proper fallbacks
   let displayName = '';
-  
   if (raw.actorName && raw.actorName.trim() && raw.actorName !== 'null' && raw.actorName !== 'undefined') {
     displayName = raw.actorName.trim();
   } else if (raw.actorUsername && raw.actorUsername.trim() && raw.actorUsername !== 'null' && raw.actorUsername !== 'undefined') {
@@ -68,7 +60,7 @@ function mapNotification(raw: any): Notification {
       id: userId,
       name: displayName,
       username: username,
-      avatar: userAvatar || undefined,
+      avatar: avatarUrl || undefined,
     },
     postId: raw.postId || raw.post?.id || raw.post_id || null,
     postText: raw.postSnippet || raw.postText || raw.post?.text || raw.post_text || null,
@@ -80,7 +72,6 @@ function mapNotification(raw: any): Notification {
   };
 }
 
-// Use infinite query for pagination
 export const useNotifications = (userId: string) => {
   return useInfiniteQuery({
     queryKey: ['notifications', userId],
@@ -141,37 +132,6 @@ export const useNotifications = (userId: string) => {
       return undefined;
     },
     refetchInterval: 30000,
-  });
-};
-
-// Regular query for backward compatibility (optional)
-export const useNotificationsQuery = (userId: string) => {
-  return useQuery({
-    queryKey: ['notifications', userId, 'list'],
-    queryFn: async (): Promise<Notification[]> => {
-      if (!userId) return [];
-      
-      try {
-        const response = await api.get(`/notifications/${userId}?page=1&limit=100`);
-        const data = response.data;
-        
-        let notifications: any[] = [];
-        
-        if (data?.data?.notifications && Array.isArray(data.data.notifications)) {
-          notifications = data.data.notifications;
-        } else if (data?.notifications && Array.isArray(data.notifications)) {
-          notifications = data.notifications;
-        } else if (Array.isArray(data)) {
-          notifications = data;
-        }
-        
-        return notifications.map(mapNotification);
-      } catch (error) {
-        console.error('❌ Error fetching notifications:', error);
-        throw error;
-      }
-    },
-    enabled: !!userId,
   });
 };
 
