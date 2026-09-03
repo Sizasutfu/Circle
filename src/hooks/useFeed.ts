@@ -2,15 +2,12 @@
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../api/client';
 import { resolveMediaUrl } from '../lib/media';
+import { Alert } from 'react-native';
 
 const PAGE_SIZE = 20;
 
 // ── Normalize a single post ──
-// Exported so other hooks (e.g. useExplore) that fetch posts from different
-// endpoints can produce the exact same shape PostCard expects, instead of
-// re-implementing this field-mapping logic a second time.
 export function normalizePost(raw: any): any {
-  // Build user from possible fields
   const rawUser = raw.user || raw.author || raw.creator || {};
   const user = {
     id: rawUser.id || raw.userId || '',
@@ -20,11 +17,9 @@ export function normalizePost(raw: any): any {
     verified: !!rawUser.verified || !!raw.authorVerified,
   };
 
-  // Extract media
   let image = raw.image || raw.imageUrl || raw.image_url || null;
   let video = raw.video || raw.videoUrl || raw.video_url || null;
 
-  // Check media array
   if (!image && !video && raw.media && Array.isArray(raw.media)) {
     for (const m of raw.media) {
       if (m.type === 'image') { image = m.url || m.uri; break; }
@@ -34,7 +29,6 @@ export function normalizePost(raw: any): any {
     }
   }
 
-  // Resolve URLs
   image = resolveMediaUrl(image);
   video = resolveMediaUrl(video);
 
@@ -105,27 +99,159 @@ export const useFeed = (tab: 'global' | 'following' = 'global') => {
   });
 };
 
-export const usePostActions = () => {
+// ── Post Actions Hook with currentUser parameter ──
+export const usePostActions = (currentUser?: { id: string } | null) => {
   const queryClient = useQueryClient();
 
   const likePost = async (postId: string) => {
-    await api.post(`/posts/${postId}/like`);
-    queryClient.invalidateQueries({ queryKey: ['feed'] });
+    const userId = currentUser?.id;
+
+    if (!userId) {
+      Alert.alert('Error', 'Please log in to like posts');
+      return;
+    }
+
+    // Optimistic update
+    queryClient.setQueryData(['feed'], (oldData: any) => {
+      if (!oldData) return oldData;
+
+      return {
+        ...oldData,
+        pages: oldData.pages.map((page: any) => ({
+          ...page,
+          posts: page.posts.map((post: any) => {
+            if (post.id === postId) {
+              const isLiked = post.likes?.includes(userId) || false;
+              const newLikes = isLiked
+                ? (post.likes || []).filter((id: string) => id !== userId)
+                : [...(post.likes || []), userId];
+              return {
+                ...post,
+                likes: newLikes,
+              };
+            }
+            return post;
+          }),
+        })),
+      };
+    });
+
+    try {
+      const response = await api.post(`/posts/${postId}/like`);
+      queryClient.invalidateQueries({ queryKey: ['feed'] });
+      return response.data;
+    } catch (error) {
+      queryClient.invalidateQueries({ queryKey: ['feed'] });
+      console.error('Like failed:', error);
+      throw error;
+    }
   };
 
   const unlikePost = async (postId: string) => {
-    await api.post(`/posts/${postId}/like`);
-    queryClient.invalidateQueries({ queryKey: ['feed'] });
+    await likePost(postId);
   };
 
   const repost = async (postId: string) => {
-    await api.post(`/posts/${postId}/repost`);
-    queryClient.invalidateQueries({ queryKey: ['feed'] });
+    const userId = currentUser?.id;
+
+    if (!userId) {
+      Alert.alert('Error', 'Please log in to repost');
+      throw new Error('User not logged in');
+    }
+
+    console.log('🔄 Repost action started for post:', postId);
+    console.log('👤 Current user ID:', userId);
+
+    // Find current post state for proper toggle
+    let wasReposted = false;
+    let currentRepostCount = 0;
+    let currentReposts: string[] = [];
+
+    const feedData = queryClient.getQueryData(['feed']) as any;
+    if (feedData?.pages) {
+      for (const page of feedData.pages) {
+        const found = page.posts?.find((p: any) => p.id === postId);
+        if (found) {
+          wasReposted = found.reposts?.includes(userId) || false;
+          currentRepostCount = found.repostCount || found.reposts?.length || 0;
+          currentReposts = found.reposts || [];
+          break;
+        }
+      }
+    }
+
+    console.log('📊 Current repost state:', { wasReposted, currentRepostCount });
+
+    // Optimistic update - toggle repost state
+    queryClient.setQueryData(['feed'], (oldData: any) => {
+      if (!oldData) return oldData;
+
+      return {
+        ...oldData,
+        pages: oldData.pages.map((page: any) => ({
+          ...page,
+          posts: page.posts.map((post: any) => {
+            if (post.id === postId) {
+              const isCurrentlyReposted = post.reposts?.includes(userId) || false;
+              const newReposts = isCurrentlyReposted
+                ? (post.reposts || []).filter((id: string) => id !== userId)
+                : [...(post.reposts || []), userId];
+              const newRepostCount = isCurrentlyReposted
+                ? Math.max(0, (post.repostCount || 0) - 1)
+                : (post.repostCount || 0) + 1;
+
+              console.log(`📊 Optimistic update: ${isCurrentlyReposted ? 'Unrepost' : 'Repost'}`, {
+                oldCount: post.repostCount,
+                newCount: newRepostCount,
+              });
+
+              return {
+                ...post,
+                reposts: newReposts,
+                repostCount: newRepostCount,
+              };
+            }
+            return post;
+          }),
+        })),
+      };
+    });
+
+    try {
+      console.log(`📤 Sending repost request for post ${postId}`);
+      const response = await api.post(`/posts/${postId}/repost`);
+      console.log('✅ Repost response:', response.data);
+
+      queryClient.invalidateQueries({ queryKey: ['feed'] });
+      return response.data;
+    } catch (error: any) {
+      console.error('❌ Repost failed:', error);
+
+      if (error.response) {
+        console.error('📊 Error response data:', error.response.data);
+        console.error('📊 Error response status:', error.response.status);
+      }
+
+      // Rollback optimistic update
+      queryClient.invalidateQueries({ queryKey: ['feed'] });
+
+      const errorMessage = error.response?.data?.error ||
+        error.response?.data?.message ||
+        error.message ||
+        'Failed to repost. Please try again.';
+
+      Alert.alert('Error', errorMessage);
+      throw error;
+    }
   };
 
   const addComment = async (postId: string, text: string) => {
-    await api.post(`/posts/${postId}/comment`, { text });
-    queryClient.invalidateQueries({ queryKey: ['feed'] });
+    try {
+      await api.post(`/posts/${postId}/comment`, { text });
+      queryClient.invalidateQueries({ queryKey: ['feed'] });
+    } catch (error) {
+      throw error;
+    }
   };
 
   return { likePost, unlikePost, repost, addComment };

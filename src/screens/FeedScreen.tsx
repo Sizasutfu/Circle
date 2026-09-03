@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -17,6 +17,8 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useFeed } from '../hooks/useFeed';
 import { useTabBarHeight } from '../hooks/useTabBarHeight';
 import PostCard, { Post } from '../components/PostCard';
+import { useWs } from '../contexts/WsContext';
+import { useQueryClient } from '@tanstack/react-query';
 
 type FeedTab = 'global' | 'following';
 
@@ -33,6 +35,8 @@ export default function FeedScreen() {
   const { contentBottomPadding, fabBottomOffset } = useTabBarHeight();
   const [activeTab, setActiveTab] = useState<FeedTab>('global');
   const flatListRef = useRef<FlatList>(null);
+  const { registerHandler } = useWs();
+  const queryClient = useQueryClient();
   
   const scrollY = useRef(new Animated.Value(0)).current;
   const fabTranslateY = useRef(new Animated.Value(0)).current;
@@ -65,6 +69,91 @@ export default function FeedScreen() {
     }));
   }, [data]);
 
+  // ── WebSocket handlers for real-time updates ──
+  useEffect(() => {
+    // Handle like updates from WebSocket
+    const unregisterLikeUpdate = registerHandler('like_update', (data: any) => {
+      console.log('📊 Like update via WebSocket:', data);
+      
+      queryClient.setQueryData(['feed', activeTab], (oldData: any) => {
+        if (!oldData) return oldData;
+
+        return {
+          ...oldData,
+          pages: oldData.pages.map((page: any) => ({
+            ...page,
+            posts: page.posts.map((post: any) => {
+              if (post.id === data.postId) {
+                return {
+                  ...post,
+                  likes: data.userIds || post.likes,
+                };
+              }
+              return post;
+            }),
+          })),
+        };
+      });
+    });
+
+    // Handle repost updates from WebSocket
+    const unregisterRepostUpdate = registerHandler('repost_update', (data: any) => {
+      console.log('📊 Repost update via WebSocket:', data);
+      
+      queryClient.setQueryData(['feed', activeTab], (oldData: any) => {
+        if (!oldData) return oldData;
+
+        return {
+          ...oldData,
+          pages: oldData.pages.map((page: any) => ({
+            ...page,
+            posts: page.posts.map((post: any) => {
+              if (post.id === data.postId) {
+                return {
+                  ...post,
+                  reposts: data.userIds || post.reposts,
+                  repostCount: data.count || post.repostCount,
+                };
+              }
+              return post;
+            }),
+          })),
+        };
+      });
+    });
+
+    // Handle comment updates from WebSocket
+    const unregisterCommentUpdate = registerHandler('comment_update', (data: any) => {
+      console.log('📊 Comment update via WebSocket:', data);
+      
+      queryClient.setQueryData(['feed', activeTab], (oldData: any) => {
+        if (!oldData) return oldData;
+
+        return {
+          ...oldData,
+          pages: oldData.pages.map((page: any) => ({
+            ...page,
+            posts: page.posts.map((post: any) => {
+              if (post.id === data.postId) {
+                return {
+                  ...post,
+                  commentCount: data.count || post.commentCount,
+                };
+              }
+              return post;
+            }),
+          })),
+        };
+      });
+    });
+
+    return () => {
+      unregisterLikeUpdate();
+      unregisterRepostUpdate();
+      unregisterCommentUpdate();
+    };
+  }, [registerHandler, queryClient, activeTab]);
+
   const handleRefresh = useCallback(() => {
     refetch();
   }, [refetch]);
@@ -84,7 +173,12 @@ export default function FeedScreen() {
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   const renderItem = useCallback(
-    ({ item }: { item: FeedPost }) => <PostCard post={item} />,
+    ({ item }: { item: FeedPost }) => (
+      <PostCard 
+        key={`${item.id}-${item.likes?.length || 0}-${item.reposts?.length || 0}`}
+        post={item} 
+      />
+    ),
     []
   );
 

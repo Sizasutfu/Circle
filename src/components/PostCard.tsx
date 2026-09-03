@@ -109,9 +109,9 @@ function PostCard({
   isVisible = true,
 }: PostCardProps) {
   const navigation = useNavigation();
-  const { user: currentUser } = useAuth();
+  const { user: currentUser } = useAuth(); // ✅ Get user from Auth context
   const { colors, isDark } = useTheme();
-  const { likePost, unlikePost, repost: repostPost } = usePostActions();
+  const { likePost, unlikePost, repost: repostPost } = usePostActions(currentUser); // ✅ Pass user to hook
 
   const {
     id = '', text = '', image = null, video = null, createdAt = '', likes = [], comments = [], reposts = [],
@@ -127,6 +127,17 @@ function PostCard({
   const likeCount = safeLikes.length;
   const liked = currentUser ? safeLikes.some((id: string) => id === currentUser.id) : false;
   const reposted = currentUser ? safeReposts.some((id: string) => id === currentUser.id) : false;
+
+  // Debug logging
+  useEffect(() => {
+    console.log('📊 Post repost state:', {
+      postId: id,
+      repostCount: repostCount ?? safeReposts.length,
+      reposted,
+      userId: currentUser?.id,
+      reposts: safeReposts,
+    });
+  }, [id, repostCount, safeReposts, reposted, currentUser]);
 
   const displayName = user?.name || 'Anonymous';
   const username = user?.username || '';
@@ -262,8 +273,28 @@ function PostCard({
   };
 
   const handleRepost = async () => {
-    try { await repostPost(id); } catch (error) { console.warn('Repost failed:', error); }
+    if (!currentUser) {
+      Alert.alert(
+        'Sign In Required',
+        'Please log in to repost.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Log In', onPress: () => (navigation.navigate as any)('Login') }
+        ]
+      );
+      return;
+    }
+
+    try {
+      console.log('🔄 Repost button pressed for post:', id);
+      await repostPost(id);
+      // The optimistic update in usePostActions will handle the UI update
+    } catch (error: any) {
+      console.warn('Repost failed:', error);
+      // Error already shown in usePostActions
+    }
   };
+
   const handleComment = () => onComment && onComment(id);
   const handleShare = async () => {
     try { await Share.share({ message: text || 'Check this post!' }); } catch (e) {}
@@ -286,7 +317,7 @@ function PostCard({
     );
   };
 
-  // ── Media now renders full-bleed edge-to-edge (see layout note at bottom of file) ──
+  // ── Media now renders full-bleed edge-to-edge ──
   const renderMedia = () => {
     if (video) {
       return (
@@ -443,7 +474,7 @@ function PostCard({
         </View>
       )}
 
-      {/* Indented block: avatar + header + text. paddingHorizontal:16 lives here only. */}
+      {/* Indented block: avatar + header + text */}
       <View style={styles.cardInner}>
         <TouchableOpacity onPress={goToProfile} style={styles.avatarTouch}>
           <Avatar source={avatarUrl} size={40} fallback={displayName} />
@@ -498,14 +529,14 @@ function PostCard({
         </View>
       </View>
 
-      {/* Full-bleed block: sits outside cardInner's padding, so it spans the whole card width. */}
+      {/* Full-bleed block: sits outside cardInner's padding */}
       {hasMedia && (
         <TouchableOpacity activeOpacity={1} onPress={!video ? goToPostDetail : undefined} style={styles.fullBleedWrapper}>
           {renderMedia()}
         </TouchableOpacity>
       )}
 
-      {/* Back to the indented column for the action row, aligned with the text above. */}
+      {/* Back to the indented column for the action row */}
       <View style={styles.cardInner}>
         <View style={styles.avatarTouch} />
         <View style={styles.content}>
@@ -721,7 +752,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginTop: 4,
   },
-  // ── Full-bleed media: no horizontal padding/margin, so it spans the entire card width ──
   fullBleedWrapper: {
     width: '100%',
     marginTop: 12,

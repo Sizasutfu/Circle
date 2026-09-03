@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,12 +7,14 @@ import {
   RefreshControl,
   StyleSheet,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { useWs } from '../contexts/WsContext';
 import { Avatar } from '../components/Avatar';
 import {
   useNotifications,
@@ -22,10 +24,17 @@ import {
 } from '../hooks/useNotifications';
 import { timeAgo, safeString } from '../utils/helpers';
 
+// Define navigation params type
+type RootStackParamList = {
+  PostDetail: { postId: string };
+  Profile: { userId: string };
+};
+
 export default function NotificationsScreen() {
   const navigation = useNavigation();
   const { user } = useAuth();
   const { colors, isDark } = useTheme();
+  const { registerHandler, isAlive } = useWs();
   const userId = user?.id || '';
 
   const {
@@ -41,9 +50,126 @@ export default function NotificationsScreen() {
   const { mutate: markRead } = useMarkNotificationRead();
   const { mutate: markAllRead } = useMarkAllNotificationsRead(userId);
   const [refreshing, setRefreshing] = useState(false);
+  const [newNotification, setNewNotification] = useState<Notification | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
 
   // Flatten all pages of notifications
   const notifications = data?.pages?.flatMap(page => page.notifications) || [];
+
+  // Check connection status periodically
+  useEffect(() => {
+    const checkConnection = () => {
+      setIsConnected(isAlive());
+    };
+    checkConnection();
+    const interval = setInterval(checkConnection, 5000);
+    return () => clearInterval(interval);
+  }, [isAlive]);
+
+  // Register WebSocket handlers for notifications
+  useEffect(() => {
+    if (!userId) return;
+
+    // Handle new notification from WebSocket
+    const unregisterNewNotification = registerHandler('new-notification', (data: any) => {
+      console.log('🔔 New notification via WebSocket:', data);
+      
+      // Map the incoming data to match our Notification type
+      const notification: Notification = {
+        id: data.id || data.notificationId || '',
+        type: data.type || 'like',
+        userId: data.actorId || data.userId || '',
+        user: {
+          id: data.actorId || data.userId || '',
+          name: data.actorName || data.userName || 'Someone',
+          username: data.actorUsername || data.userUsername || '',
+          avatar: data.actorPicture || data.userAvatar || undefined,
+        },
+        postId: data.postId || null,
+        postText: data.postSnippet || data.postText || null,
+        commentId: data.commentId || null,
+        commentText: data.commentText || null,
+        text: data.text || '',
+        createdAt: data.createdAt || new Date().toISOString(),
+        read: false,
+      };
+
+      setNewNotification(notification);
+      
+      // Show alert
+      const displayName = notification.user?.name || 'Someone';
+      let actionText = '';
+      switch (notification.type) {
+        case 'like':
+          actionText = 'liked your post';
+          break;
+        case 'comment':
+          actionText = 'commented on your post';
+          break;
+        case 'repost':
+          actionText = 'reposted your post';
+          break;
+        case 'follow':
+          actionText = 'started following you';
+          break;
+        case 'mention':
+          actionText = 'mentioned you in a post';
+          break;
+        default:
+          actionText = 'interacted with you';
+      }
+
+      Alert.alert(
+        '🔔 New Notification',
+        `${displayName} ${actionText}`,
+        [
+          { 
+            text: 'View', 
+            onPress: () => {
+              if (notification.postId) {
+                navigation.navigate('PostDetail' as never, { postId: notification.postId } as never);
+              } else if (notification.userId) {
+                navigation.navigate('Profile' as never, { userId: notification.userId } as never);
+              }
+              setNewNotification(null);
+            }
+          },
+          { 
+            text: 'Dismiss', 
+            onPress: () => setNewNotification(null) 
+          },
+        ]
+      );
+
+      // Refetch notifications to update the list
+      refetch();
+    });
+
+    // Handle notification read updates
+    const unregisterNotificationRead = registerHandler('notification-read', (data: any) => {
+      console.log('✅ Notification marked as read via WebSocket:', data);
+      refetch();
+    });
+
+    // Handle all notifications read
+    const unregisterAllRead = registerHandler('all-notifications-read', (data: any) => {
+      console.log('✅ All notifications marked as read via WebSocket:', data);
+      refetch();
+    });
+
+    // Handle unread count updates
+    const unregisterUnreadCount = registerHandler('unread-count-updated', (data: any) => {
+      console.log('📊 Unread count updated via WebSocket:', data);
+    });
+
+    // Cleanup handlers
+    return () => {
+      unregisterNewNotification();
+      unregisterNotificationRead();
+      unregisterAllRead();
+      unregisterUnreadCount();
+    };
+  }, [userId, registerHandler, refetch, navigation]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -57,17 +183,18 @@ export default function NotificationsScreen() {
     }
   };
 
+  // ✅ Fixed: Navigation with proper typing
   const handleNotificationPress = (notification: Notification) => {
     if (!notification.read) {
       markRead(notification.id);
     }
     const type = notification.type;
     if (['like', 'comment', 'repost'].includes(type) && notification.postId) {
-      (navigation.navigate as any)('PostDetail', { postId: notification.postId });
+      navigation.navigate('PostDetail' as never, { postId: notification.postId } as never);
     } else if (type === 'follow' && notification.userId) {
-      (navigation.navigate as any)('Profile', { userId: notification.userId });
+      navigation.navigate('Profile' as never, { userId: notification.userId } as never);
     } else if (type === 'mention' && notification.postId) {
-      (navigation.navigate as any)('PostDetail', { postId: notification.postId });
+      navigation.navigate('PostDetail' as never, { postId: notification.postId } as never);
     }
   };
 
@@ -75,7 +202,6 @@ export default function NotificationsScreen() {
     markAllRead();
   };
 
-  // Extra safety helper to get display name
   const getSafeDisplayName = (notification: Notification): string => {
     if (notification.user?.name && 
         notification.user.name !== 'Unknown' && 
@@ -92,7 +218,6 @@ export default function NotificationsScreen() {
     return 'Someone';
   };
 
-  // Extra safety helper to get avatar
   const getSafeAvatar = (notification: Notification): string | undefined => {
     return notification.user?.avatar || undefined;
   };
@@ -185,6 +310,12 @@ export default function NotificationsScreen() {
 
           <View style={styles.metaRow}>
             <Text style={[styles.timestamp, { color: colors.textMuted }]}>{time}</Text>
+            {!isConnected && (
+              <View style={styles.connectionStatus}>
+                <View style={styles.statusDot} />
+                <Text style={[styles.statusText, { color: colors.textMuted }]}>Reconnecting...</Text>
+              </View>
+            )}
           </View>
         </View>
       </TouchableOpacity>
@@ -242,11 +373,18 @@ export default function NotificationsScreen() {
         borderBottomColor: colors.border 
       }]}>
         <Text style={[styles.headerTitle, { color: colors.text }]}>Notifications</Text>
-        {hasUnread && (
-          <TouchableOpacity onPress={handleMarkAllRead}>
-            <Text style={[styles.markAllRead, { color: colors.primary }]}>Mark all as read</Text>
-          </TouchableOpacity>
-        )}
+        <View style={styles.headerRight}>
+          {isConnected && (
+            <View style={styles.connectionBadge}>
+              <View style={styles.greenDot} />
+            </View>
+          )}
+          {hasUnread && (
+            <TouchableOpacity onPress={handleMarkAllRead}>
+              <Text style={[styles.markAllRead, { color: colors.primary }]}>Mark all as read</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       <FlatList
@@ -313,9 +451,23 @@ const styles = StyleSheet.create({
     fontSize: 20, 
     fontWeight: '700' 
   },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
   markAllRead: { 
     fontSize: 14, 
     fontWeight: '500' 
+  },
+  connectionBadge: {
+    padding: 4,
+  },
+  greenDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#22c55e',
   },
   notificationItem: { 
     flexDirection: 'row', 
@@ -374,6 +526,20 @@ const styles = StyleSheet.create({
   },
   timestamp: { 
     fontSize: 12 
+  },
+  connectionStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#f59e0b',
+  },
+  statusText: {
+    fontSize: 10,
   },
   emptyContainer: { 
     flex: 1, 
