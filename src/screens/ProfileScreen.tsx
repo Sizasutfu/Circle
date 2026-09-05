@@ -14,7 +14,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { Avatar } from '../components/Avatar';
@@ -42,12 +42,32 @@ interface ProfileData {
 
 export default function ProfileScreen() {
   const navigation = useNavigation();
+  const route = useRoute();
   const { user, logout } = useAuth();
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const { contentBottomPadding } = useTabBarHeight();
   const [activeTab, setActiveTab] = useState<ProfileTab>('posts');
   const [refreshing, setRefreshing] = useState(false);
+
+  // ── Get userId or username from route params ──
+  const params = route.params as { userId?: string; username?: string } | undefined;
+  const targetIdentifier = params?.userId || params?.username || user?.id || '';
+
+  // ── Check if targetIdentifier is numeric (userId) ──
+  const isNumeric = !isNaN(Number(targetIdentifier)) && targetIdentifier !== '';
+  const targetUserId = isNumeric ? targetIdentifier : '';
+  const targetUsername = !isNumeric ? targetIdentifier : '';
+
+  // ── Determine if viewing current user's own profile ──
+  const isCurrentUser = targetUserId ? targetUserId === user?.id : targetUsername === user?.username;
+
+  // ── Build the profile endpoint (unified) ──
+  const getProfileEndpoint = () => {
+    // If we have a numeric ID, use it; otherwise pass the username.
+    // The backend now accepts either.
+    return `/users/${targetUserId || targetUsername}/profile`;
+  };
 
   // ── Fetch profile data ──
   const {
@@ -56,36 +76,39 @@ export default function ProfileScreen() {
     isError: profileError,
     refetch: refetchProfile,
   } = useQuery({
-    queryKey: ['profile', user?.id],
+    queryKey: ['profile', targetIdentifier],
     queryFn: async () => {
-      if (!user) throw new Error('Not logged in');
-      console.log('👤 Fetching profile for user:', user.id);
+      if (!targetIdentifier && !user) throw new Error('No user identifier provided');
+      console.log('👤 Fetching profile for:', targetIdentifier);
       
-      const response = await api.get(`/users/${user.id}/profile`);
+      const endpoint = getProfileEndpoint();
+      console.log('📤 Endpoint:', endpoint);
+      
+      const response = await api.get(endpoint);
       console.log('📦 Profile response:', JSON.stringify(response.data, null, 2));
       
       const data = response.data;
       const profileData = data.data || data;
       
       return {
-        id: String(profileData.id || user.id),
-        name: profileData.name || user.name || 'Anonymous',
-        username: profileData.username || user.username || user.email?.split('@')[0] || 'user',
-        avatar: resolveMediaUrl(profileData.avatar || profileData.picture || user.avatar || null),
+        id: String(profileData.id || targetIdentifier),
+        name: profileData.name || 'Anonymous',
+        username: profileData.username || 'user',
+        avatar: resolveMediaUrl(profileData.avatar || profileData.picture || null),
         coverImage: resolveMediaUrl(profileData.coverImage || profileData.cover || null),
         bio: profileData.bio || profileData.biography || '',
         postsCount: Number(profileData.postsCount || profileData.postCount || 0),
         followersCount: Number(profileData.followersCount || profileData.followerCount || 0),
         followingCount: Number(profileData.followingCount || profileData.following || 0),
         isFollowed: !!profileData.isFollowed,
-        isCurrentUser: true,
+        isCurrentUser: isCurrentUser,
       } as ProfileData;
     },
-    enabled: !!user,
+    enabled: !!targetIdentifier || !!user,
     retry: 2,
   });
 
-  // ── Fetch ONLY the current user's posts, page by page ──
+  // ── Fetch posts for the target user ──
   const normalizePost = (p: any) => ({
     ...p,
     id: String(p.id || ''),
@@ -93,10 +116,10 @@ export default function ProfileScreen() {
     image: resolveMediaUrl(p.image || p.imageUrl || null),
     video: resolveMediaUrl(p.video || p.videoUrl || null),
     user: p.user || {
-      id: user?.id,
-      name: profile?.name || user?.name || 'Anonymous',
-      username: profile?.username || user?.username || '',
-      avatar: resolveMediaUrl(profile?.avatar || user?.avatar || null),
+      id: profile?.id || targetIdentifier,
+      name: profile?.name || 'Anonymous',
+      username: profile?.username || '',
+      avatar: resolveMediaUrl(profile?.avatar || null),
       verified: false,
     },
     likes: Array.isArray(p.likes) ? p.likes : [],
@@ -119,6 +142,9 @@ export default function ProfileScreen() {
     } : null,
   });
 
+  // ── Use the resolved userId for posts query ──
+  const effectiveUserId = profile?.id || targetUserId || user?.id || '';
+
   const {
     data: postsPages,
     isLoading: postsLoading,
@@ -127,19 +153,15 @@ export default function ProfileScreen() {
     fetchNextPage,
     refetch: refetchPosts,
   } = useInfiniteQuery({
-    queryKey: ['user-posts', user?.id],
+    queryKey: ['user-posts', effectiveUserId],
     initialPageParam: 1,
     queryFn: async ({ pageParam }) => {
-      if (!user) return { posts: [], hasMore: false, page: pageParam };
-      const currentUserId = String(user.id);
-      console.log('📰 Fetching posts for user:', currentUserId, 'page', pageParam);
+      if (!effectiveUserId) return { posts: [], hasMore: false, page: pageParam };
+      console.log('📰 Fetching posts for user:', effectiveUserId, 'page', pageParam);
 
       try {
-        // The backend's GET /posts only recognizes `userId` as the
-        // profile-posts filter (see postController.getPosts — it routes to
-        // PostModel.getProfilePosts when req.query.userId is present).
         const response = await api.get(`/posts`, {
-          params: { userId: currentUserId, page: pageParam, limit: 30 }
+          params: { userId: effectiveUserId, page: pageParam, limit: 30 }
         });
 
         console.log('📦 Posts response:', JSON.stringify(response.data, null, 2));
@@ -159,7 +181,7 @@ export default function ProfileScreen() {
       }
     },
     getNextPageParam: (lastPage) => (lastPage.hasMore ? lastPage.page + 1 : undefined),
-    enabled: !!user,
+    enabled: !!effectiveUserId,
   });
 
   const posts = postsPages?.pages.flatMap((pg) => pg.posts) ?? [];
@@ -177,7 +199,25 @@ export default function ProfileScreen() {
     setRefreshing(false);
   };
 
-  // ── Logout handler ──
+  // ── Follow/Unfollow ──
+  const handleFollowToggle = async () => {
+    if (!user) {
+      Alert.alert('Sign In Required', 'Please log in to follow users.');
+      return;
+    }
+    try {
+      if (profile?.isFollowed) {
+        await api.delete(`/users/${effectiveUserId}/follow`);
+      } else {
+        await api.post(`/users/${effectiveUserId}/follow`);
+      }
+      refetchProfile();
+    } catch (error) {
+      Alert.alert('Error', 'Failed to update follow status.');
+    }
+  };
+
+  // ── Logout handler (only for current user) ──
   const handleLogout = () => {
     Alert.alert(
       'Logout',
@@ -210,7 +250,7 @@ export default function ProfileScreen() {
       ...item,
       text: item.text || '',
       user: item.user || {
-        id: user?.id || '',
+        id: effectiveUserId,
         name: profile?.name || 'Anonymous',
         username: profile?.username || '',
         avatar: resolveMediaUrl(profile?.avatar || null),
@@ -282,7 +322,7 @@ export default function ProfileScreen() {
             <Avatar source={profile.avatar} size={80} fallback={profile.name} />
           </View>
           <View style={styles.headerActions}>
-            {profile.isCurrentUser && (
+            {profile.isCurrentUser ? (
               <>
                 <TouchableOpacity
                   style={[styles.editButton, { borderColor: colors.border }]}
@@ -297,11 +337,10 @@ export default function ProfileScreen() {
                   <Feather name="settings" size={22} color={colors.text} />
                 </TouchableOpacity>
               </>
-            )}
-            {!profile.isCurrentUser && (
+            ) : (
               <TouchableOpacity
                 style={[styles.followButton, { backgroundColor: profile.isFollowed ? (isDark ? '#374151' : '#e5e7eb') : colors.primary }, profile.isFollowed && styles.followButtonActive]}
-                onPress={() => console.log('Toggle follow')}
+                onPress={handleFollowToggle}
               >
                 <Text
                   style={[styles.followButtonText, profile.isFollowed && styles.followButtonTextActive]}
@@ -352,10 +391,6 @@ export default function ProfileScreen() {
   );
 
   // ── Main render ──
-  // The Posts tab uses FlatList as the actual scroll container (header
-  // passed via ListHeaderComponent) so pagination via onEndReached can
-  // work — a FlatList nested inside a scrolling ScrollView never fires
-  // onEndReached, since the FlatList itself isn't the thing scrolling.
   if (activeTab === 'posts') {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -384,7 +419,9 @@ export default function ProfileScreen() {
               <View style={styles.emptyState}>
                 <Feather name="file-text" size={48} color={colors.textMuted} />
                 <Text style={[styles.emptyTitle, { color: colors.text }]}>No posts yet</Text>
-                <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>When you post, they'll appear here.</Text>
+                <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
+                  {profile.isCurrentUser ? 'When you post, they\'ll appear here.' : 'When they post, they\'ll appear here.'}
+                </Text>
               </View>
             )
           }
@@ -412,14 +449,18 @@ export default function ProfileScreen() {
             <View style={styles.emptyState}>
               <Feather name="message-circle" size={48} color={colors.textMuted} />
               <Text style={[styles.emptyTitle, { color: colors.text }]}>No replies yet</Text>
-              <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>When you reply to posts, they'll appear here.</Text>
+              <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
+                {profile.isCurrentUser ? 'When you reply, they\'ll appear here.' : 'When they reply, they\'ll appear here.'}
+              </Text>
             </View>
           )}
           {activeTab === 'media' && (
             <View style={styles.emptyState}>
               <Feather name="image" size={48} color={colors.textMuted} />
               <Text style={[styles.emptyTitle, { color: colors.text }]}>No media yet</Text>
-              <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>Your photos and videos will show up here.</Text>
+              <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
+                {profile.isCurrentUser ? 'Your photos and videos will show up here.' : 'Their photos and videos will show up here.'}
+              </Text>
             </View>
           )}
         </View>

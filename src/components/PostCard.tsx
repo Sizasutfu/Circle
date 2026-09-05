@@ -109,9 +109,9 @@ function PostCard({
   isVisible = true,
 }: PostCardProps) {
   const navigation = useNavigation();
-  const { user: currentUser } = useAuth(); // ✅ Get user from Auth context
+  const { user: currentUser } = useAuth();
   const { colors, isDark } = useTheme();
-  const { likePost, unlikePost, repost: repostPost } = usePostActions(currentUser); // ✅ Pass user to hook
+  const { likePost, unlikePost, repost: repostPost } = usePostActions(currentUser);
 
   const {
     id = '', text = '', image = null, video = null, createdAt = '', likes = [], comments = [], reposts = [],
@@ -167,9 +167,13 @@ function PostCard({
     return mentions.some((m: string) => m.toLowerCase() === currentUser.username?.toLowerCase());
   }, [text, currentUser]);
 
+  // ── Modified: goToProfile prefers userId ──
   const goToProfile = () => {
-    if (username) (navigation.navigate as any)('Profile', { username });
-    else if (userId) (navigation.navigate as any)('Profile', { userId });
+    if (userId) {
+      (navigation.navigate as any)('Profile', { userId });
+    } else if (username) {
+      (navigation.navigate as any)('Profile', { username });
+    }
   };
   const goToPostDetail = () => (navigation.navigate as any)('PostDetail', { postId: id });
   const handleEditPost = () => {
@@ -288,10 +292,8 @@ function PostCard({
     try {
       console.log('🔄 Repost button pressed for post:', id);
       await repostPost(id);
-      // The optimistic update in usePostActions will handle the UI update
     } catch (error: any) {
       console.warn('Repost failed:', error);
-      // Error already shown in usePostActions
     }
   };
 
@@ -317,7 +319,6 @@ function PostCard({
     );
   };
 
-  // ── Media now renders full-bleed edge-to-edge ──
   const renderMedia = () => {
     if (video) {
       return (
@@ -474,7 +475,6 @@ function PostCard({
         </View>
       )}
 
-      {/* Indented block: avatar + header + text */}
       <View style={styles.cardInner}>
         <TouchableOpacity onPress={goToProfile} style={styles.avatarTouch}>
           <Avatar source={avatarUrl} size={40} fallback={displayName} />
@@ -529,14 +529,12 @@ function PostCard({
         </View>
       </View>
 
-      {/* Full-bleed block: sits outside cardInner's padding */}
       {hasMedia && (
         <TouchableOpacity activeOpacity={1} onPress={!video ? goToPostDetail : undefined} style={styles.fullBleedWrapper}>
           {renderMedia()}
         </TouchableOpacity>
       )}
 
-      {/* Back to the indented column for the action row */}
       <View style={styles.cardInner}>
         <View style={styles.avatarTouch} />
         <View style={styles.content}>
