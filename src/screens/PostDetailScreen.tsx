@@ -12,7 +12,7 @@ import {
   Share,
   Alert,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'; // ✅ Added useSafeAreaInsets
 import { Feather } from '@expo/vector-icons';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -49,6 +49,7 @@ export default function PostDetailScreen() {
   const { user: currentUser } = useAuth();
   const { colors, isDark } = useTheme();
   const queryClient = useQueryClient();
+  const insets = useSafeAreaInsets(); // ✅ Get safe area insets
 
   const [commentText, setCommentText] = useState('');
   const [isSendingComment, setIsSendingComment] = useState(false);
@@ -81,13 +82,11 @@ export default function PostDetailScreen() {
   const normalizePost = (raw: any): Post => {
     const rawUser = raw.user || raw.author || {};
     
-    // Extract comments from the post if they exist
     let commentsData = raw.comments || raw.recentComments || [];
     if (!Array.isArray(commentsData)) {
       commentsData = [];
     }
     
-    // Map comments to the expected format
     const mappedComments = commentsData.map((c: any) => {
       const commentUser = c.user || {};
       
@@ -283,10 +282,14 @@ export default function PostDetailScreen() {
         />
 
         {/* ---- Comment Input Bar ---- */}
-        <View style={[styles.inputBar, { 
-          backgroundColor: colors.surface, 
-          borderTopColor: colors.border 
-        }]}>
+        <View style={[
+          styles.inputBar,
+          {
+            backgroundColor: colors.surface,
+            borderTopColor: colors.border,
+            paddingBottom: Math.max(insets.bottom, 8), // ✅ Use safe area inset
+          }
+        ]}>
           <TextInput
             ref={inputRef}
             style={[styles.input, { 
@@ -380,7 +383,7 @@ const styles = StyleSheet.create({
     padding: 6,
   },
   listContent: {
-    paddingBottom: 80,
+    paddingBottom: 80, // Keep some bottom padding to prevent content from hiding behind input bar
   },
   postContainer: {
     marginBottom: 8,
@@ -454,6 +457,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderTopWidth: 1,
     minHeight: 56,
+    // paddingBottom is now set dynamically with insets.bottom
   },
   input: {
     flex: 1,
