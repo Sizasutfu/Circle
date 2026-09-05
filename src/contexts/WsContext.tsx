@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useEffect, useRef, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useCallback, useState, ReactNode } from 'react';
 import { useAuth } from './AuthContext';
 import * as SecureStore from 'expo-secure-store';
+import api from '../api/client';
 
 interface WsContextType {
   isAlive: () => boolean;
@@ -9,13 +10,15 @@ interface WsContextType {
   leaveConversation: (convId: string) => void;
   sendTyping: (convId: string, isTyping: boolean) => void;
   registerHandler: (type: string, handler: (data: any) => void) => () => void;
+  // ── New online status methods ──
+  isUserOnline: (userId: string) => boolean;
+  onlineUsers: Set<string>;
 }
 
 const WsContext = createContext<WsContextType | undefined>(undefined);
 
 function getWsUrl(): string {
   const base = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5000/api';
-  // Remove /api if present and convert http to ws
   const cleanBase = base.replace(/\/api$/, '').replace(/^http/, 'ws');
   return `${cleanBase}/ws`;
 }
@@ -27,7 +30,11 @@ export const WsProvider = ({ children }: { children: ReactNode }) => {
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectMsRef = useRef(1500);
   const pingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isConnectedRef = useRef(false);
+
+  // ── Online users state ──
+  const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
 
   // ── Register / unregister handlers ──
   const registerHandler = useCallback((type: string, handler: (data: any) => void) => {
@@ -49,7 +56,7 @@ export const WsProvider = ({ children }: { children: ReactNode }) => {
     return false;
   }, []);
 
-  // ── Conversation management (for DMs) ──
+  // ── Conversation management ──
   const joinConversation = useCallback((convId: string) => {
     sendMessage({ type: 'join_conversation', conversationId: convId });
   }, [sendMessage]);
@@ -68,7 +75,6 @@ export const WsProvider = ({ children }: { children: ReactNode }) => {
     if (socketRef.current?.readyState === WebSocket.OPEN) return;
 
     try {
-      // Get token from SecureStore
       const token = await SecureStore.getItemAsync('auth_token');
       if (!token) {
         console.warn('[WS] No auth token found');
@@ -83,7 +89,6 @@ export const WsProvider = ({ children }: { children: ReactNode }) => {
         console.log('[WS] Connected');
         isConnectedRef.current = true;
         reconnectMsRef.current = 1500;
-        // Start ping
         if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
         pingIntervalRef.current = setInterval(() => {
           sendMessage({ type: 'ping' });
@@ -106,9 +111,8 @@ export const WsProvider = ({ children }: { children: ReactNode }) => {
           clearInterval(pingIntervalRef.current);
           pingIntervalRef.current = null;
         }
-        if (e.code === 4001) return; // auth failure – don't retry
-        if (!user?.id) return; // logged out
-        // Reconnect with exponential backoff
+        if (e.code === 4001) return;
+        if (!user?.id) return;
         if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
         reconnectTimerRef.current = setTimeout(() => {
           connect();
@@ -138,6 +142,8 @@ export const WsProvider = ({ children }: { children: ReactNode }) => {
       socketRef.current = null;
     }
     isConnectedRef.current = false;
+    // Clear online users on disconnect
+    setOnlineUsers(new Set());
   }, []);
 
   // ── Auto‑connect/disconnect on auth change ──
@@ -150,7 +156,88 @@ export const WsProvider = ({ children }: { children: ReactNode }) => {
     return () => disconnect();
   }, [user, connect, disconnect]);
 
+  // ── Heartbeat: tell the backend "I'm online" ──
+  // This is a plain REST call (POST /dm/heartbeat), not a WS message —
+  // it runs as long as the user is logged in, independent of whether the
+  // WebSocket itself is currently connected (matching the web app's
+  // DmContext, which does the same). Without this, the backend's
+  // isOnline() check for this user's presence never sees a recent
+  // heartbeat, so other users always see this user as offline —
+  // regardless of whether getPresence/isUserOnline works correctly on
+  // their end.
+  useEffect(() => {
+    if (!user?.id) {
+      if (heartbeatIntervalRef.current) {
+        clearInterval(heartbeatIntervalRef.current);
+        heartbeatIntervalRef.current = null;
+      }
+      return;
+    }
+
+    const sendHeartbeat = () => {
+      api.post('/dm/heartbeat').catch(() => {
+        // Silent fail — a missed heartbeat just means this user briefly
+        // shows as offline to others; not worth surfacing to the UI.
+      });
+    };
+
+    sendHeartbeat();
+    heartbeatIntervalRef.current = setInterval(sendHeartbeat, 30000);
+
+    return () => {
+      if (heartbeatIntervalRef.current) {
+        clearInterval(heartbeatIntervalRef.current);
+        heartbeatIntervalRef.current = null;
+      }
+    };
+  }, [user?.id]);
+
+  // ── Register online/offline event handlers ──
+  // Kept as-is: if the backend ever does start broadcasting these over
+  // the WS connection, this will pick them up for free. In the meantime,
+  // ChatDetailScreen polls GET /dm/conversations/:id/presence directly
+  // rather than relying on isUserOnline/onlineUsers below, since nothing
+  // in this app's WS server currently emits user_online/user_offline/
+  // presence messages.
+  useEffect(() => {
+    const unregOnline = registerHandler('user_online', (data: any) => {
+      const userId = data.userId || data.user_id || data.id;
+      if (userId) {
+        setOnlineUsers((prev) => new Set(prev).add(String(userId)));
+      }
+    });
+
+    const unregOffline = registerHandler('user_offline', (data: any) => {
+      const userId = data.userId || data.user_id || data.id;
+      if (userId) {
+        setOnlineUsers((prev) => {
+          const next = new Set(prev);
+          next.delete(String(userId));
+          return next;
+        });
+      }
+    });
+
+    // Also listen for initial presence list (if sent)
+    const unregPresence = registerHandler('presence', (data: any) => {
+      if (data.onlineUsers && Array.isArray(data.onlineUsers)) {
+        setOnlineUsers(new Set(data.onlineUsers.map(String)));
+      }
+    });
+
+    return () => {
+      unregOnline();
+      unregOffline();
+      unregPresence();
+    };
+  }, [registerHandler]);
+
   const isAlive = useCallback(() => isConnectedRef.current, []);
+
+  const isUserOnline = useCallback((userId: string) => {
+    if (!userId) return false;
+    return onlineUsers.has(String(userId));
+  }, [onlineUsers]);
 
   const value: WsContextType = {
     isAlive,
@@ -159,6 +246,8 @@ export const WsProvider = ({ children }: { children: ReactNode }) => {
     leaveConversation,
     sendTyping,
     registerHandler,
+    isUserOnline,
+    onlineUsers,
   };
 
   return <WsContext.Provider value={value}>{children}</WsContext.Provider>;

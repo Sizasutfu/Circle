@@ -58,16 +58,12 @@ export default function ChatDetailScreen() {
     joinConversation, 
     leaveConversation, 
     sendTyping,
-    isUserOnline, // ✅ Get the online checker
   } = useWs();
 
   const { conversationId, otherUserId, otherName, otherPicture } = route.params as RouteParams;
 
   // ✅ Resolve other user's avatar
   const otherAvatarUrl = resolveMediaUrl(otherPicture);
-
-  // ✅ Compute online status using the context method
-  const otherOnline = isUserOnline(otherUserId);
 
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
@@ -78,9 +74,49 @@ export default function ChatDetailScreen() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // ── Presence: polled via REST, matching the web app's approach ──
+  // The backend's WS layer doesn't broadcast user_online/user_offline/
+  // presence events (confirmed against the web client, which never
+  // listens for them either) — presence is derived server-side from
+  // recent heartbeats and fetched per-conversation via
+  // GET /dm/conversations/:id/presence. Poll it the same way the web
+  // app's DmContext does: once on open, then every 30s.
+  const [otherOnline, setOtherOnline] = useState(false);
+  const [otherLastActive, setOtherLastActive] = useState<string | null>(null);
+  const presenceIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const flatListRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRef = useRef<TextInput>(null);
+
+  const fetchPresence = useCallback(async () => {
+    if (!conversationId) return;
+    try {
+      const response = await api.get(`/dm/conversations/${conversationId}/presence`);
+      // getPresence returns via the standard sendOk envelope
+      // ({ success, message, data: presence }), so the fields live under
+      // response.data.data — not flat on response.data like the web
+      // client's apiClient wrapper exposes them.
+      const body = response.data?.data ?? response.data ?? {};
+      setOtherOnline(!!body.online);
+      setOtherLastActive(body.last_seen_at ?? body.lastSeenAt ?? null);
+    } catch (error) {
+      // Silent fail — leave whatever presence state we last had rather
+      // than flipping to "offline" on a transient network hiccup.
+    }
+  }, [conversationId]);
+
+  useEffect(() => {
+    fetchPresence();
+    presenceIntervalRef.current = setInterval(fetchPresence, 30000);
+    return () => {
+      if (presenceIntervalRef.current) {
+        clearInterval(presenceIntervalRef.current);
+        presenceIntervalRef.current = null;
+      }
+    };
+  }, [fetchPresence]);
 
   // ── Fetch messages ──
   const fetchMessages = useCallback(async (beforeId?: string) => {

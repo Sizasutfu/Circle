@@ -28,6 +28,20 @@ export interface ExplorePerson {
 
 export type SearchResultType = 'post' | 'user' | 'group';
 
+// The backend's /search endpoint uses different (plural, and
+// differently-worded for people) type names than this app's UI does.
+// UI: 'all' | 'post' | 'user' | 'group'
+// API: 'all' | 'posts' | 'people' | 'groups'
+// Sending the UI's value straight through gets a 400 for anything but
+// 'all', since the backend's VALID_TYPES set doesn't recognize 'post',
+// 'user', or 'group'.
+const SEARCH_TYPE_TO_API: Record<'all' | SearchResultType, string> = {
+  all: 'all',
+  post: 'posts',
+  user: 'people',
+  group: 'groups',
+};
+
 // ============================================================
 //  NORMALIZERS
 // ============================================================
@@ -198,11 +212,15 @@ export const useFollowToggle = () => {
 // ============================================================
 export const useExploreSearch = (query: string, type: 'all' | SearchResultType = 'all') => {
   const trimmed = query.trim();
+  const apiType = SEARCH_TYPE_TO_API[type] ?? 'all';
   return useInfiniteQuery({
+    // Keep the UI's `type` in the query key (not apiType) since that's
+    // what the caller/UI actually varies on — the mapping is an
+    // implementation detail of talking to this particular API.
     queryKey: ['explore', 'search', trimmed, type],
     queryFn: async ({ pageParam = 1 }) => {
       const res = await api.get('/search', {
-        params: { q: trimmed, type, page: pageParam, limit: SEARCH_PAGE_SIZE },
+        params: { q: trimmed, type: apiType, page: pageParam, limit: SEARCH_PAGE_SIZE },
       });
       const body = res.data;
       let data: any[] = [];
