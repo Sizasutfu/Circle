@@ -9,6 +9,8 @@ import {
   ActivityIndicator,
   ScrollView,
   StyleSheet,
+  Modal,
+  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -18,6 +20,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import api from '../api/client';
+
+const { width, height } = Dimensions.get('window');
 
 export default function CreatePostScreen() {
   const navigation = useNavigation();
@@ -29,6 +33,7 @@ export default function CreatePostScreen() {
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [videoUri, setVideoUri] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [showLoader, setShowLoader] = useState(false);
 
   // ---- Check if logged in ----
   if (!user) {
@@ -108,7 +113,6 @@ export default function CreatePostScreen() {
 
   // ---- Navigate to Feed ----
   const navigateToFeed = () => {
-    // Reset the navigation stack to go to Feed
     navigation.dispatch(
       CommonActions.reset({
         index: 0,
@@ -140,6 +144,8 @@ export default function CreatePostScreen() {
       return;
     }
 
+    // Show loader
+    setShowLoader(true);
     setLoading(true);
 
     try {
@@ -180,17 +186,21 @@ export default function CreatePostScreen() {
       // ── Invalidate feed cache ──
       queryClient.invalidateQueries({ queryKey: ['feed'] });
       
-      // ── Navigate to Feed using reset ──
+      // ── Hide loader and navigate ──
+      setShowLoader(false);
+      setLoading(false);
+      
+      // ── Navigate to Feed ──
       navigateToFeed();
       
     } catch (error: any) {
       console.error('Post creation error:', error);
+      setShowLoader(false);
+      setLoading(false);
       Alert.alert(
         'Error',
         error.response?.data?.message || 'Failed to create post. Please try again.'
       );
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -211,8 +221,31 @@ export default function CreatePostScreen() {
     }
   };
 
+  // ---- Render Loader Modal ----
+  const renderLoader = () => (
+    <Modal
+      transparent
+      visible={showLoader}
+      animationType="fade"
+      statusBarTranslucent
+    >
+      <View style={[styles.loaderOverlay, { backgroundColor: 'rgba(0,0,0,0.7)' }]}>
+        <View style={[styles.loaderContainer, { backgroundColor: colors.surface }]}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.loaderTitle, { color: colors.text }]}>Posting...</Text>
+          <Text style={[styles.loaderSubtitle, { color: colors.textSecondary }]}>
+            Your post is being shared
+          </Text>
+        </View>
+      </View>
+    </Modal>
+  );
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+      {/* ─── Loader Modal ─── */}
+      {renderLoader()}
+
       <View style={[styles.header, { 
         backgroundColor: colors.surface, 
         borderBottomColor: colors.border 
@@ -383,6 +416,32 @@ const styles = StyleSheet.create({
   },
   mediaButtonText: {
     fontSize: 14,
+  },
+  // ── Loader Styles ──
+  loaderOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loaderContainer: {
+    padding: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    minWidth: 200,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  loaderTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginTop: 16,
+  },
+  loaderSubtitle: {
+    fontSize: 14,
+    marginTop: 4,
   },
   // ── Not logged in styles ──
   notLoggedInContainer: {

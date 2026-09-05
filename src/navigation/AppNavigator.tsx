@@ -47,7 +47,7 @@ const { width: screenWidth } = Dimensions.get('window');
 const maxContentWidth = 600;
 
 // ============================================================
-//  Bottom Tab Navigator with Dark Mode (Mobile Only)
+//  Bottom Tab Navigator with Dark Mode
 // ============================================================
 function MainTabs() {
   const insets = useSafeAreaInsets();
@@ -165,19 +165,72 @@ function DrawerNavigator() {
       }}
       drawerContent={(props) => <SidebarContent {...props} />}
     >
-      {/* On web, use WebNavigator (no tabs) */}
-      {/* On mobile, use MainTabs (with tabs) */}
+      {/* Main Tabs - Default screen */}
       <Drawer.Screen 
-        name="Main" 
-        component={isWeb ? WebNavigator : MainTabs} 
+        name="MainTabs" 
+        component={isWeb ? WebNavigator : MainTabs}
+        options={{
+          drawerLabel: 'Home',
+          drawerIcon: ({ color, size }) => (
+            <Feather name="home" size={size} color={color} />
+          ),
+        }}
       />
-      <Drawer.Screen name="Notifications" component={NotificationsScreen} />
-      <Drawer.Screen name="Topics" component={TopicsScreen} />
-      <Drawer.Screen name="TopicDetail" component={TopicDetailScreen} />
-      <Drawer.Screen name="PostDetail" component={PostDetailScreen} />
-      <Drawer.Screen name="EditProfile" component={EditProfileScreen} />
-      <Drawer.Screen name="ChangePassword" component={ChangePasswordScreen} />
-      <Drawer.Screen name="BlockedUsers" component={BlockedUsersScreen} />
+      
+      {/* Stack Screens */}
+      <Drawer.Screen 
+        name="Notifications" 
+        component={NotificationsScreen}
+        options={{
+          drawerIcon: ({ color, size }) => (
+            <Feather name="bell" size={size} color={color} />
+          ),
+        }}
+      />
+      <Drawer.Screen 
+        name="Topics" 
+        component={TopicsScreen}
+        options={{
+          drawerIcon: ({ color, size }) => (
+            <Feather name="hash" size={size} color={color} />
+          ),
+        }}
+      />
+      <Drawer.Screen 
+        name="TopicDetail" 
+        component={TopicDetailScreen}
+        options={{
+          drawerItemStyle: { display: 'none' }, // Hide from drawer
+        }}
+      />
+      <Drawer.Screen 
+        name="PostDetail" 
+        component={PostDetailScreen}
+        options={{
+          drawerItemStyle: { display: 'none' }, // Hide from drawer
+        }}
+      />
+      <Drawer.Screen 
+        name="EditProfile" 
+        component={EditProfileScreen}
+        options={{
+          drawerItemStyle: { display: 'none' }, // Hide from drawer
+        }}
+      />
+      <Drawer.Screen 
+        name="ChangePassword" 
+        component={ChangePasswordScreen}
+        options={{
+          drawerItemStyle: { display: 'none' }, // Hide from drawer
+        }}
+      />
+      <Drawer.Screen 
+        name="BlockedUsers" 
+        component={BlockedUsersScreen}
+        options={{
+          drawerItemStyle: { display: 'none' }, // Hide from drawer
+        }}
+      />
     </Drawer.Navigator>
   );
 }
@@ -348,5 +401,15 @@ export default function AppNavigator() {
 const styles = StyleSheet.create({
   rootContainer: {
     flex: 1,
+    ...(isWeb && {
+      maxWidth: maxContentWidth,
+      alignSelf: 'center',
+      width: '100%',
+      minHeight: '100%',
+      borderLeftWidth: 1,
+      borderRightWidth: 1,
+      borderLeftColor: 'rgba(0,0,0,0.08)',
+      borderRightColor: 'rgba(0,0,0,0.08)',
+    }),
   },
 });

@@ -10,7 +10,6 @@ import {
   Platform,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
 import { DrawerContentComponentProps } from '@react-navigation/drawer';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -25,7 +24,6 @@ interface SidebarItem {
 }
 
 export default function SidebarContent(props: DrawerContentComponentProps) {
-  const navigation = useNavigation();
   const { user, logout } = useAuth();
   const { colors, isDark } = useTheme();
 
@@ -40,8 +38,21 @@ export default function SidebarContent(props: DrawerContentComponentProps) {
   ];
 
   const handleNavigate = (route: string) => {
+    // Close the drawer
     props.navigation.closeDrawer();
-    navigation.navigate(route as never);
+
+    // Navigate to the screen
+    // For tab screens, navigate to MainTabs with screen param
+    const tabScreens = ['Feed', 'Explore', 'Messages', 'Profile', 'Settings'];
+    if (tabScreens.includes(route)) {
+      // @ts-ignore - Navigate to MainTabs with nested navigation
+      props.navigation.navigate('MainTabs', {
+        screen: route,
+      });
+    } else {
+      // @ts-ignore - Navigate to stack screens directly
+      props.navigation.navigate(route);
+    }
   };
 
   const handleLogout = async () => {
@@ -49,13 +60,16 @@ export default function SidebarContent(props: DrawerContentComponentProps) {
     await logout();
   };
 
+  // Get current route name
+  const currentRoute = props.state?.routes?.[props.state.index]?.name || '';
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView 
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* ─── Logo - Small, left aligned ─── */}
+        {/* ─── Logo ─── */}
         <View style={styles.logoContainer}>
           <Image 
             source={require('../../assets/icon.png')} 
@@ -66,29 +80,49 @@ export default function SidebarContent(props: DrawerContentComponentProps) {
 
         {/* ─── Menu Items ─── */}
         <View style={styles.menuSection}>
-          {menuItems.map((item) => (
-            <TouchableOpacity
-              key={item.route}
-              style={styles.menuItem}
-              onPress={() => handleNavigate(item.route)}
-              activeOpacity={0.7}
-            >
-              <Feather 
-                name={item.icon} 
-                size={24} 
-                color={colors.text} 
-                style={styles.menuIcon}
-              />
-              <Text style={[styles.menuLabel, { color: colors.text }]}>
-                {item.label}
-              </Text>
-              {item.badge && item.badge > 0 && (
-                <View style={[styles.badge, { backgroundColor: colors.primary }]}>
-                  <Text style={styles.badgeText}>{item.badge}</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          ))}
+          {menuItems.map((item) => {
+            // Check if the current route matches this item
+            const isActive = currentRoute === item.route || 
+              (item.route === 'Feed' && currentRoute === 'MainTabs') ||
+              (item.route === 'Feed' && currentRoute === 'Main') ||
+              (item.route === 'Explore' && currentRoute === 'Explore') ||
+              (item.route === 'Messages' && currentRoute === 'Messages') ||
+              (item.route === 'Profile' && currentRoute === 'Profile') ||
+              (item.route === 'Settings' && currentRoute === 'Settings');
+
+            return (
+              <TouchableOpacity
+                key={item.route}
+                style={[
+                  styles.menuItem,
+                  isActive && { backgroundColor: isDark ? '#374151' : '#f3f4f6' },
+                ]}
+                onPress={() => handleNavigate(item.route)}
+                activeOpacity={0.7}
+              >
+                <Feather 
+                  name={item.icon} 
+                  size={24} 
+                  color={isActive ? colors.primary : colors.text} 
+                  style={styles.menuIcon}
+                />
+                <Text style={[
+                  styles.menuLabel, 
+                  { 
+                    color: isActive ? colors.primary : colors.text,
+                    fontWeight: isActive ? '700' : '500',
+                  }
+                ]}>
+                  {item.label}
+                </Text>
+                {item.badge && item.badge > 0 && (
+                  <View style={[styles.badge, { backgroundColor: colors.primary }]}>
+                    <Text style={styles.badgeText}>{item.badge}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
         {/* ─── Post Button ─── */}
@@ -96,7 +130,8 @@ export default function SidebarContent(props: DrawerContentComponentProps) {
           style={[styles.postButton, { backgroundColor: colors.primary }]}
           onPress={() => {
             props.navigation.closeDrawer();
-            navigation.navigate('CreatePostModal' as never);
+            // @ts-ignore
+            props.navigation.navigate('CreatePostModal');
           }}
         >
           <Text style={styles.postButtonText}>Post</Text>
@@ -150,7 +185,7 @@ const styles = StyleSheet.create({
   },
   logoContainer: {
     flexDirection: 'row',
-    justifyContent: 'flex-start', // Left aligned
+    justifyContent: 'flex-start',
     paddingVertical: 8,
     marginBottom: 4,
   },
@@ -177,7 +212,6 @@ const styles = StyleSheet.create({
   },
   menuLabel: {
     fontSize: 18,
-    fontWeight: '500',
     flex: 1,
   },
   badge: {
