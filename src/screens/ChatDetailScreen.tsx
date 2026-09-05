@@ -20,6 +20,7 @@ import { useWs } from '../contexts/WsContext';
 import { Avatar } from '../components/Avatar';
 import api from '../api/client';
 import { timeAgo } from '../utils/helpers';
+import { resolveMediaUrl } from '../lib/media'; // ✅ Import the helper
 
 // ── Types ──
 interface RouteParams {
@@ -53,6 +54,9 @@ export default function ChatDetailScreen() {
   const { isAlive, sendMessage, registerHandler, joinConversation, leaveConversation, sendTyping } = useWs();
 
   const { conversationId, otherUserId, otherName, otherPicture } = route.params as RouteParams;
+
+  // ✅ Resolve the other user's avatar
+  const otherAvatarUrl = resolveMediaUrl(otherPicture);
 
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
@@ -412,7 +416,8 @@ export default function ChatDetailScreen() {
           style={styles.headerInfo} 
           onPress={() => (navigation.navigate as any)('Profile', { userId: otherUserId })}
         >
-          <Avatar source={otherPicture} size={36} fallback={otherName || 'User'} />
+          {/* ✅ Use resolved avatar URL */}
+          <Avatar source={otherAvatarUrl} size={36} fallback={otherName || 'User'} />
           <View style={styles.headerText}>
             <Text style={[styles.headerName, { color: colors.text }]}>{otherName || 'User'}</Text>
             <View style={styles.headerStatus}>
@@ -614,7 +619,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderTopWidth: 1,
-    // paddingBottom is set dynamically with insets.bottom
   },
   input: {
     flex: 1,
