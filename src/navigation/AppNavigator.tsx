@@ -30,6 +30,7 @@ import ChangePasswordScreen from '../screens/ChangePasswordScreen';
 import BlockedUsersScreen from '../screens/BlockedUsersScreen';
 import PostDetailScreen from '../screens/PostDetailScreen';
 import EditPostScreen from '../screens/EditPostScreen';
+import NewMessageScreen from '../screens/NewMessageScreen';
 
 // ----- Components -----
 import SidebarContent from '../components/SidebarContent';
@@ -288,9 +289,9 @@ function MainStack() {
       />
       <Stack.Screen
         name="NewMessage"
-        component={MessagesScreen}
+        component={NewMessageScreen}
         options={{ 
-          title: 'New Message',
+          headerShown: false,
           cardStyle: { backgroundColor: colors.background },
         }}
       />
