@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -85,82 +85,90 @@ export default function ProfileScreen() {
     retry: 2,
   });
 
-  // ── Fetch ONLY the current user's posts ──
+  // ── Fetch ONLY the current user's posts, page by page ──
+  const normalizePost = (p: any) => ({
+    ...p,
+    id: String(p.id || ''),
+    text: p.text || p.content || '',
+    image: resolveMediaUrl(p.image || p.imageUrl || null),
+    video: resolveMediaUrl(p.video || p.videoUrl || null),
+    user: p.user || {
+      id: user?.id,
+      name: profile?.name || user?.name || 'Anonymous',
+      username: profile?.username || user?.username || '',
+      avatar: resolveMediaUrl(profile?.avatar || user?.avatar || null),
+      verified: false,
+    },
+    likes: Array.isArray(p.likes) ? p.likes : [],
+    comments: Array.isArray(p.comments) ? p.comments : [],
+    reposts: Array.isArray(p.reposts) ? p.reposts : [],
+    shares: Number(p.shares || 0),
+    viewCount: Number(p.viewCount || p.views || 0),
+    videoViews: Number(p.videoViews || 0),
+    isLive: !!p.isLive,
+    commentCount: Number(p.commentCount || 0),
+    repostCount: Number(p.repostCount || 0),
+    isRepost: !!p.isRepost,
+    groupId: p.groupId || null,
+    reasons: Array.isArray(p.reasons) ? p.reasons : [],
+    originalPost: p.originalPost ? {
+      ...p.originalPost,
+      text: p.originalPost.text || p.originalPost.content || '',
+      image: resolveMediaUrl(p.originalPost.image || null),
+      video: resolveMediaUrl(p.originalPost.video || null),
+    } : null,
+  });
+
   const {
-    data: posts = [],
+    data: postsPages,
     isLoading: postsLoading,
+    isFetchingNextPage,
+    hasNextPage,
+    fetchNextPage,
     refetch: refetchPosts,
-  } = useQuery({
+  } = useInfiniteQuery({
     queryKey: ['user-posts', user?.id],
-    queryFn: async () => {
-      if (!user) return [];
+    initialPageParam: 1,
+    queryFn: async ({ pageParam }) => {
+      if (!user) return { posts: [], hasMore: false, page: pageParam };
       const currentUserId = String(user.id);
-      console.log('📰 Fetching posts for user:', currentUserId);
+      console.log('📰 Fetching posts for user:', currentUserId, 'page', pageParam);
 
       try {
         // The backend's GET /posts only recognizes `userId` as the
         // profile-posts filter (see postController.getPosts — it routes to
         // PostModel.getProfilePosts when req.query.userId is present).
-        // Any other param name is silently ignored and falls through to
-        // the general feed, so this must be `userId`, not `authorId`.
         const response = await api.get(`/posts`, {
-          params: { userId: currentUserId, limit: 30 }
+          params: { userId: currentUserId, page: pageParam, limit: 30 }
         });
 
         console.log('📦 Posts response:', JSON.stringify(response.data, null, 2));
 
-        let postsData = [];
-        if (response.data.data?.posts) {
-          postsData = response.data.data.posts;
-        } else if (response.data.posts) {
-          postsData = response.data.posts;
-        } else if (response.data.data && Array.isArray(response.data.data)) {
-          postsData = response.data.data;
-        } else if (Array.isArray(response.data)) {
-          postsData = response.data;
-        } else {
-          postsData = [];
-        }
+        const body = response.data?.data ?? response.data ?? {};
+        const rawPosts = body.posts ?? (Array.isArray(body) ? body : []);
+        const hasMore = body.hasMore ?? (rawPosts.length === 30);
 
-        return postsData.map((p: any) => ({
-          ...p,
-          id: String(p.id || ''),
-          text: p.text || p.content || '',
-          image: resolveMediaUrl(p.image || p.imageUrl || null),
-          video: resolveMediaUrl(p.video || p.videoUrl || null),
-          user: p.user || {
-            id: user.id,
-            name: profile?.name || user.name || 'Anonymous',
-            username: profile?.username || user.username || '',
-            avatar: resolveMediaUrl(profile?.avatar || user.avatar || null),
-            verified: false,
-          },
-          likes: Array.isArray(p.likes) ? p.likes : [],
-          comments: Array.isArray(p.comments) ? p.comments : [],
-          reposts: Array.isArray(p.reposts) ? p.reposts : [],
-          shares: Number(p.shares || 0),
-          viewCount: Number(p.viewCount || p.views || 0),
-          videoViews: Number(p.videoViews || 0),
-          isLive: !!p.isLive,
-          commentCount: Number(p.commentCount || 0),
-          repostCount: Number(p.repostCount || 0),
-          isRepost: !!p.isRepost,
-          groupId: p.groupId || null,
-          reasons: Array.isArray(p.reasons) ? p.reasons : [],
-          originalPost: p.originalPost ? {
-            ...p.originalPost,
-            text: p.originalPost.text || p.originalPost.content || '',
-            image: resolveMediaUrl(p.originalPost.image || null),
-            video: resolveMediaUrl(p.originalPost.video || null),
-          } : null,
-        }));
+        return {
+          posts: rawPosts.map(normalizePost),
+          hasMore,
+          page: pageParam,
+        };
       } catch (error) {
         console.warn('Error fetching posts:', error);
-        return [];
+        return { posts: [], hasMore: false, page: pageParam };
       }
     },
+    getNextPageParam: (lastPage) => (lastPage.hasMore ? lastPage.page + 1 : undefined),
     enabled: !!user,
   });
+
+  const posts = postsPages?.pages.flatMap((pg) => pg.posts) ?? [];
+
+  const handleLoadMore = () => {
+    if (hasNextPage && !isFetchingNextPage) {
+      fetchNextPage();
+    }
+  };
 
   // ── Pull to refresh ──
   const handleRefresh = async () => {
@@ -254,7 +262,137 @@ export default function ProfileScreen() {
     );
   }
 
+  // ── Shared header: cover image, profile info, stats, tabs ──
+  const renderHeader = () => (
+    <>
+      {/* ─── Cover Image ─── */}
+      {profile.coverImage ? (
+        <View style={styles.coverContainer}>
+          <Image source={{ uri: profile.coverImage }} style={styles.coverImage} resizeMode="cover" />
+          <View style={[styles.coverOverlay, { backgroundColor: 'rgba(0,0,0,0.2)' }]} />
+        </View>
+      ) : (
+        <View style={[styles.coverPlaceholder, { backgroundColor: isDark ? '#374151' : '#e5e7eb' }]} />
+      )}
+
+      {/* ─── Profile Header ─── */}
+      <View style={styles.header}>
+        <View style={styles.avatarRow}>
+          <View style={[styles.avatarBorder, { borderColor: colors.surface, backgroundColor: colors.surface }]}>
+            <Avatar source={profile.avatar} size={80} fallback={profile.name} />
+          </View>
+          <View style={styles.headerActions}>
+            {profile.isCurrentUser && (
+              <>
+                <TouchableOpacity
+                  style={[styles.editButton, { borderColor: colors.border }]}
+                  onPress={handleEditProfile}
+                >
+                  <Text style={[styles.editButtonText, { color: colors.text }]}>Edit Profile</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.settingsButton, { backgroundColor: isDark ? '#374151' : '#f3f4f6' }]}
+                  onPress={() => (navigation.navigate as any)('Settings')}
+                >
+                  <Feather name="settings" size={22} color={colors.text} />
+                </TouchableOpacity>
+              </>
+            )}
+            {!profile.isCurrentUser && (
+              <TouchableOpacity
+                style={[styles.followButton, { backgroundColor: profile.isFollowed ? (isDark ? '#374151' : '#e5e7eb') : colors.primary }, profile.isFollowed && styles.followButtonActive]}
+                onPress={() => console.log('Toggle follow')}
+              >
+                <Text
+                  style={[styles.followButtonText, profile.isFollowed && styles.followButtonTextActive]}
+                >
+                  {profile.isFollowed ? 'Following' : 'Follow'}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+
+        <Text style={[styles.name, { color: colors.text }]}>{safeString(profile.name)}</Text>
+        <Text style={[styles.username, { color: colors.textSecondary }]}>@{safeString(profile.username)}</Text>
+
+        {profile.bio && <Text style={[styles.bio, { color: colors.text }]}>{safeString(profile.bio)}</Text>}
+
+        <View style={[styles.statsRow, { borderTopColor: colors.border }]}>
+          <TouchableOpacity style={styles.statItem}>
+            <Text style={[styles.statNumber, { color: colors.text }]}>{formatNumber(profile.postsCount)}</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Posts</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.statItem}>
+            <Text style={[styles.statNumber, { color: colors.text }]}>{formatNumber(profile.followersCount)}</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Followers</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.statItem}>
+            <Text style={[styles.statNumber, { color: colors.text }]}>{formatNumber(profile.followingCount)}</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Following</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* ─── Tabs ─── */}
+      <View style={[styles.tabsRow, { borderBottomColor: colors.border }]}>
+        {(['posts', 'replies', 'media'] as ProfileTab[]).map((tab) => (
+          <TouchableOpacity
+            key={tab}
+            style={[styles.tab, activeTab === tab && styles.tabActive]}
+            onPress={() => setActiveTab(tab)}
+          >
+            <Text style={[styles.tabText, { color: colors.textSecondary }, activeTab === tab && styles.tabTextActive]}>
+              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </>
+  );
+
   // ── Main render ──
+  // The Posts tab uses FlatList as the actual scroll container (header
+  // passed via ListHeaderComponent) so pagination via onEndReached can
+  // work — a FlatList nested inside a scrolling ScrollView never fires
+  // onEndReached, since the FlatList itself isn't the thing scrolling.
+  if (activeTab === 'posts') {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <FlatList
+          data={posts}
+          keyExtractor={(item) => item.id}
+          renderItem={renderPostItem}
+          ListHeaderComponent={renderHeader}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{
+            paddingBottom: contentBottomPadding,
+          }}
+          style={styles.content}
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.5}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} />
+          }
+          ListFooterComponent={
+            isFetchingNextPage ? (
+              <ActivityIndicator style={{ marginVertical: 16 }} color={colors.primary} />
+            ) : null
+          }
+          ListEmptyComponent={
+            postsLoading ? null : (
+              <View style={styles.emptyState}>
+                <Feather name="file-text" size={48} color={colors.textMuted} />
+                <Text style={[styles.emptyTitle, { color: colors.text }]}>No posts yet</Text>
+                <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>When you post, they'll appear here.</Text>
+              </View>
+            )
+          }
+        />
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView
@@ -266,108 +404,10 @@ export default function ProfileScreen() {
           paddingBottom: contentBottomPadding,
         }}
       >
-        {/* ─── Cover Image ─── */}
-        {profile.coverImage ? (
-          <View style={styles.coverContainer}>
-            <Image source={{ uri: profile.coverImage }} style={styles.coverImage} resizeMode="cover" />
-            <View style={[styles.coverOverlay, { backgroundColor: 'rgba(0,0,0,0.2)' }]} />
-          </View>
-        ) : (
-          <View style={[styles.coverPlaceholder, { backgroundColor: isDark ? '#374151' : '#e5e7eb' }]} />
-        )}
-
-        {/* ─── Profile Header ─── */}
-        <View style={styles.header}>
-          <View style={styles.avatarRow}>
-            <View style={[styles.avatarBorder, { borderColor: colors.surface, backgroundColor: colors.surface }]}>
-              <Avatar source={profile.avatar} size={80} fallback={profile.name} />
-            </View>
-            <View style={styles.headerActions}>
-              {profile.isCurrentUser && (
-                <>
-                  <TouchableOpacity
-                    style={[styles.editButton, { borderColor: colors.border }]}
-                    onPress={handleEditProfile}
-                  >
-                    <Text style={[styles.editButtonText, { color: colors.text }]}>Edit Profile</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.settingsButton, { backgroundColor: isDark ? '#374151' : '#f3f4f6' }]}
-                    onPress={() => (navigation.navigate as any)('Settings')}
-                  >
-                    <Feather name="settings" size={22} color={colors.text} />
-                  </TouchableOpacity>
-                </>
-              )}
-              {!profile.isCurrentUser && (
-                <TouchableOpacity
-                  style={[styles.followButton, { backgroundColor: profile.isFollowed ? (isDark ? '#374151' : '#e5e7eb') : colors.primary }, profile.isFollowed && styles.followButtonActive]}
-                  onPress={() => console.log('Toggle follow')}
-                >
-                  <Text
-                    style={[styles.followButtonText, profile.isFollowed && styles.followButtonTextActive]}
-                  >
-                    {profile.isFollowed ? 'Following' : 'Follow'}
-                  </Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          </View>
-
-          <Text style={[styles.name, { color: colors.text }]}>{safeString(profile.name)}</Text>
-          <Text style={[styles.username, { color: colors.textSecondary }]}>@{safeString(profile.username)}</Text>
-
-          {profile.bio && <Text style={[styles.bio, { color: colors.text }]}>{safeString(profile.bio)}</Text>}
-
-          <View style={[styles.statsRow, { borderTopColor: colors.border }]}>
-            <TouchableOpacity style={styles.statItem}>
-              <Text style={[styles.statNumber, { color: colors.text }]}>{formatNumber(profile.postsCount)}</Text>
-              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Posts</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.statItem}>
-              <Text style={[styles.statNumber, { color: colors.text }]}>{formatNumber(profile.followersCount)}</Text>
-              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Followers</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.statItem}>
-              <Text style={[styles.statNumber, { color: colors.text }]}>{formatNumber(profile.followingCount)}</Text>
-              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Following</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* ─── Tabs ─── */}
-        <View style={[styles.tabsRow, { borderBottomColor: colors.border }]}>
-          {(['posts', 'replies', 'media'] as ProfileTab[]).map((tab) => (
-            <TouchableOpacity
-              key={tab}
-              style={[styles.tab, activeTab === tab && styles.tabActive]}
-              onPress={() => setActiveTab(tab)}
-            >
-              <Text style={[styles.tabText, { color: colors.textSecondary }, activeTab === tab && styles.tabTextActive]}>
-                {tab.charAt(0).toUpperCase() + tab.slice(1)}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+        {renderHeader()}
 
         {/* ─── Content ─── */}
         <View style={styles.content}>
-          {activeTab === 'posts' && (
-            <FlatList
-              data={posts}
-              keyExtractor={(item) => item.id}
-              renderItem={renderPostItem}
-              scrollEnabled={false}
-              contentContainerStyle={styles.postsContainer}
-              ListEmptyComponent={
-                <View style={styles.emptyState}>
-                  <Feather name="file-text" size={48} color={colors.textMuted} />
-                  <Text style={[styles.emptyTitle, { color: colors.text }]}>No posts yet</Text>
-                  <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>When you post, they'll appear here.</Text>
-                </View>
-              }
-            />
-          )}
           {activeTab === 'replies' && (
             <View style={styles.emptyState}>
               <Feather name="message-circle" size={48} color={colors.textMuted} />
