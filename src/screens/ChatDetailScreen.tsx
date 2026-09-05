@@ -11,7 +11,7 @@ import {
   StyleSheet,
   Alert,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
@@ -49,6 +49,7 @@ export default function ChatDetailScreen() {
   const navigation = useNavigation();
   const { user } = useAuth();
   const { colors, isDark } = useTheme();
+  const insets = useSafeAreaInsets();
   const { isAlive, sendMessage, registerHandler, joinConversation, leaveConversation, sendTyping } = useWs();
 
   const { conversationId, otherUserId, otherName, otherPicture } = route.params as RouteParams;
@@ -74,10 +75,7 @@ export default function ChatDetailScreen() {
         ? `/dm/conversations/${conversationId}/messages?limit=20&before_id=${beforeId}`
         : `/dm/conversations/${conversationId}/messages?limit=20`;
       
-      console.log('📦 Fetching messages from:', url);
       const response = await api.get(url);
-      console.log('📦 Messages response:', JSON.stringify(response.data, null, 2));
-      
       const data = response.data;
       
       let msgs = [];
@@ -108,9 +106,6 @@ export default function ChatDetailScreen() {
         hasMoreData = data.hasMore || false;
       }
       
-      console.log('📦 Parsed messages count:', msgs.length);
-      console.log('📦 Has more:', hasMoreData);
-      
       return { messages: msgs, hasMore: hasMoreData };
     } catch (error) {
       console.error('Error fetching messages:', error);
@@ -125,7 +120,6 @@ export default function ChatDetailScreen() {
       setError(null);
       try {
         const result = await fetchMessages();
-        console.log('📦 Setting messages:', result.messages.length);
         setMessages(result.messages);
         setHasMore(result.hasMore);
         if (result.messages.length > 0) {
@@ -231,7 +225,7 @@ export default function ChatDetailScreen() {
     if (!trimmed || sending) return;
 
     setSending(true);
-    const tempId = `tmp_${Date.now()}`;
+    const tempId = `tmp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
     const tempMsg: Message = {
       id: tempId,
@@ -305,17 +299,51 @@ export default function ChatDetailScreen() {
 
   // ── Render message ──
   const renderMessage = ({ item }: { item: Message }) => {
-    const isMine = item.sender_id === user?.id;
+    // Compare as strings, and accept a couple of likely field-name
+    // variants — if the API ever returns sender_id as a number, or
+    // under a different key (senderId/userId), a strict === against
+    // item.sender_id would silently make isMine false for every
+    // message, which shows up exactly as "everything renders on the
+    // left with the same background."
+    const rawSenderId =
+      item.sender_id ?? (item as any).senderId ?? (item as any).userId ?? (item as any).user_id;
+    const isMine = rawSenderId != null && user?.id != null && String(rawSenderId) === String(user.id);
     const isTemp = String(item.id).startsWith('tmp_');
     const time = timeAgo(item.created_at);
 
     return (
-      <View style={[styles.messageWrapper, isMine && styles.myMessageWrapper]}>
-        <View style={[styles.messageBubble, isMine ? styles.myBubble : styles.otherBubble]}>
-          <Text style={[styles.messageText, isMine ? styles.myText : styles.otherText]}>
+      <View 
+        style={[
+          styles.messageRow,
+          isMine ? styles.messageRowRight : styles.messageRowLeft,
+        ]}
+      >
+        <View 
+          style={[
+            styles.messageBubble,
+            isMine 
+              ? [styles.bubbleRight, { backgroundColor: colors.primary }] 
+              : [styles.bubbleLeft, { 
+                  backgroundColor: isDark ? '#374151' : '#f3f4f6',
+                  borderWidth: isDark ? 0 : 1,
+                  borderColor: colors.border,
+                }]
+          ]}
+        >
+          <Text 
+            style={[
+              styles.messageText,
+              { color: isMine ? 'white' : colors.text }
+            ]}
+          >
             {item.body || item._plain || '(empty message)'}
           </Text>
-          <Text style={[styles.messageTime, isMine ? styles.myTime : styles.otherTime]}>
+          <Text 
+            style={[
+              styles.messageTime,
+              { color: isMine ? 'rgba(255,255,255,0.7)' : colors.textMuted }
+            ]}
+          >
             {time}
             {isTemp && ' (sending...)'}
             {item.is_read && isMine && !isTemp && ' ✓✓'}
@@ -324,6 +352,12 @@ export default function ChatDetailScreen() {
       </View>
     );
   };
+
+  // ── Key extractor with unique keys ──
+  const keyExtractor = useCallback((item: Message, index: number) => {
+    // Use id + index as fallback for safety
+    return item.id ? `${item.id}-${index}` : `msg-${index}`;
+  }, []);
 
   // ── Scroll to bottom on new messages ──
   useEffect(() => {
@@ -403,7 +437,7 @@ export default function ChatDetailScreen() {
       <FlatList
         ref={flatListRef}
         data={messages}
-        keyExtractor={(item) => item.id}
+        keyExtractor={keyExtractor}
         renderItem={renderMessage}
         contentContainerStyle={[styles.messagesContainer, { backgroundColor: colors.background }]}
         onEndReached={loadMoreMessages}
@@ -426,16 +460,17 @@ export default function ChatDetailScreen() {
       >
         <View style={[styles.inputBar, { 
           backgroundColor: colors.surface, 
-          borderTopColor: colors.border 
+          borderTopColor: colors.border,
+          paddingBottom: Math.max(insets.bottom, 8),
         }]}>
           <TextInput
             ref={inputRef}
             style={[styles.input, { 
-              backgroundColor: colors.input, 
+              backgroundColor: colors.input || (isDark ? '#1f2937' : '#f3f4f6'), 
               color: colors.text 
             }]}
             placeholder="Type a message..."
-            placeholderTextColor={colors.placeholder}
+            placeholderTextColor={colors.placeholder || '#9ca3af'}
             value={input}
             onChangeText={handleInputChange}
             multiline
@@ -544,46 +579,37 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     flexGrow: 1,
   },
-  messageWrapper: {
+  messageRow: {
     marginVertical: 3,
-    alignItems: 'flex-start',
+    flexDirection: 'row',
+    width: '100%',
   },
-  myMessageWrapper: {
-    alignItems: 'flex-end',
+  messageRowLeft: {
+    justifyContent: 'flex-start',
+  },
+  messageRowRight: {
+    justifyContent: 'flex-end',
   },
   messageBubble: {
-    maxWidth: '80%',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 16,
+    maxWidth: '75%',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 18,
   },
-  myBubble: {
-    borderBottomRightRadius: 4,
-  },
-  otherBubble: {
+  bubbleLeft: {
     borderBottomLeftRadius: 4,
-    borderWidth: 1,
+  },
+  bubbleRight: {
+    borderBottomRightRadius: 4,
   },
   messageText: {
     fontSize: 15,
     lineHeight: 20,
   },
-  myText: {
-    color: 'white',
-  },
-  otherText: {
-    color: '#1f2937',
-  },
   messageTime: {
     fontSize: 10,
     marginTop: 4,
-  },
-  myTime: {
-    color: 'rgba(255,255,255,0.7)',
-    textAlign: 'right',
-  },
-  otherTime: {
-    color: '#9ca3af',
+    alignSelf: 'flex-end',
   },
   loadingMore: {
     paddingVertical: 8,
@@ -595,7 +621,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderTopWidth: 1,
-    paddingBottom: Platform.OS === 'ios' ? 8 : 8,
   },
   input: {
     flex: 1,
