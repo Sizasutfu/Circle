@@ -94,28 +94,21 @@ export default function ProfileScreen() {
     queryKey: ['user-posts', user?.id],
     queryFn: async () => {
       if (!user) return [];
-      console.log('📰 Fetching posts for user:', user.id);
-      
+      const currentUserId = String(user.id);
+      console.log('📰 Fetching posts for user:', currentUserId);
+
       try {
-        let response;
-        try {
-          response = await api.get(`/posts`, {
-            params: { authorId: user.id, limit: 30 }
-          });
-        } catch {
-          try {
-            response = await api.get(`/posts`, {
-              params: { userId: user.id, limit: 30 }
-            });
-          } catch {
-            response = await api.get(`/posts`, {
-              params: { user_id: user.id, limit: 30 }
-            });
-          }
-        }
-        
+        // The backend's GET /posts only recognizes `userId` as the
+        // profile-posts filter (see postController.getPosts — it routes to
+        // PostModel.getProfilePosts when req.query.userId is present).
+        // Any other param name is silently ignored and falls through to
+        // the general feed, so this must be `userId`, not `authorId`.
+        const response = await api.get(`/posts`, {
+          params: { userId: currentUserId, limit: 30 }
+        });
+
         console.log('📦 Posts response:', JSON.stringify(response.data, null, 2));
-        
+
         let postsData = [];
         if (response.data.data?.posts) {
           postsData = response.data.data.posts;
@@ -128,7 +121,7 @@ export default function ProfileScreen() {
         } else {
           postsData = [];
         }
-        
+
         return postsData.map((p: any) => ({
           ...p,
           id: String(p.id || ''),
