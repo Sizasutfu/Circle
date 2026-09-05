@@ -8,6 +8,8 @@ import {
   Alert,
   StyleSheet,
   Linking,
+  Platform,
+  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -16,6 +18,10 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { Avatar } from '../components/Avatar';
 import { useTabBarHeight } from '../hooks/useTabBarHeight';
+
+const { width: screenWidth } = Dimensions.get('window');
+const isWeb = Platform.OS === 'web';
+const maxContentWidth = 600;
 
 export default function SettingsScreen() {
   const navigation = useNavigation();
@@ -142,7 +148,18 @@ export default function SettingsScreen() {
   );
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+    <SafeAreaView 
+      style={[
+        styles.container,
+        { backgroundColor: colors.background },
+        isWeb && {
+          maxWidth: maxContentWidth,
+          alignSelf: 'center' as 'center',
+          width: '100%',
+        },
+      ]} 
+      edges={['top']}
+    >
       {/* ─── Header ─── */}
       <View style={[styles.header, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>

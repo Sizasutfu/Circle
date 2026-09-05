@@ -256,9 +256,9 @@ export default function ExploreScreen() {
     (navigation.navigate as any)('CreatePostModal');
   }, [navigation]);
 
-  // ── Handle topic press - navigate to TopicDetailScreen ──
+  // ── Handle topic press - navigate to TopicsScreen ──
   const handleTopicPress = useCallback((topic: string) => {
-    (navigation.navigate as any)('TopicDetail', { topic });
+    (navigation.navigate as any)('Topics');
   }, [navigation]);
 
   const runSearch = useCallback(
@@ -572,6 +572,7 @@ export default function ExploreScreen() {
           />
         )
       ) : !showHistory ? (
+        // ✅ Use AnimatedFlatList here
         <AnimatedFlatList
           ref={flatListRef}
           data={trendingPosts}
@@ -601,6 +602,7 @@ export default function ExploreScreen() {
           maxToRenderPerBatch={5}
           updateCellsBatchingPeriod={50}
           windowSize={7}
+          // ✅ Remove onScroll since we're not using it
         />
       ) : null}
 

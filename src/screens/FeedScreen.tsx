@@ -8,6 +8,8 @@ import {
   RefreshControl,
   StyleSheet,
   Animated,
+  Platform,
+  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -19,6 +21,11 @@ import { useTabBarHeight } from '../hooks/useTabBarHeight';
 import PostCard, { Post } from '../components/PostCard';
 import { useWs } from '../contexts/WsContext';
 import { useQueryClient } from '@tanstack/react-query';
+import AppHeader from '../components/AppHeader';
+
+const { width: screenWidth } = Dimensions.get('window');
+const isWeb = Platform.OS === 'web';
+const maxContentWidth = 600;
 
 type FeedTab = 'global' | 'following';
 
@@ -71,7 +78,6 @@ export default function FeedScreen() {
 
   // ── WebSocket handlers for real-time updates ──
   useEffect(() => {
-    // Handle like updates from WebSocket
     const unregisterLikeUpdate = registerHandler('like_update', (data: any) => {
       console.log('📊 Like update via WebSocket:', data);
       
@@ -96,7 +102,6 @@ export default function FeedScreen() {
       });
     });
 
-    // Handle repost updates from WebSocket
     const unregisterRepostUpdate = registerHandler('repost_update', (data: any) => {
       console.log('📊 Repost update via WebSocket:', data);
       
@@ -122,7 +127,6 @@ export default function FeedScreen() {
       });
     });
 
-    // Handle comment updates from WebSocket
     const unregisterCommentUpdate = registerHandler('comment_update', (data: any) => {
       console.log('📊 Comment update via WebSocket:', data);
       
@@ -239,6 +243,17 @@ export default function FeedScreen() {
     );
   }, [isFetchingNextPage]);
 
+  // ── Responsive container style using StyleSheet.flatten ──
+  const containerStyle = StyleSheet.flatten([
+    styles.container,
+    { backgroundColor: colors.background },
+    isWeb && {
+      maxWidth: maxContentWidth,
+      alignSelf: 'center' as const,
+      width: '100%' as const,
+    },
+  ]);
+
   if (isLoading) {
     return (
       <SafeAreaView style={[styles.loadingContainer, { backgroundColor: colors.background }]} edges={['top']}>
@@ -263,60 +278,52 @@ export default function FeedScreen() {
 
   if (posts.length === 0) {
     return (
-      <SafeAreaView style={[styles.emptyContainer, { backgroundColor: colors.background }]} edges={['top']}>
-        <Feather name="feather" size={48} color={colors.textMuted} />
-        <Text style={[styles.emptyTitle, { color: colors.text }]}>No posts yet</Text>
-        <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
-          {activeTab === 'global'
-            ? 'There are no posts in the global feed yet.'
-            : "You're not following anyone yet. Discover people to follow!"}
-        </Text>
-        {activeTab === 'following' && (
-          <TouchableOpacity
-            style={[styles.emptyButton, { backgroundColor: colors.primary }]}
-            onPress={() => setActiveTab('global')}
+      <SafeAreaView style={containerStyle} edges={['top']}>
+        <View style={styles.emptyContainer}>
+          <Feather name="feather" size={48} color={colors.textMuted} />
+          <Text style={[styles.emptyTitle, { color: colors.text }]}>No posts yet</Text>
+          <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
+            {activeTab === 'global'
+              ? 'There are no posts in the global feed yet.'
+              : "You're not following anyone yet. Discover people to follow!"}
+          </Text>
+          {activeTab === 'following' && (
+            <TouchableOpacity
+              style={[styles.emptyButton, { backgroundColor: colors.primary }]}
+              onPress={() => setActiveTab('global')}
+            >
+              <Text style={styles.emptyButtonText}>View Global Feed</Text>
+            </TouchableOpacity>
+          )}
+          <Animated.View
+            style={[
+              styles.fabContainer,
+              { bottom: fabBottomOffset },
+            ]}
           >
-            <Text style={styles.emptyButtonText}>View Global Feed</Text>
-          </TouchableOpacity>
-        )}
-        <Animated.View
-          style={[
-            styles.fabContainer,
-            { bottom: fabBottomOffset },
-          ]}
-        >
-          <TouchableOpacity style={[styles.fab, { backgroundColor: colors.primary }]} onPress={handleCreatePost}>
-            <Feather name="plus" size={28} color="white" />
-          </TouchableOpacity>
-        </Animated.View>
+            <TouchableOpacity style={[styles.fab, { backgroundColor: colors.primary }]} onPress={handleCreatePost}>
+              <Feather name="plus" size={28} color="white" />
+            </TouchableOpacity>
+          </Animated.View>
+        </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* ─── Header ─── */}
-      <View style={[styles.header, { 
-        backgroundColor: colors.surface, 
-        borderBottomColor: colors.border 
-      }]}>
-        <View style={styles.headerLeft}>
-          <Text style={[styles.headerTitle, { color: colors.primary }]}>Circle</Text>
-        </View>
-        <View style={styles.headerRight}>
-          <TouchableOpacity onPress={handleNotifications} style={styles.headerIcon}>
-            <Feather name="bell" size={22} color={colors.text} />
-          </TouchableOpacity>
-          {!user && (
-            <TouchableOpacity
-              style={[styles.signInButton, { backgroundColor: colors.primary }]}
-              onPress={() => (navigation.navigate as any)('Login')}
-            >
-              <Text style={styles.signInButtonText}>Sign In</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
+    <View style={containerStyle}>
+      {/* ─── AppHeader ─── */}
+      <AppHeader 
+        title="Circle" 
+        showMenu={true}
+        rightActions={[
+          {
+            icon: 'bell',
+            onPress: handleNotifications,
+            badge: 0,
+          },
+        ]}
+      />
 
       {/* ─── Tabs ─── */}
       <View style={[styles.tabsContainer, { 
@@ -456,42 +463,6 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: '600',
     fontSize: 14,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  headerTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  headerIcon: {
-    padding: 6,
-    marginLeft: 4,
-  },
-  signInButton: {
-    marginLeft: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 16,
-  },
-  signInButtonText: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: '600',
   },
   tabsContainer: {
     flexDirection: 'row',

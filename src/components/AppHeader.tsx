@@ -9,13 +9,14 @@ import {
   StatusBar,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, DrawerActions } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../contexts/ThemeContext';
 
 interface AppHeaderProps {
   title?: string;
   showBack?: boolean;
+  showMenu?: boolean;
   rightActions?: {
     icon: keyof typeof Feather.glyphMap;
     onPress: () => void;
@@ -29,6 +30,7 @@ interface AppHeaderProps {
 export default function AppHeader({
   title = 'Circle',
   showBack = false,
+  showMenu = true,
   rightActions = [],
   onBackPress,
   transparent = false,
@@ -66,6 +68,10 @@ export default function AppHeader({
     }
   };
 
+  const handleMenuPress = () => {
+    navigation.dispatch(DrawerActions.openDrawer());
+  };
+
   // ── Dynamic header styles ──
   const headerStyles = [
     styles.container,
@@ -75,14 +81,14 @@ export default function AppHeader({
       backgroundColor: transparent
         ? 'transparent'
         : isDark
-        ? 'rgba(18, 18, 18, 0.85)'
-        : 'rgba(255, 255, 255, 0.82)',
+        ? colors.surface || '#1a1a2e'
+        : colors.surface || '#ffffff',
       borderBottomWidth: transparent ? 0 : 1,
       borderBottomColor: transparent
         ? 'transparent'
         : isDark
-        ? 'rgba(255,255,255,0.06)'
-        : 'rgba(0,0,0,0.04)',
+        ? colors.border || 'rgba(255,255,255,0.1)'
+        : colors.border || 'rgba(0,0,0,0.08)',
     },
     elevated && !transparent && {
       shadowColor: isDark ? 'rgba(0,0,0,0.4)' : '#000',
@@ -109,9 +115,9 @@ export default function AppHeader({
     },
   ];
 
-  // ── Back button styles ──
-  const backButtonStyles = [
-    styles.backButton,
+  // ── Button styles ──
+  const buttonStyles = [
+    styles.actionButton,
     {
       backgroundColor: transparent
         ? 'rgba(255,255,255,0.1)'
@@ -137,7 +143,7 @@ export default function AppHeader({
           {showBack ? (
             <TouchableOpacity
               onPress={handleBack}
-              style={backButtonStyles}
+              style={buttonStyles}
               activeOpacity={0.6}
             >
               <Feather
@@ -146,19 +152,29 @@ export default function AppHeader({
                 color={transparent ? colors.text : colors.text}
               />
             </TouchableOpacity>
-          ) : (
-            <View style={styles.logoContainer}>
-              <Text style={logoStyles}>{title}</Text>
-            </View>
-          )}
+          ) : showMenu ? (
+            <TouchableOpacity
+              onPress={handleMenuPress}
+              style={buttonStyles}
+              activeOpacity={0.6}
+            >
+              <Feather
+                name="menu"
+                size={24}
+                color={transparent ? colors.text : colors.text}
+              />
+            </TouchableOpacity>
+          ) : null}
         </View>
 
         {/* ─── Center Section ─── */}
         <View style={styles.centerSection}>
-          {showBack && title && (
+          {(showBack || showMenu) && title ? (
             <Text style={titleStyles} numberOfLines={1}>
               {title}
             </Text>
+          ) : (
+            <Text style={logoStyles}>{title}</Text>
           )}
         </View>
 
@@ -195,12 +211,6 @@ const styles = StyleSheet.create({
   container: {
     position: 'relative',
     zIndex: 100,
-    // iOS blur effect - using shadow instead of backdropFilter
-    ...Platform.select({
-      ios: {
-        // Remove backdropFilter and use shadow + background color with opacity
-      },
-    }),
   },
   innerContainer: {
     flexDirection: 'row',
@@ -216,21 +226,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-start',
   },
-  logoContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  logo: {
-    fontSize: 18,
-    fontWeight: '700',
-    letterSpacing: 2,
-    textTransform: 'uppercase',
-  },
-  backButton: {
+  actionButton: {
     padding: 8,
-    marginLeft: -8,
+    marginLeft: 4,
     borderRadius: 20,
-    minWidth: 40,
+    minWidth: 36,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -246,20 +246,17 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     textAlign: 'center',
   },
+  logo: {
+    fontSize: 18,
+    fontWeight: '700',
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+  },
   rightSection: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
-  },
-  actionButton: {
-    padding: 8,
-    marginLeft: 4,
-    position: 'relative',
-    borderRadius: 20,
-    minWidth: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   badge: {
     position: 'absolute',

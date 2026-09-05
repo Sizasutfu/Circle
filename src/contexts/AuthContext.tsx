@@ -1,6 +1,55 @@
 import React, { createContext, useState, useContext, useEffect, useCallback, ReactNode } from 'react';
+import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import api from '../api/client';
+
+// ── Storage helper that works on both native and web ──
+const storage = {
+  getItem: async (key: string): Promise<string | null> => {
+    if (Platform.OS === 'web') {
+      try {
+        return localStorage.getItem(key);
+      } catch {
+        return null;
+      }
+    }
+    try {
+      return await SecureStore.getItemAsync(key);
+    } catch {
+      return null;
+    }
+  },
+  setItem: async (key: string, value: string): Promise<void> => {
+    if (Platform.OS === 'web') {
+      try {
+        localStorage.setItem(key, value);
+        return;
+      } catch {
+        return;
+      }
+    }
+    try {
+      await SecureStore.setItemAsync(key, value);
+    } catch {
+      return;
+    }
+  },
+  deleteItem: async (key: string): Promise<void> => {
+    if (Platform.OS === 'web') {
+      try {
+        localStorage.removeItem(key);
+        return;
+      } catch {
+        return;
+      }
+    }
+    try {
+      await SecureStore.deleteItemAsync(key);
+    } catch {
+      return;
+    }
+  },
+};
 
 // ============================================================
 //  TYPES
@@ -55,20 +104,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // ── Load user from SecureStore on app start ──
+  // ── Load user from storage on app start ──
   useEffect(() => {
     const loadUser = async () => {
       try {
-        const token = await SecureStore.getItemAsync('auth_token');
-        const userData = await SecureStore.getItemAsync('user_data');
+        const token = await storage.getItem('auth_token');
+        const userData = await storage.getItem('user_data');
         if (token && userData) {
           setUser(JSON.parse(userData));
-          console.log('✅ User loaded from SecureStore');
+          console.log('✅ User loaded from storage');
         }
       } catch (error) {
         console.warn('Failed to load user:', error);
-        await SecureStore.deleteItemAsync('auth_token');
-        await SecureStore.deleteItemAsync('user_data');
+        await storage.deleteItem('auth_token');
+        await storage.deleteItem('user_data');
         setUser(null);
       } finally {
         setIsLoading(false);
@@ -80,17 +129,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   // ── Set user and persist both token and user ──
   const setCurrentUser = useCallback(async (userData: User | null, token?: string) => {
     if (token) {
-      await SecureStore.setItemAsync('auth_token', token);
-      console.log('🔑 Token saved to SecureStore');
+      await storage.setItem('auth_token', token);
+      console.log('🔑 Token saved to storage');
     } else if (!userData) {
-      await SecureStore.deleteItemAsync('auth_token');
+      await storage.deleteItem('auth_token');
     }
     if (userData) {
-      await SecureStore.setItemAsync('user_data', JSON.stringify(userData));
+      await storage.setItem('user_data', JSON.stringify(userData));
       setUser(userData);
-      console.log('👤 User saved to SecureStore:', userData.username || userData.name);
+      console.log('👤 User saved to storage:', userData.username || userData.name);
     } else {
-      await SecureStore.deleteItemAsync('user_data');
+      await storage.deleteItem('user_data');
       setUser(null);
     }
   }, []);
@@ -230,7 +279,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   // ── Update user ──
   const updateUser = useCallback((updatedUser: User) => {
     setUser(updatedUser);
-    SecureStore.setItemAsync('user_data', JSON.stringify(updatedUser));
+    storage.setItem('user_data', JSON.stringify(updatedUser));
   }, []);
 
   // ============================================================

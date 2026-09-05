@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
+import { createDrawerNavigator } from '@react-navigation/drawer';
 import { createStackNavigator, TransitionPresets } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Feather } from '@expo/vector-icons';
@@ -7,7 +8,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Platform, View } from 'react-native';
+import { Platform, View, StyleSheet, Dimensions } from 'react-native';
 
 // ----- Screens -----
 import WelcomeScreen from '../screens/WelcomeScreen';
@@ -16,6 +17,8 @@ import SignUpScreen from '../screens/SignUpScreen';
 import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
 import FeedScreen from '../screens/FeedScreen';
 import ExploreScreen from '../screens/ExploreScreen';
+import TopicsScreen from '../screens/TopicsScreen';
+import TopicDetailScreen from '../screens/TopicDetailScreen';
 import MessagesScreen from '../screens/MessagesScreen';
 import ChatDetailScreen from '../screens/ChatDetailScreen';
 import CreatePostScreen from '../screens/CreatePostScreen';
@@ -29,22 +32,33 @@ import PostDetailScreen from '../screens/PostDetailScreen';
 import EditPostScreen from '../screens/EditPostScreen';
 
 // ----- Components -----
-import AppHeader from '../components/AppHeader';
+import SidebarContent from '../components/SidebarContent';
 
 // ----- Shared layout -----
 import { TAB_BAR_CONTENT_HEIGHT } from '../constants/layout';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
+const Drawer = createDrawerNavigator();
+
+// ── Check if web ──
+const isWeb = Platform.OS === 'web';
+const { width: screenWidth } = Dimensions.get('window');
+const maxContentWidth = 600;
 
 // ============================================================
-//  Bottom Tab Navigator with Dark Mode
+//  Bottom Tab Navigator with Dark Mode (Mobile Only)
 // ============================================================
 function MainTabs() {
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
   const bottomInset = Math.max(insets.bottom, 0);
   const tabBarHeight = TAB_BAR_CONTENT_HEIGHT + bottomInset;
+
+  // Hide tab bar on web
+  if (isWeb) {
+    return null;
+  }
 
   return (
     <Tab.Navigator
@@ -96,6 +110,79 @@ function MainTabs() {
 }
 
 // ============================================================
+//  Web Navigator (No Bottom Tabs)
+// ============================================================
+function WebNavigator() {
+  const { colors } = useTheme();
+
+  return (
+    <Stack.Navigator
+      screenOptions={{
+        headerShown: false,
+        cardStyle: { backgroundColor: colors.background },
+      }}
+    >
+      <Stack.Screen name="Feed" component={FeedScreen} />
+      <Stack.Screen name="Explore" component={ExploreScreen} />
+      <Stack.Screen name="Messages" component={MessagesScreen} />
+      <Stack.Screen name="Profile" component={ProfileScreen} />
+      <Stack.Screen name="Settings" component={SettingsScreen} />
+      <Stack.Screen name="Notifications" component={NotificationsScreen} />
+      <Stack.Screen name="Topics" component={TopicsScreen} />
+      <Stack.Screen name="TopicDetail" component={TopicDetailScreen} />
+      <Stack.Screen name="PostDetail" component={PostDetailScreen} />
+      <Stack.Screen name="EditProfile" component={EditProfileScreen} />
+      <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
+      <Stack.Screen name="BlockedUsers" component={BlockedUsersScreen} />
+    </Stack.Navigator>
+  );
+}
+
+// ============================================================
+//  Drawer Navigator
+// ============================================================
+function DrawerNavigator() {
+  const { colors } = useTheme();
+
+  return (
+    <Drawer.Navigator
+      screenOptions={{
+        headerShown: false,
+        drawerStyle: {
+          width: 280,
+          backgroundColor: colors.background,
+        },
+        drawerType: isWeb ? 'permanent' : 'slide',
+        overlayColor: 'rgba(0,0,0,0.5)',
+        swipeEnabled: !isWeb,
+        drawerActiveTintColor: colors.primary,
+        drawerInactiveTintColor: colors.textSecondary,
+        drawerActiveBackgroundColor: 'transparent',
+        drawerItemStyle: {
+          borderRadius: 12,
+          marginHorizontal: 8,
+        },
+      }}
+      drawerContent={(props) => <SidebarContent {...props} />}
+    >
+      {/* On web, use WebNavigator (no tabs) */}
+      {/* On mobile, use MainTabs (with tabs) */}
+      <Drawer.Screen 
+        name="Main" 
+        component={isWeb ? WebNavigator : MainTabs} 
+      />
+      <Drawer.Screen name="Notifications" component={NotificationsScreen} />
+      <Drawer.Screen name="Topics" component={TopicsScreen} />
+      <Drawer.Screen name="TopicDetail" component={TopicDetailScreen} />
+      <Drawer.Screen name="PostDetail" component={PostDetailScreen} />
+      <Drawer.Screen name="EditProfile" component={EditProfileScreen} />
+      <Drawer.Screen name="ChangePassword" component={ChangePasswordScreen} />
+      <Drawer.Screen name="BlockedUsers" component={BlockedUsersScreen} />
+    </Drawer.Navigator>
+  );
+}
+
+// ============================================================
 //  Auth Stack (Login, SignUp, ForgotPassword)
 // ============================================================
 function AuthStack() {
@@ -116,152 +203,20 @@ function AuthStack() {
 }
 
 // ============================================================
-//  Main Stack (Tabs + Modals + Stack Screens)
+//  Main Stack (Drawer + Modals + Stack Screens)
 // ============================================================
 function MainStack() {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
 
   return (
     <Stack.Navigator
-      screenOptions={({ navigation, route }) => {
-        // ── Screens that should hide the AppHeader ──
-        const hideHeader =
-          route.name === 'Tabs' ||
-          route.name === 'CreatePostModal' ||
-          route.name === 'EditPost' ||
-          route.name === 'Settings' ||
-          route.name === 'Profile' ||
-          route.name === 'EditProfile' ||
-          route.name === 'ChangePassword' ||
-          route.name === 'BlockedUsers' ||
-          route.name === 'Notifications' ||
-          route.name === 'Explore' ||
-          route.name === 'Messages' ||
-          route.name === 'ChatDetail' ||
-          route.name === 'PostDetail';
-
-        return {
-          headerShown: !hideHeader,
-          header: ({ navigation: nav, route: r, options }) => {
-            const title = options.title || r.name;
-            const showBack = nav.canGoBack();
-
-            let rightActions: {
-              icon: keyof typeof Feather.glyphMap;
-              onPress: () => void;
-              badge?: number;
-            }[] = [];
-
-            if (r.name === 'Profile') {
-              rightActions = [
-                { icon: 'settings' as const, onPress: () => (nav.navigate as any)('Settings') },
-              ];
-            } else if (r.name === 'Feed') {
-              rightActions = [
-                { 
-                  icon: 'bell' as const, 
-                  onPress: () => (nav.navigate as any)('Notifications'),
-                  badge: 0 
-                },
-              ];
-            } else if (r.name === 'EditProfile') {
-              rightActions = [];
-            } else if (r.name === 'ChangePassword') {
-              rightActions = [];
-            } else if (r.name === 'BlockedUsers') {
-              rightActions = [];
-            } else if (r.name === 'Notifications') {
-              rightActions = [
-                { icon: 'check-circle' as const, onPress: () => console.log('Mark all as read') },
-              ];
-            } else if (r.name === 'Explore') {
-              rightActions = [
-                { icon: 'sliders' as const, onPress: () => console.log('Filter') },
-              ];
-            } else if (r.name === 'Messages') {
-              rightActions = [
-                { icon: 'edit-2' as const, onPress: () => (nav.navigate as any)('NewMessage') },
-              ];
-            } else if (r.name === 'ChatDetail') {
-              rightActions = [
-                { icon: 'phone' as const, onPress: () => console.log('Call') },
-                { icon: 'video' as const, onPress: () => console.log('Video call') },
-              ];
-            }
-
-            const displayTitle = r.name === 'Feed' ? 'Circle' : title;
-
-            return (
-              <AppHeader
-                title={displayTitle}
-                showBack={showBack}
-                rightActions={rightActions}
-                onBackPress={() => nav.goBack()}
-              />
-            );
-          },
-          cardStyle: { backgroundColor: colors.background },
-        };
+      screenOptions={{
+        headerShown: false,
+        cardStyle: { backgroundColor: colors.background },
       }}
     >
-      {/* ─── Tabs ─── */}
-      <Stack.Screen name="Tabs" component={MainTabs} options={{ headerShown: false }} />
-
-      {/* ─── Stack Screens ─── */}
-      <Stack.Screen
-        name="Messages"
-        component={MessagesScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="ChatDetail"
-        component={ChatDetailScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="Explore"
-        component={ExploreScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="Notifications"
-        component={NotificationsScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="Profile"
-        component={ProfileScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="Settings"
-        component={SettingsScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="EditProfile"
-        component={EditProfileScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="ChangePassword"
-        component={ChangePasswordScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="BlockedUsers"
-        component={BlockedUsersScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="PostDetail"
-        component={PostDetailScreen}
-        options={{ 
-          headerShown: false,
-          presentation: 'modal',
-          cardStyle: { backgroundColor: colors.background },
-        }}
-      />
+      {/* ─── Drawer ─── */}
+      <Stack.Screen name="Drawer" component={DrawerNavigator} />
 
       {/* ─── Modal Screens ─── */}
       <Stack.Screen
@@ -284,12 +239,19 @@ function MainStack() {
           cardStyle: { backgroundColor: colors.background },
         }}
       />
-
       <Stack.Screen
         name="NewMessage"
         component={MessagesScreen}
         options={{ 
           title: 'New Message',
+          cardStyle: { backgroundColor: colors.background },
+        }}
+      />
+      <Stack.Screen
+        name="ChatDetail"
+        component={ChatDetailScreen}
+        options={{ 
+          title: 'Chat',
           cardStyle: { backgroundColor: colors.background },
         }}
       />
@@ -317,12 +279,6 @@ export default function AppNavigator() {
     };
     checkWelcome();
   }, []);
-
-  // ── Mark welcome as seen ──
-  const handleWelcomeComplete = async () => {
-    await AsyncStorage.setItem('hasSeenWelcome', 'true');
-    setShowWelcome(false);
-  };
 
   if (isLoading || showWelcome === null) {
     return null;
@@ -360,35 +316,37 @@ export default function AppNavigator() {
   };
 
   return (
-    <NavigationContainer theme={customTheme}>
-      <Stack.Navigator
-        screenOptions={{
-          headerShown: false,
-          cardStyle: { backgroundColor: colors.background },
-        }}
-      >
-        {/* ─── Welcome Screen ─── */}
-        {showWelcome && (
-          <Stack.Screen
-            name="Welcome"
-            component={WelcomeScreen}
-            options={{ headerShown: false }}
-            listeners={{
-              state: (e) => {
-                // When navigation state changes, check if we left Welcome
-                // The Welcome screen handles its own navigation
-              },
-            }}
-          />
-        )}
+    <View style={[styles.rootContainer, { backgroundColor: colors.background }]}>
+      <NavigationContainer theme={customTheme}>
+        <Stack.Navigator
+          screenOptions={{
+            headerShown: false,
+            cardStyle: { backgroundColor: colors.background },
+          }}
+        >
+          {/* ─── Welcome Screen ─── */}
+          {showWelcome && (
+            <Stack.Screen
+              name="Welcome"
+              component={WelcomeScreen}
+              options={{ headerShown: false }}
+            />
+          )}
 
-        {/* ─── Auth Screens ─── */}
-        {!user ? (
-          <Stack.Screen name="Auth" component={AuthStack} />
-        ) : (
-          <Stack.Screen name="Main" component={MainStack} />
-        )}
-      </Stack.Navigator>
-    </NavigationContainer>
+          {/* ─── Auth Screens ─── */}
+          {!user ? (
+            <Stack.Screen name="Auth" component={AuthStack} />
+          ) : (
+            <Stack.Screen name="Main" component={MainStack} />
+          )}
+        </Stack.Navigator>
+      </NavigationContainer>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  rootContainer: {
+    flex: 1,
+  },
+});

@@ -117,16 +117,33 @@ export const useTopicFeed = (topic: string | null) =>
   });
 
 // ============================================================
-//  TRENDING POSTS
+//  TRENDING POSTS - Updated to use Infinite Query
 // ============================================================
 export const useTrendingPosts = () =>
-  useQuery({
+  useInfiniteQuery({
     queryKey: ['explore', 'trending'],
-    queryFn: async () => {
-      const res = await api.get('/explore/trending');
-      const raw = res.data?.data ?? [];
-      return raw.map(normalizePost);
+    queryFn: async ({ pageParam = 1 }) => {
+      const res = await api.get('/explore/trending', {
+        params: {
+          page: pageParam,
+          limit: 20,
+        },
+      });
+      
+      const raw = res.data?.data?.posts ?? res.data?.data ?? [];
+      const hasMore = res.data?.data?.hasMore ?? raw.length === 20;
+      
+      return {
+        posts: raw.map((post: any) => ({
+          ...normalizePost(post),
+          trendingScore: post.trendingScore || post.score || 0,
+          rank: post.rank || 0,
+        })),
+        nextPage: hasMore ? pageParam + 1 : null,
+      };
     },
+    getNextPageParam: (last) => last.nextPage,
+    initialPageParam: 1,
     staleTime: 60 * 1000,
   });
 

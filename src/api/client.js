@@ -1,5 +1,55 @@
 import axios from 'axios';
+import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
+
+// ── Storage helper that works on both native and web ──
+const storage = {
+  getItem: async (key: string): Promise<string | null> => {
+    if (Platform.OS === 'web') {
+      try {
+        return localStorage.getItem(key);
+      } catch {
+        return null;
+      }
+    }
+    // Use SecureStore on native
+    try {
+      return await SecureStore.getItemAsync(key);
+    } catch {
+      return null;
+    }
+  },
+  setItem: async (key: string, value: string): Promise<void> => {
+    if (Platform.OS === 'web') {
+      try {
+        localStorage.setItem(key, value);
+        return;
+      } catch {
+        return;
+      }
+    }
+    try {
+      await SecureStore.setItemAsync(key, value);
+    } catch {
+      return;
+    }
+  },
+  deleteItem: async (key: string): Promise<void> => {
+    if (Platform.OS === 'web') {
+      try {
+        localStorage.removeItem(key);
+        return;
+      } catch {
+        return;
+      }
+    }
+    try {
+      await SecureStore.deleteItemAsync(key);
+    } catch {
+      return;
+    }
+  },
+};
 
 const api = axios.create({
   baseURL: process.env.EXPO_PUBLIC_API_URL,
@@ -10,7 +60,7 @@ const api = axios.create({
 api.interceptors.request.use(
   async (config) => {
     try {
-      const token = await SecureStore.getItemAsync('auth_token');
+      const token = await storage.getItem('auth_token');
       console.log('🔑 Token present:', token ? 'Yes' : 'No');
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
@@ -40,8 +90,8 @@ api.interceptors.response.use(
       
       if (error.response.status === 401) {
         console.warn('🔒 401 Unauthorized - Clearing token');
-        await SecureStore.deleteItemAsync('auth_token');
-        await SecureStore.deleteItemAsync('user_data');
+        await storage.deleteItem('auth_token');
+        await storage.deleteItem('user_data');
         // You can dispatch a logout event here if needed
       }
     } else {
