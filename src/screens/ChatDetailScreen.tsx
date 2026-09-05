@@ -20,7 +20,7 @@ import { useWs } from '../contexts/WsContext';
 import { Avatar } from '../components/Avatar';
 import api from '../api/client';
 import { timeAgo } from '../utils/helpers';
-import { resolveMediaUrl } from '../lib/media'; // ✅ Import the helper
+import { resolveMediaUrl } from '../lib/media';
 
 // ── Types ──
 interface RouteParams {
@@ -51,12 +51,23 @@ export default function ChatDetailScreen() {
   const { user } = useAuth();
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
-  const { isAlive, sendMessage, registerHandler, joinConversation, leaveConversation, sendTyping } = useWs();
+  const { 
+    isAlive, 
+    sendMessage, 
+    registerHandler, 
+    joinConversation, 
+    leaveConversation, 
+    sendTyping,
+    isUserOnline, // ✅ Get the online checker
+  } = useWs();
 
   const { conversationId, otherUserId, otherName, otherPicture } = route.params as RouteParams;
 
-  // ✅ Resolve the other user's avatar
+  // ✅ Resolve other user's avatar
   const otherAvatarUrl = resolveMediaUrl(otherPicture);
+
+  // ✅ Compute online status using the context method
+  const otherOnline = isUserOnline(otherUserId);
 
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
@@ -65,7 +76,6 @@ export default function ChatDetailScreen() {
   const [hasMore, setHasMore] = useState(false);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [otherOnline, setOtherOnline] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const flatListRef = useRef<FlatList>(null);
@@ -416,7 +426,6 @@ export default function ChatDetailScreen() {
           style={styles.headerInfo} 
           onPress={() => (navigation.navigate as any)('Profile', { userId: otherUserId })}
         >
-          {/* ✅ Use resolved avatar URL */}
           <Avatar source={otherAvatarUrl} size={36} fallback={otherName || 'User'} />
           <View style={styles.headerText}>
             <Text style={[styles.headerName, { color: colors.text }]}>{otherName || 'User'}</Text>
