@@ -10,6 +10,8 @@ import {
   Platform,
   StyleSheet,
   Alert,
+  Animated,
+  Easing,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -43,6 +45,78 @@ interface Message {
   media_size?: number;
   edited_at?: string;
   _plain?: string;
+}
+
+// ── Animated "typing…" dots, styled like an incoming message bubble ──
+function TypingDots({ isDark, colors }: { isDark: boolean; colors: any }) {
+  const dot1 = useRef(new Animated.Value(0)).current;
+  const dot2 = useRef(new Animated.Value(0)).current;
+  const dot3 = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const makeBounce = (value: Animated.Value, delay: number) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(delay),
+          Animated.timing(value, {
+            toValue: 1,
+            duration: 300,
+            easing: Easing.ease,
+            useNativeDriver: true,
+          }),
+          Animated.timing(value, {
+            toValue: 0,
+            duration: 300,
+            easing: Easing.ease,
+            useNativeDriver: true,
+          }),
+          Animated.delay(450 - delay),
+        ])
+      );
+
+    const anim1 = makeBounce(dot1, 0);
+    const anim2 = makeBounce(dot2, 150);
+    const anim3 = makeBounce(dot3, 300);
+    anim1.start();
+    anim2.start();
+    anim3.start();
+
+    return () => {
+      anim1.stop();
+      anim2.stop();
+      anim3.stop();
+    };
+  }, [dot1, dot2, dot3]);
+
+  const dotStyle = (value: Animated.Value) => ({
+    opacity: value.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1] }),
+    transform: [
+      {
+        translateY: value.interpolate({ inputRange: [0, 1], outputRange: [0, -3] }),
+      },
+    ],
+  });
+
+  return (
+    <View style={styles.messageRow}>
+      <View
+        style={[
+          styles.messageBubble,
+          styles.bubbleLeft,
+          styles.typingBubble,
+          {
+            backgroundColor: isDark ? '#374151' : '#f3f4f6',
+            borderWidth: isDark ? 0 : 1,
+            borderColor: colors.border,
+          },
+        ]}
+      >
+        <Animated.View style={[styles.typingDot, { backgroundColor: colors.textMuted }, dotStyle(dot1)]} />
+        <Animated.View style={[styles.typingDot, { backgroundColor: colors.textMuted }, dotStyle(dot2)]} />
+        <Animated.View style={[styles.typingDot, { backgroundColor: colors.textMuted }, dotStyle(dot3)]} />
+      </View>
+    </View>
+  );
 }
 
 export default function ChatDetailScreen() {
@@ -402,14 +476,14 @@ export default function ChatDetailScreen() {
     return item.id ? `${item.id}-${index}` : `msg-${index}`;
   }, []);
 
-  // ── Scroll to bottom on new messages ──
+  // ── Scroll to bottom on new messages, or when typing starts ──
   useEffect(() => {
-    if (messages.length > 0 && flatListRef.current) {
+    if ((messages.length > 0 || typing) && flatListRef.current) {
       setTimeout(() => {
         flatListRef.current?.scrollToEnd({ animated: true });
       }, 100);
     }
-  }, [messages]);
+  }, [messages, typing]);
 
   // ── Loading state ──
   if (isLoading) {
@@ -491,6 +565,9 @@ export default function ChatDetailScreen() {
               <ActivityIndicator size="small" color={colors.primary} />
             </View>
           ) : null
+        }
+        ListFooterComponent={
+          typing ? <TypingDots isDark={isDark} colors={colors} /> : null
         }
         inverted={false}
         showsVerticalScrollIndicator={false}
@@ -641,6 +718,17 @@ const styles = StyleSheet.create({
   },
   bubbleLeft: {
     borderBottomLeftRadius: 4,
+  },
+  typingBubble: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    gap: 4,
+  },
+  typingDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
   },
   bubbleRight: {
     borderBottomRightRadius: 4,
