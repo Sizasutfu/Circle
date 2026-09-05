@@ -136,6 +136,18 @@ export default function ExploreScreen() {
     [searchData]
   );
 
+  // ── Debugging: log search state ──
+  useEffect(() => {
+    if (isSearching) {
+      console.log('🔍 Search state:', {
+        hasMoreSearch,
+        isFetchingMoreSearch,
+        searchResultsLength: searchResults.length,
+        query: trimmedQuery,
+      });
+    }
+  }, [hasMoreSearch, isFetchingMoreSearch, searchResults, trimmedQuery, isSearching]);
+
   // ── Search history ──
   const { data: history = [] } = useSearchHistory();
   const saveHistory = useSaveSearchHistory();
@@ -272,7 +284,9 @@ export default function ExploreScreen() {
     [saveHistory, searchType]
   );
 
+  // ── Load more handler with extra safety ──
   const handleLoadMoreSearch = useCallback(() => {
+    console.log('📥 Load more called, hasMoreSearch:', hasMoreSearch, 'isFetching:', isFetchingMoreSearch);
     if (hasMoreSearch && !isFetchingMoreSearch) {
       fetchMoreSearch();
     }
@@ -446,6 +460,26 @@ export default function ExploreScreen() {
     </View>
   );
 
+  const renderSearchFooter = () => {
+    if (isFetchingMoreSearch) {
+      return (
+        <View style={styles.footerLoader}>
+          <ActivityIndicator size="small" color={colors.primary} />
+          <Text style={[styles.footerText, { color: colors.textSecondary }]}>Loading more...</Text>
+        </View>
+      );
+    }
+    // Show a "Load More" button as fallback if there are more results but not fetching
+    if (hasMoreSearch && !isFetchingMoreSearch && searchResults.length > 0) {
+      return (
+        <TouchableOpacity style={[styles.loadMoreButton, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={handleLoadMoreSearch}>
+          <Text style={[styles.loadMoreText, { color: colors.primary }]}>Load More</Text>
+        </TouchableOpacity>
+      );
+    }
+    return null;
+  };
+
   const renderTrendingFooter = () => {
     if (!isFetchingMoreTrending) return null;
     return (
@@ -549,26 +583,14 @@ export default function ExploreScreen() {
             keyExtractor={(item: any, index: number) => `${item._type}-${item.id ?? index}`}
             renderItem={renderSearchItem}
             ListHeaderComponent={renderSearchHeader}
+            ListFooterComponent={renderSearchFooter}
             onEndReached={handleLoadMoreSearch}
             onEndReachedThreshold={0.5}
-            ListFooterComponent={
-              isFetchingMoreSearch ? (
-                <View style={styles.footerLoader}>
-                  <ActivityIndicator size="small" color={colors.primary} />
-                </View>
-              ) : null
-            }
-            ListEmptyComponent={
-              <View style={styles.emptyContainer}>
-                <Feather name="search" size={48} color={colors.textMuted} />
-                <Text style={[styles.emptyTitle, { color: colors.text }]}>No results found</Text>
-                <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
-                  Try searching for different keywords or usernames.
-                </Text>
-              </View>
-            }
-            contentContainerStyle={searchResults.length === 0 ? { flex: 1 } : undefined}
+            contentContainerStyle={[
+              searchResults.length === 0 ? { flex: 1 } : { paddingBottom: 20 },
+            ]}
             showsVerticalScrollIndicator={false}
+            style={{ flex: 1 }}
           />
         )
       ) : !showHistory ? (
@@ -760,6 +782,19 @@ const styles = StyleSheet.create({
   },
   footerText: {
     fontSize: 14,
+  },
+  loadMoreButton: {
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginHorizontal: 16,
+  },
+  loadMoreText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   feedContent: {
     paddingTop: 8,
