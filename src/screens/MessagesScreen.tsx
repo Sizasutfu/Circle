@@ -18,6 +18,7 @@ import { Avatar } from '../components/Avatar';
 import { useTabBarHeight } from '../hooks/useTabBarHeight';
 import api from '../api/client';
 import { timeAgo } from '../utils/helpers';
+import { resolveMediaUrl } from '../lib/media'; // ✅ Import the helper
 
 interface Conversation {
   id: string;
@@ -84,6 +85,9 @@ export default function MessagesScreen() {
     const isMine = item.last_sender_id === user?.id;
     const preview = isMine ? `You: ${item.last_message || 'Media'}` : item.last_message || 'Media';
     const time = timeAgo(item.last_message_at);
+    
+    // ✅ Resolve avatar URL using the helper
+    const avatarUrl = resolveMediaUrl(item.other_picture);
 
     return (
       <TouchableOpacity
@@ -99,7 +103,7 @@ export default function MessagesScreen() {
         activeOpacity={0.7}
       >
         <Avatar
-          source={item.other_picture}
+          source={avatarUrl}
           size={50}
           fallback={item.other_name || 'User'}
         />
