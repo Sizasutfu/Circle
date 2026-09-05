@@ -11,7 +11,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../contexts/ThemeContext';
 
@@ -42,8 +41,17 @@ const slides = [
   },
 ];
 
-export default function WelcomeScreen() {
-  const navigation = useNavigation();
+interface WelcomeScreenProps {
+  // Called once onboarding is complete. AppNavigator owns the
+  // showWelcome state that decides whether Welcome, Auth, or Main is
+  // mounted — this screen can't reliably navigate to "Main" itself,
+  // since Main may not exist as a route in the current navigator tree
+  // while Welcome is showing (they're rendered as mutually exclusive
+  // alternatives, not siblings).
+  onFinish?: () => void;
+}
+
+export default function WelcomeScreen({ onFinish }: WelcomeScreenProps) {
   const { colors, isDark } = useTheme();
   const [currentIndex, setCurrentIndex] = useState(0);
   const flatListRef = useRef<FlatList>(null);
@@ -51,8 +59,11 @@ export default function WelcomeScreen() {
   const handleFinish = async () => {
     // Mark welcome as seen
     await AsyncStorage.setItem('hasSeenWelcome', 'true');
-    // Navigate to Auth stack (which contains Login)
-    (navigation.navigate as any)('Auth');
+
+    // Let the parent navigator switch screens — it owns the state
+    // that decides what's rendered, so this is what actually causes
+    // the transition to Main.
+    onFinish?.();
   };
 
   const handleNext = () => {
@@ -73,18 +84,15 @@ export default function WelcomeScreen() {
 
   const renderSlide = ({ item }: { item: typeof slides[0] }) => (
     <View style={[styles.slide, { width: SCREEN_WIDTH }]}>
-      {/* Image */}
       <View style={styles.imageContainer}>
         <Image source={{ uri: item.image }} style={styles.image} resizeMode="cover" />
         <View style={[styles.imageOverlay, { backgroundColor: isDark ? 'rgba(0,0,0,0.4)' : 'rgba(108,99,255,0.1)' }]} />
         
-        {/* Icon badge */}
         <View style={[styles.iconBadge, { backgroundColor: colors.primary }]}>
           <Feather name={item.icon as any} size={28} color="white" />
         </View>
       </View>
 
-      {/* Content */}
       <View style={styles.contentContainer}>
         <Text style={[styles.title, { color: colors.text }]}>{item.title}</Text>
         <Text style={[styles.description, { color: colors.textSecondary }]}>
@@ -114,12 +122,10 @@ export default function WelcomeScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
 
-      {/* ─── Skip Button ─── */}
       <TouchableOpacity style={styles.skipButton} onPress={handleSkip}>
         <Text style={[styles.skipText, { color: colors.textSecondary }]}>Skip</Text>
       </TouchableOpacity>
 
-      {/* ─── Slides ─── */}
       <FlatList
         ref={flatListRef}
         data={slides}
@@ -134,14 +140,11 @@ export default function WelcomeScreen() {
         }}
       />
 
-      {/* ─── Bottom Section ─── */}
       <View style={styles.bottomSection}>
-        {/* Dots */}
         <View style={styles.dotsContainer}>
           {slides.map((_, index) => renderDot(index))}
         </View>
 
-        {/* Next / Get Started Button */}
         <TouchableOpacity
           style={[styles.nextButton, { backgroundColor: colors.primary }]}
           onPress={handleNext}

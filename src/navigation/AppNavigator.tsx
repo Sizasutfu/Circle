@@ -55,7 +55,6 @@ function MainTabs() {
   const bottomInset = Math.max(insets.bottom, 0);
   const tabBarHeight = TAB_BAR_CONTENT_HEIGHT + bottomInset;
 
-  // Hide tab bar on web
   if (isWeb) {
     return null;
   }
@@ -165,7 +164,6 @@ function DrawerNavigator() {
       }}
       drawerContent={(props) => <SidebarContent {...props} />}
     >
-      {/* Main Tabs - Default screen */}
       <Drawer.Screen 
         name="MainTabs" 
         component={isWeb ? WebNavigator : MainTabs}
@@ -176,8 +174,6 @@ function DrawerNavigator() {
           ),
         }}
       />
-      
-      {/* Stack Screens */}
       <Drawer.Screen 
         name="Notifications" 
         component={NotificationsScreen}
@@ -200,35 +196,35 @@ function DrawerNavigator() {
         name="TopicDetail" 
         component={TopicDetailScreen}
         options={{
-          drawerItemStyle: { display: 'none' }, // Hide from drawer
+          drawerItemStyle: { display: 'none' },
         }}
       />
       <Drawer.Screen 
         name="PostDetail" 
         component={PostDetailScreen}
         options={{
-          drawerItemStyle: { display: 'none' }, // Hide from drawer
+          drawerItemStyle: { display: 'none' },
         }}
       />
       <Drawer.Screen 
         name="EditProfile" 
         component={EditProfileScreen}
         options={{
-          drawerItemStyle: { display: 'none' }, // Hide from drawer
+          drawerItemStyle: { display: 'none' },
         }}
       />
       <Drawer.Screen 
         name="ChangePassword" 
         component={ChangePasswordScreen}
         options={{
-          drawerItemStyle: { display: 'none' }, // Hide from drawer
+          drawerItemStyle: { display: 'none' },
         }}
       />
       <Drawer.Screen 
         name="BlockedUsers" 
         component={BlockedUsersScreen}
         options={{
-          drawerItemStyle: { display: 'none' }, // Hide from drawer
+          drawerItemStyle: { display: 'none' },
         }}
       />
     </Drawer.Navigator>
@@ -268,10 +264,8 @@ function MainStack() {
         cardStyle: { backgroundColor: colors.background },
       }}
     >
-      {/* ─── Drawer ─── */}
       <Stack.Screen name="Drawer" component={DrawerNavigator} />
 
-      {/* ─── Modal Screens ─── */}
       <Stack.Screen
         name="CreatePostModal"
         component={CreatePostScreen}
@@ -319,19 +313,30 @@ export default function AppNavigator() {
   const { user, isLoading } = useAuth();
   const { colors, isDark } = useTheme();
   const [showWelcome, setShowWelcome] = useState<boolean | null>(null);
+  const [isNewUser, setIsNewUser] = useState(false);
 
   // ── Check if user has seen welcome screen ──
   useEffect(() => {
     const checkWelcome = async () => {
       try {
-        const hasSeen = await AsyncStorage.getItem('hasSeenWelcome');
-        setShowWelcome(!hasSeen);
+        if (user) {
+          // User is logged in, check if they've seen welcome
+          const hasSeen = await AsyncStorage.getItem('hasSeenWelcome');
+          // If user hasn't seen welcome and is logged in, show it
+          setShowWelcome(!hasSeen);
+          setIsNewUser(!hasSeen);
+        } else {
+          setShowWelcome(false);
+          setIsNewUser(false);
+        }
       } catch (error) {
-        setShowWelcome(true);
+        console.error('Error checking welcome status:', error);
+        setShowWelcome(false);
+        setIsNewUser(false);
       }
     };
     checkWelcome();
-  }, []);
+  }, [user]);
 
   if (isLoading || showWelcome === null) {
     return null;
@@ -377,19 +382,23 @@ export default function AppNavigator() {
             cardStyle: { backgroundColor: colors.background },
           }}
         >
-          {/* ─── Welcome Screen ─── */}
-          {showWelcome && (
-            <Stack.Screen
-              name="Welcome"
-              component={WelcomeScreen}
-              options={{ headerShown: false }}
-            />
-          )}
-
-          {/* ─── Auth Screens ─── */}
           {!user ? (
+            // ─── Auth Screens (Not Logged In) ───
             <Stack.Screen name="Auth" component={AuthStack} />
+          ) : showWelcome ? (
+            // ─── Welcome Screen (Logged in + New User) ───
+            <Stack.Screen name="Welcome" options={{ headerShown: false }}>
+              {() => (
+                <WelcomeScreen
+                  onFinish={() => {
+                    setShowWelcome(false);
+                    setIsNewUser(false);
+                  }}
+                />
+              )}
+            </Stack.Screen>
           ) : (
+            // ─── Main Screens (Logged in + Seen Welcome) ───
             <Stack.Screen name="Main" component={MainStack} />
           )}
         </Stack.Navigator>
