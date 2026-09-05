@@ -13,7 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, CommonActions } from '@react-navigation/native';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -106,6 +106,33 @@ export default function CreatePostScreen() {
     setVideoUri(null);
   };
 
+  // ---- Navigate to Feed ----
+  const navigateToFeed = () => {
+    // Reset the navigation stack to go to Feed
+    navigation.dispatch(
+      CommonActions.reset({
+        index: 0,
+        routes: [
+          { 
+            name: 'Drawer',
+            state: {
+              index: 0,
+              routes: [
+                { 
+                  name: 'Main',
+                  state: {
+                    index: 0,
+                    routes: [{ name: 'Feed' }],
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      })
+    );
+  };
+
   // ---- Submit Post ----
   const handleSubmit = async () => {
     if (!text.trim() && !imageUri && !videoUri) {
@@ -145,8 +172,17 @@ export default function CreatePostScreen() {
         },
       });
 
+      // ── Clear form ──
+      setText('');
+      setImageUri(null);
+      setVideoUri(null);
+      
+      // ── Invalidate feed cache ──
       queryClient.invalidateQueries({ queryKey: ['feed'] });
-      (navigation.navigate as any)('Feed');
+      
+      // ── Navigate to Feed using reset ──
+      navigateToFeed();
+      
     } catch (error: any) {
       console.error('Post creation error:', error);
       Alert.alert(
@@ -163,7 +199,12 @@ export default function CreatePostScreen() {
     if (text.trim() || imageUri || videoUri) {
       Alert.alert('Discard post?', 'Your draft will be lost.', [
         { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: () => navigation.goBack() },
+        { text: 'Discard', style: 'destructive', onPress: () => {
+          setText('');
+          setImageUri(null);
+          setVideoUri(null);
+          navigation.goBack();
+        }},
       ]);
     } else {
       navigation.goBack();
