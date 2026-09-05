@@ -299,12 +299,6 @@ export default function ChatDetailScreen() {
 
   // ── Render message ──
   const renderMessage = ({ item }: { item: Message }) => {
-    // Compare as strings, and accept a couple of likely field-name
-    // variants — if the API ever returns sender_id as a number, or
-    // under a different key (senderId/userId), a strict === against
-    // item.sender_id would silently make isMine false for every
-    // message, which shows up exactly as "everything renders on the
-    // left with the same background."
     const rawSenderId =
       item.sender_id ?? (item as any).senderId ?? (item as any).userId ?? (item as any).user_id;
     const isMine = rawSenderId != null && user?.id != null && String(rawSenderId) === String(user.id);
@@ -355,7 +349,6 @@ export default function ChatDetailScreen() {
 
   // ── Key extractor with unique keys ──
   const keyExtractor = useCallback((item: Message, index: number) => {
-    // Use id + index as fallback for safety
     return item.id ? `${item.id}-${index}` : `msg-${index}`;
   }, []);
 
@@ -617,10 +610,11 @@ const styles = StyleSheet.create({
   },
   inputBar: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'center',
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderTopWidth: 1,
+    // paddingBottom is set dynamically with insets.bottom
   },
   input: {
     flex: 1,
@@ -630,17 +624,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 20,
-    paddingRight: 40,
+    marginRight: 8,
   },
   sendButton: {
-    position: 'absolute',
-    right: 20,
-    bottom: 14,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
   sendButtonDisabled: {
     opacity: 0.5,
