@@ -12,6 +12,7 @@ import {
   Alert,
   Animated,
   Easing,
+  Keyboard,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -148,6 +149,7 @@ export default function ChatDetailScreen() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
 
   // ── Presence: polled via REST, matching the web app's approach ──
   // The backend's WS layer doesn't broadcast user_online/user_offline/
@@ -164,20 +166,25 @@ export default function ChatDetailScreen() {
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRef = useRef<TextInput>(null);
 
+  // ── Track keyboard visibility ──
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
   const fetchPresence = useCallback(async () => {
     if (!conversationId) return;
     try {
       const response = await api.get(`/dm/conversations/${conversationId}/presence`);
-      // getPresence returns via the standard sendOk envelope
-      // ({ success, message, data: presence }), so the fields live under
-      // response.data.data — not flat on response.data like the web
-      // client's apiClient wrapper exposes them.
       const body = response.data?.data ?? response.data ?? {};
       setOtherOnline(!!body.online);
       setOtherLastActive(body.last_seen_at ?? body.lastSeenAt ?? null);
     } catch (error) {
-      // Silent fail — leave whatever presence state we last had rather
-      // than flipping to "offline" on a transient network hiccup.
+      // Silent fail
     }
   }, [conversationId]);
 
@@ -349,6 +356,10 @@ export default function ChatDetailScreen() {
     if (!trimmed || sending) return;
 
     setSending(true);
+    // Clear typing state immediately
+    sendTyping(conversationId, false);
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+
     const tempId = `tmp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
     const tempMsg: Message = {
@@ -380,6 +391,9 @@ export default function ChatDetailScreen() {
           message: saved,
         });
       }
+
+      // Close keyboard so the input bar returns to its original position
+      Keyboard.dismiss();
     } catch (error) {
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
       Alert.alert('Error', 'Failed to send message. Please try again.');
@@ -522,66 +536,69 @@ export default function ChatDetailScreen() {
     );
   }
 
+  // ── Main render with KeyboardAvoidingView wrapping everything ──
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
-      {/* ─── Header ─── */}
-      <View style={[styles.header, { 
-        backgroundColor: colors.surface, 
-        borderBottomColor: colors.border 
-      }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Feather name="arrow-left" size={24} color={colors.text} />
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.headerInfo} 
-          onPress={() => (navigation.navigate as any)('Profile', { userId: otherUserId })}
-        >
-          <Avatar source={otherAvatarUrl} size={36} fallback={otherName || 'User'} />
-          <View style={styles.headerText}>
-            <Text style={[styles.headerName, { color: colors.text }]}>{otherName || 'User'}</Text>
-            <View style={styles.headerStatus}>
-              <View style={[styles.statusDot, { backgroundColor: typing ? '#22c55e' : (otherOnline ? '#22c55e' : colors.textMuted) }]} />
-              <Text style={[styles.headerStatusText, { color: colors.textSecondary }]}>
-                {typing ? 'Typing...' : (otherOnline ? 'Online' : 'Offline')}
-              </Text>
-            </View>
-          </View>
-        </TouchableOpacity>
-        <View style={styles.headerRight} />
-      </View>
-
-      {/* ─── Messages ─── */}
-      <FlatList
-        ref={flatListRef}
-        data={messages}
-        keyExtractor={keyExtractor}
-        renderItem={renderMessage}
-        contentContainerStyle={[styles.messagesContainer, { backgroundColor: colors.background }]}
-        onEndReached={loadMoreMessages}
-        onEndReachedThreshold={0.3}
-        ListHeaderComponent={
-          loadingMore ? (
-            <View style={styles.loadingMore}>
-              <ActivityIndicator size="small" color={colors.primary} />
-            </View>
-          ) : null
-        }
-        ListFooterComponent={
-          typing ? <TypingDots isDark={isDark} colors={colors} /> : null
-        }
-        inverted={false}
-        showsVerticalScrollIndicator={false}
-      />
-
-      {/* ─── Input Bar ─── */}
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
       >
+        {/* ─── Header ─── */}
+        <View style={[styles.header, { 
+          backgroundColor: colors.surface, 
+          borderBottomColor: colors.border 
+        }]}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+            <Feather name="arrow-left" size={24} color={colors.text} />
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.headerInfo} 
+            onPress={() => (navigation.navigate as any)('Profile', { userId: otherUserId })}
+          >
+            <Avatar source={otherAvatarUrl} size={36} fallback={otherName || 'User'} />
+            <View style={styles.headerText}>
+              <Text style={[styles.headerName, { color: colors.text }]}>{otherName || 'User'}</Text>
+              <View style={styles.headerStatus}>
+                <View style={[styles.statusDot, { backgroundColor: typing ? '#22c55e' : (otherOnline ? '#22c55e' : colors.textMuted) }]} />
+                <Text style={[styles.headerStatusText, { color: colors.textSecondary }]}>
+                  {typing ? 'Typing...' : (otherOnline ? 'Online' : 'Offline')}
+                </Text>
+              </View>
+            </View>
+          </TouchableOpacity>
+          <View style={styles.headerRight} />
+        </View>
+
+        {/* ─── Messages ─── */}
+        <FlatList
+          ref={flatListRef}
+          data={messages}
+          keyExtractor={keyExtractor}
+          renderItem={renderMessage}
+          contentContainerStyle={[styles.messagesContainer, { backgroundColor: colors.background }]}
+          onEndReached={loadMoreMessages}
+          onEndReachedThreshold={0.3}
+          ListHeaderComponent={
+            loadingMore ? (
+              <View style={styles.loadingMore}>
+                <ActivityIndicator size="small" color={colors.primary} />
+              </View>
+            ) : null
+          }
+          ListFooterComponent={
+            typing ? <TypingDots isDark={isDark} colors={colors} /> : null
+          }
+          inverted={false}
+          showsVerticalScrollIndicator={false}
+          style={{ flex: 1 }}
+        />
+
+        {/* ─── Input Bar ─── */}
         <View style={[styles.inputBar, { 
           backgroundColor: colors.surface, 
           borderTopColor: colors.border,
-          paddingBottom: Math.max(insets.bottom, 8),
+          paddingBottom: keyboardVisible ? 0 : Math.max(insets.bottom, 8),
         }]}>
           <TextInput
             ref={inputRef}
