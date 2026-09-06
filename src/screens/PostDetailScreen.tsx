@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,8 +11,9 @@ import {
   StyleSheet,
   Share,
   Alert,
+  Keyboard,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'; // ✅ Added useSafeAreaInsets
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -49,11 +50,22 @@ export default function PostDetailScreen() {
   const { user: currentUser } = useAuth();
   const { colors, isDark } = useTheme();
   const queryClient = useQueryClient();
-  const insets = useSafeAreaInsets(); // ✅ Get safe area insets
+  const insets = useSafeAreaInsets();
 
   const [commentText, setCommentText] = useState('');
   const [isSendingComment, setIsSendingComment] = useState(false);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const inputRef = useRef<TextInput>(null);
+
+  // Track keyboard visibility for dynamic padding
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   // ---- Fetch post ----
   const {
@@ -156,6 +168,7 @@ export default function PostDetailScreen() {
     onSuccess: () => {
       refetchPost();
       setCommentText('');
+      Keyboard.dismiss(); // ✅ Dismiss keyboard so input returns to original position
     },
     onError: (error: any) => {
       Alert.alert('Error', error.response?.data?.message || 'Failed to add comment. Please try again.');
@@ -240,85 +253,89 @@ export default function PostDetailScreen() {
   // ---- Main render ----
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
-      {/* ─── Custom Header ─── */}
-      <View style={[styles.header, { 
-        backgroundColor: colors.surface, 
-        borderBottomColor: colors.border 
-      }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Feather name="arrow-left" size={24} color={colors.text} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>Post</Text>
-        <TouchableOpacity onPress={handleShare} style={styles.shareButton}>
-          <Feather name="share-2" size={22} color={colors.text} />
-        </TouchableOpacity>
-      </View>
-
       <KeyboardAvoidingView
         style={styles.keyboardView}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
       >
-        <FlatList
-          data={postComments}
-          keyExtractor={(item) => item.id || String(Math.random())}
-          renderItem={renderComment}
-          ListHeaderComponent={
-            <View style={styles.postContainer}>
-              {post && <PostCard post={post} />}
-              <View style={[styles.commentsHeader, { 
-                backgroundColor: colors.surface, 
-                borderBottomColor: colors.border 
-              }]}>
-                <Text style={[styles.commentsCount, { color: colors.text }]}>
-                  {postComments.length} {postComments.length === 1 ? 'Comment' : 'Comments'}
-                </Text>
-              </View>
-            </View>
-          }
-          ListEmptyComponent={renderEmptyComments}
-          contentContainerStyle={[styles.listContent, { backgroundColor: colors.background }]}
-          showsVerticalScrollIndicator={false}
-        />
-
-        {/* ---- Comment Input Bar ---- */}
-        <View style={[
-          styles.inputBar,
-          {
-            backgroundColor: colors.surface,
-            borderTopColor: colors.border,
-            paddingBottom: Math.max(insets.bottom, 8), // ✅ Use safe area inset
-          }
-        ]}>
-          <TextInput
-            ref={inputRef}
-            style={[styles.input, { 
-              backgroundColor: colors.input, 
-              color: colors.text 
-            }]}
-            placeholder="Add a comment..."
-            placeholderTextColor={colors.placeholder}
-            value={commentText}
-            onChangeText={setCommentText}
-            multiline
-            maxLength={500}
-            editable={!isSendingComment}
-          />
-          <TouchableOpacity
-            style={[
-              styles.sendButton,
-              { backgroundColor: colors.primary },
-              (!commentText.trim() || isSendingComment) && styles.sendButtonDisabled,
-            ]}
-            onPress={handleSendComment}
-            disabled={!commentText.trim() || isSendingComment}
-          >
-            {isSendingComment ? (
-              <ActivityIndicator size="small" color="white" />
-            ) : (
-              <Feather name="send" size={18} color="white" />
-            )}
+        {/* ─── Custom Header ─── */}
+        <View style={[styles.header, { 
+          backgroundColor: colors.surface, 
+          borderBottomColor: colors.border 
+        }]}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+            <Feather name="arrow-left" size={24} color={colors.text} />
           </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>Post</Text>
+          <TouchableOpacity onPress={handleShare} style={styles.shareButton}>
+            <Feather name="share-2" size={22} color={colors.text} />
+          </TouchableOpacity>
+        </View>
+
+        {/* ─── Main content ─── */}
+        <View style={styles.flexContainer}>
+          <FlatList
+            data={postComments}
+            keyExtractor={(item) => item.id || String(Math.random())}
+            renderItem={renderComment}
+            ListHeaderComponent={
+              <View style={styles.postContainer}>
+                {post && <PostCard post={post} />}
+                <View style={[styles.commentsHeader, { 
+                  backgroundColor: colors.surface, 
+                  borderBottomColor: colors.border 
+                }]}>
+                  <Text style={[styles.commentsCount, { color: colors.text }]}>
+                    {postComments.length} {postComments.length === 1 ? 'Comment' : 'Comments'}
+                  </Text>
+                </View>
+              </View>
+            }
+            ListEmptyComponent={renderEmptyComments}
+            contentContainerStyle={[styles.listContent, { backgroundColor: colors.background }]}
+            showsVerticalScrollIndicator={false}
+            style={styles.flexContainer}
+          />
+
+          {/* ---- Comment Input Bar (now in normal flow) ---- */}
+          <View style={[
+            styles.inputBar,
+            {
+              backgroundColor: colors.surface,
+              borderTopColor: colors.border,
+              paddingBottom: keyboardVisible ? 0 : Math.max(insets.bottom, 8),
+            }
+          ]}>
+            <TextInput
+              ref={inputRef}
+              style={[styles.input, { 
+                backgroundColor: colors.input, 
+                color: colors.text 
+              }]}
+              placeholder="Add a comment..."
+              placeholderTextColor={colors.placeholder}
+              value={commentText}
+              onChangeText={setCommentText}
+              multiline
+              maxLength={500}
+              editable={!isSendingComment}
+            />
+            <TouchableOpacity
+              style={[
+                styles.sendButton,
+                { backgroundColor: colors.primary },
+                (!commentText.trim() || isSendingComment) && styles.sendButtonDisabled,
+              ]}
+              onPress={handleSendComment}
+              disabled={!commentText.trim() || isSendingComment}
+            >
+              {isSendingComment ? (
+                <ActivityIndicator size="small" color="white" />
+              ) : (
+                <Feather name="send" size={18} color="white" />
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -330,6 +347,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   keyboardView: {
+    flex: 1,
+  },
+  flexContainer: {
     flex: 1,
   },
   loadingContainer: {
@@ -383,7 +403,7 @@ const styles = StyleSheet.create({
     padding: 6,
   },
   listContent: {
-    paddingBottom: 80, // Keep some bottom padding to prevent content from hiding behind input bar
+    paddingBottom: 20,
   },
   postContainer: {
     marginBottom: 8,
@@ -447,17 +467,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   inputBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderTopWidth: 1,
     minHeight: 56,
-    // paddingBottom is now set dynamically with insets.bottom
   },
   input: {
     flex: 1,
