@@ -128,17 +128,6 @@ function PostCard({
   const liked = currentUser ? safeLikes.some((id: string) => id === currentUser.id) : false;
   const reposted = currentUser ? safeReposts.some((id: string) => id === currentUser.id) : false;
 
-  // Debug logging
-  useEffect(() => {
-    console.log('📊 Post repost state:', {
-      postId: id,
-      repostCount: repostCount ?? safeReposts.length,
-      reposted,
-      userId: currentUser?.id,
-      reposts: safeReposts,
-    });
-  }, [id, repostCount, safeReposts, reposted, currentUser]);
-
   const displayName = user?.name || 'Anonymous';
   const username = user?.username || '';
   const avatarUrl = user?.avatar || null;
@@ -167,7 +156,7 @@ function PostCard({
     return mentions.some((m: string) => m.toLowerCase() === currentUser.username?.toLowerCase());
   }, [text, currentUser]);
 
-  // ── Modified: goToProfile prefers userId ──
+  // ── Navigation helpers ──
   const goToProfile = () => {
     if (userId) {
       (navigation.navigate as any)('Profile', { userId });
@@ -297,7 +286,12 @@ function PostCard({
     }
   };
 
-  const handleComment = () => onComment && onComment(id);
+  // ── Comment button: navigate to PostDetail (and fire parent callback) ──
+  const handleComment = () => {
+    (navigation.navigate as any)('PostDetail', { postId: id, focusComment: true });
+    onComment?.(id);
+  };
+
   const handleShare = async () => {
     try { await Share.share({ message: text || 'Check this post!' }); } catch (e) {}
   };
@@ -350,7 +344,7 @@ function PostCard({
     }
     if (image) {
       return (
-        <TouchableOpacity activeOpacity={0.9} onPress={openLightbox} style={styles.mediaContainer}>
+        <View style={styles.mediaContainer}>
           <Image
             source={{ uri: image }}
             style={[styles.mediaImage, { backgroundColor: isDark ? '#1f2937' : '#f3f4f6' }]}
@@ -360,7 +354,7 @@ function PostCard({
             recyclingKey={image}
             onError={() => console.log('Image failed to load:', image)}
           />
-        </TouchableOpacity>
+        </View>
       );
     }
     return null;
@@ -530,7 +524,11 @@ function PostCard({
       </View>
 
       {hasMedia && (
-        <TouchableOpacity activeOpacity={1} onPress={!video ? goToPostDetail : undefined} style={styles.fullBleedWrapper}>
+        <TouchableOpacity
+          activeOpacity={1}
+          onPress={goToPostDetail}
+          style={styles.fullBleedWrapper}
+        >
           {renderMedia()}
         </TouchableOpacity>
       )}
