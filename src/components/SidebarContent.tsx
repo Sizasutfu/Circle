@@ -33,6 +33,7 @@ export default function SidebarContent(props: DrawerContentComponentProps) {
     { icon: 'bell', label: 'Notifications', route: 'Notifications' },
     { icon: 'message-circle', label: 'Messages', route: 'Messages' },
     { icon: 'hash', label: 'Topics', route: 'Topics' },
+    { icon: 'message-square', label: 'Whisper', route: 'WhisperInbox' },
     { icon: 'user', label: 'Profile', route: 'Profile' },
     { icon: 'settings', label: 'Settings', route: 'Settings' },
   ];
@@ -65,14 +66,14 @@ export default function SidebarContent(props: DrawerContentComponentProps) {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView 
+      <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
         {/* ─── Logo ─── */}
         <View style={styles.logoContainer}>
-          <Image 
-            source={require('../../assets/icon.png')} 
+          <Image
+            source={require('../../assets/icon.png')}
             style={styles.logoImage}
             resizeMode="contain"
           />
@@ -82,13 +83,14 @@ export default function SidebarContent(props: DrawerContentComponentProps) {
         <View style={styles.menuSection}>
           {menuItems.map((item) => {
             // Check if the current route matches this item
-            const isActive = currentRoute === item.route || 
+            const isActive = currentRoute === item.route ||
               (item.route === 'Feed' && currentRoute === 'MainTabs') ||
               (item.route === 'Feed' && currentRoute === 'Main') ||
               (item.route === 'Explore' && currentRoute === 'Explore') ||
               (item.route === 'Messages' && currentRoute === 'Messages') ||
               (item.route === 'Profile' && currentRoute === 'Profile') ||
-              (item.route === 'Settings' && currentRoute === 'Settings');
+              (item.route === 'Settings' && currentRoute === 'Settings') ||
+              (item.route === 'WhisperInbox' && currentRoute === 'WhisperInbox');
 
             return (
               <TouchableOpacity
@@ -100,15 +102,15 @@ export default function SidebarContent(props: DrawerContentComponentProps) {
                 onPress={() => handleNavigate(item.route)}
                 activeOpacity={0.7}
               >
-                <Feather 
-                  name={item.icon} 
-                  size={24} 
-                  color={isActive ? colors.primary : colors.text} 
+                <Feather
+                  name={item.icon}
+                  size={24}
+                  color={isActive ? colors.primary : colors.text}
                   style={styles.menuIcon}
                 />
                 <Text style={[
-                  styles.menuLabel, 
-                  { 
+                  styles.menuLabel,
+                  {
                     color: isActive ? colors.primary : colors.text,
                     fontWeight: isActive ? '700' : '500',
                   }
@@ -126,7 +128,7 @@ export default function SidebarContent(props: DrawerContentComponentProps) {
         </View>
 
         {/* ─── Post Button ─── */}
-        <TouchableOpacity 
+        <TouchableOpacity
           style={[styles.postButton, { backgroundColor: colors.primary }]}
           onPress={() => {
             props.navigation.closeDrawer();
@@ -140,7 +142,7 @@ export default function SidebarContent(props: DrawerContentComponentProps) {
         {/* ─── User Profile Section ─── */}
         {user && (
           <View style={[styles.userSection, { borderTopColor: colors.border }]}>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.userProfile}
               onPress={() => handleNavigate('Profile')}
             >
