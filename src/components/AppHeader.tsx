@@ -19,7 +19,7 @@ interface AppHeaderProps {
   title?: string;
   showBack?: boolean;
   showMenu?: boolean;
-  showNotifications?: boolean; // NEW: includes bell icon with unread badge
+  showNotifications?: boolean;
   rightActions?: {
     icon: keyof typeof Feather.glyphMap;
     onPress: () => void;
@@ -34,7 +34,7 @@ export default function AppHeader({
   title = 'Circle',
   showBack = false,
   showMenu = true,
-  showNotifications = false, // default off
+  showNotifications = false,
   rightActions = [],
   onBackPress,
   transparent = false,
@@ -99,19 +99,15 @@ export default function AppHeader({
     styles.container,
     {
       paddingTop: Platform.OS === 'ios' ? insets.top : StatusBar.currentHeight || 12,
-      paddingBottom: Platform.OS === 'ios' ? 12 : 12,
-      backgroundColor: transparent
-        ? 'transparent'
-        : isDark
-        ? colors.surface || '#1a1a2e'
-        : colors.surface || '#ffffff',
-      borderBottomWidth: transparent ? 0 : 1,
-      borderBottomColor: transparent
-        ? 'transparent'
-        : isDark
+      paddingBottom: 12,
+      // Always transparent — matches PostCard treatment
+      backgroundColor: 'transparent',
+      borderBottomWidth: 1,
+      borderBottomColor: isDark
         ? colors.border || 'rgba(255,255,255,0.1)'
         : colors.border || 'rgba(0,0,0,0.08)',
     },
+    // Shadow only if explicitly elevated and not transparent
     elevated && !transparent && {
       shadowColor: isDark ? 'rgba(0,0,0,0.4)' : '#000',
       shadowOffset: { width: 0, height: 2 },
@@ -124,26 +120,20 @@ export default function AppHeader({
   // ── Title styles ──
   const titleStyles = [
     styles.title,
-    {
-      color: transparent ? colors.text : colors.text,
-    },
+    { color: colors.text },
   ];
 
   // ── Logo styles ──
   const logoStyles = [
     styles.logo,
-    {
-      color: transparent ? colors.primary : colors.primary,
-    },
+    { color: colors.primary },
   ];
 
   // ── Button styles ──
   const buttonStyles = [
     styles.actionButton,
     {
-      backgroundColor: transparent
-        ? 'rgba(255,255,255,0.1)'
-        : isDark
+      backgroundColor: isDark
         ? 'rgba(255,255,255,0.05)'
         : 'rgba(0,0,0,0.03)',
     },
@@ -168,11 +158,7 @@ export default function AppHeader({
               style={buttonStyles}
               activeOpacity={0.6}
             >
-              <Feather
-                name="chevron-left"
-                size={24}
-                color={transparent ? colors.text : colors.text}
-              />
+              <Feather name="chevron-left" size={24} color={colors.text} />
             </TouchableOpacity>
           ) : showMenu ? (
             <TouchableOpacity
@@ -180,11 +166,7 @@ export default function AppHeader({
               style={buttonStyles}
               activeOpacity={0.6}
             >
-              <Feather
-                name="menu"
-                size={24}
-                color={transparent ? colors.text : colors.text}
-              />
+              <Feather name="menu" size={24} color={colors.text} />
             </TouchableOpacity>
           ) : null}
         </View>
@@ -212,7 +194,7 @@ export default function AppHeader({
               <Feather
                 name={action.icon}
                 size={20}
-                color={transparent ? colors.text : colors.textSecondary || '#666'}
+                color={colors.textSecondary || '#666'}
               />
               {action.badge !== undefined && action.badge > 0 && (
                 <View style={[styles.badge, { backgroundColor: colors.primary || '#6C63FF' }]}>
@@ -233,6 +215,7 @@ const styles = StyleSheet.create({
   container: {
     position: 'relative',
     zIndex: 100,
+    backgroundColor: 'transparent',
   },
   innerContainer: {
     flexDirection: 'row',
