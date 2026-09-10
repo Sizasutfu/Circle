@@ -60,13 +60,11 @@ export default function ChangePasswordScreen() {
 
   // ── Validate and submit ──
   const handleSubmit = () => {
-    // Validate current password
     if (!currentPassword.trim()) {
       Alert.alert('Error', 'Please enter your current password.');
       return;
     }
 
-    // Validate new password
     if (!newPassword.trim()) {
       Alert.alert('Error', 'Please enter a new password.');
       return;
@@ -77,13 +75,11 @@ export default function ChangePasswordScreen() {
       return;
     }
 
-    // Validate confirm password
     if (newPassword !== confirmPassword) {
       Alert.alert('Error', 'Passwords do not match.');
       return;
     }
 
-    // Check if new password is same as current
     if (newPassword === currentPassword) {
       Alert.alert('Error', 'New password must be different from your current password.');
       return;
@@ -105,10 +101,15 @@ export default function ChangePasswordScreen() {
         keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
       >
         {/* ─── Header ─── */}
-        <View style={[styles.header, { 
-          backgroundColor: colors.surface, 
-          borderBottomColor: colors.border 
-        }]}>
+        <View
+          style={[
+            styles.header,
+            {
+              backgroundColor: colors.background,
+              borderBottomColor: colors.border,
+            },
+          ]}
+        >
           <TouchableOpacity onPress={() => navigation.goBack()} disabled={isLoading}>
             <Feather name="arrow-left" size={24} color={colors.text} />
           </TouchableOpacity>
@@ -133,10 +134,15 @@ export default function ChangePasswordScreen() {
           {/* ─── Current Password ─── */}
           <View style={styles.field}>
             <Text style={[styles.label, { color: colors.text }]}>Current Password</Text>
-            <View style={[styles.inputContainer, { 
-              backgroundColor: colors.input, 
-              borderColor: colors.inputBorder 
-            }]}>
+            <View
+              style={[
+                styles.inputContainer,
+                {
+                  backgroundColor: colors.input,
+                  borderColor: colors.inputBorder,
+                },
+              ]}
+            >
               <TextInput
                 style={[styles.input, { color: colors.text }]}
                 value={currentPassword}
@@ -162,10 +168,15 @@ export default function ChangePasswordScreen() {
           {/* ─── New Password ─── */}
           <View style={styles.field}>
             <Text style={[styles.label, { color: colors.text }]}>New Password</Text>
-            <View style={[styles.inputContainer, { 
-              backgroundColor: colors.input, 
-              borderColor: colors.inputBorder 
-            }]}>
+            <View
+              style={[
+                styles.inputContainer,
+                {
+                  backgroundColor: colors.input,
+                  borderColor: colors.inputBorder,
+                },
+              ]}
+            >
               <TextInput
                 style={[styles.input, { color: colors.text }]}
                 value={newPassword}
@@ -186,16 +197,23 @@ export default function ChangePasswordScreen() {
                 />
               </TouchableOpacity>
             </View>
-            <Text style={[styles.helperText, { color: colors.textMuted }]}>Must be at least 6 characters.</Text>
+            <Text style={[styles.helperText, { color: colors.textMuted }]}>
+              Must be at least 6 characters.
+            </Text>
           </View>
 
           {/* ─── Confirm Password ─── */}
           <View style={styles.field}>
             <Text style={[styles.label, { color: colors.text }]}>Confirm New Password</Text>
-            <View style={[styles.inputContainer, { 
-              backgroundColor: colors.input, 
-              borderColor: colors.inputBorder 
-            }]}>
+            <View
+              style={[
+                styles.inputContainer,
+                {
+                  backgroundColor: colors.input,
+                  borderColor: colors.inputBorder,
+                },
+              ]}
+            >
               <TextInput
                 style={[styles.input, { color: colors.text }]}
                 value={confirmPassword}
@@ -219,10 +237,15 @@ export default function ChangePasswordScreen() {
           </View>
 
           {/* ─── Password Requirements ─── */}
-          <View style={[styles.requirementsContainer, { 
-            backgroundColor: isDark ? '#1f2937' : '#f9fafb',
-            borderColor: colors.border 
-          }]}>
+          <View
+            style={[
+              styles.requirementsContainer,
+              {
+                backgroundColor: isDark ? '#1f2937' : '#f9fafb',
+                borderColor: colors.border,
+              },
+            ]}
+          >
             <Text style={[styles.requirementsTitle, { color: colors.text }]}>Password must:</Text>
             <View style={styles.requirementItem}>
               <Feather
@@ -230,27 +253,61 @@ export default function ChangePasswordScreen() {
                 size={16}
                 color={newPassword.length >= 6 ? '#22c55e' : colors.textMuted}
               />
-              <Text style={[styles.requirementText, { color: colors.textSecondary }, newPassword.length >= 6 && styles.requirementMet]}>
+              <Text
+                style={[
+                  styles.requirementText,
+                  { color: colors.textSecondary },
+                  newPassword.length >= 6 && styles.requirementMet,
+                ]}
+              >
                 Be at least 6 characters long
               </Text>
             </View>
             <View style={styles.requirementItem}>
               <Feather
-                name={newPassword !== currentPassword && newPassword.length > 0 ? 'check-circle' : 'circle'}
+                name={
+                  newPassword !== currentPassword && newPassword.length > 0 ? 'check-circle' : 'circle'
+                }
                 size={16}
-                color={newPassword !== currentPassword && newPassword.length > 0 ? '#22c55e' : colors.textMuted}
+                color={
+                  newPassword !== currentPassword && newPassword.length > 0
+                    ? '#22c55e'
+                    : colors.textMuted
+                }
               />
-              <Text style={[styles.requirementText, { color: colors.textSecondary }, newPassword !== currentPassword && newPassword.length > 0 && styles.requirementMet]}>
+              <Text
+                style={[
+                  styles.requirementText,
+                  { color: colors.textSecondary },
+                  newPassword !== currentPassword && newPassword.length > 0 && styles.requirementMet,
+                ]}
+              >
                 Be different from your current password
               </Text>
             </View>
             <View style={styles.requirementItem}>
               <Feather
-                name={newPassword === confirmPassword && confirmPassword.length > 0 ? 'check-circle' : 'circle'}
+                name={
+                  newPassword === confirmPassword && confirmPassword.length > 0
+                    ? 'check-circle'
+                    : 'circle'
+                }
                 size={16}
-                color={newPassword === confirmPassword && confirmPassword.length > 0 ? '#22c55e' : colors.textMuted}
+                color={
+                  newPassword === confirmPassword && confirmPassword.length > 0
+                    ? '#22c55e'
+                    : colors.textMuted
+                }
               />
-              <Text style={[styles.requirementText, { color: colors.textSecondary }, newPassword === confirmPassword && confirmPassword.length > 0 && styles.requirementMet]}>
+              <Text
+                style={[
+                  styles.requirementText,
+                  { color: colors.textSecondary },
+                  newPassword === confirmPassword &&
+                    confirmPassword.length > 0 &&
+                    styles.requirementMet,
+                ]}
+              >
                 Passwords match
               </Text>
             </View>
@@ -258,7 +315,11 @@ export default function ChangePasswordScreen() {
 
           {/* ─── Submit Button ─── */}
           <TouchableOpacity
-            style={[styles.submitButton, { backgroundColor: colors.primary }, isLoading && styles.submitButtonDisabled]}
+            style={[
+              styles.submitButton,
+              { backgroundColor: colors.primary },
+              isLoading && styles.submitButtonDisabled,
+            ]}
             onPress={handleSubmit}
             disabled={isLoading}
             activeOpacity={0.8}
