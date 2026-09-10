@@ -80,11 +80,11 @@ export default function PostDetailScreen() {
       console.log('📦 Fetching post:', postId);
       const response = await api.get(`/posts/${postId}`);
       console.log('📦 Post response:', JSON.stringify(response.data, null, 2));
-      
+
       let postData = response.data;
       if (postData?.data) postData = postData.data;
       if (postData?.data) postData = postData.data;
-      
+
       return normalizePost(postData);
     },
     enabled: !!postId,
@@ -93,15 +93,15 @@ export default function PostDetailScreen() {
   // ---- Normalize post function ----
   const normalizePost = (raw: any): Post => {
     const rawUser = raw.user || raw.author || {};
-    
+
     let commentsData = raw.comments || raw.recentComments || [];
     if (!Array.isArray(commentsData)) {
       commentsData = [];
     }
-    
+
     const mappedComments = commentsData.map((c: any) => {
       const commentUser = c.user || {};
-      
+
       return {
         id: String(c.id || c._id || Math.random()),
         text: c.text || c.content || '',
@@ -114,7 +114,7 @@ export default function PostDetailScreen() {
         },
       };
     });
-    
+
     return {
       id: String(raw.id || ''),
       text: raw.text || raw.content || '',
@@ -168,7 +168,7 @@ export default function PostDetailScreen() {
     onSuccess: () => {
       refetchPost();
       setCommentText('');
-      Keyboard.dismiss(); // ✅ Dismiss keyboard so input returns to original position
+      Keyboard.dismiss();
     },
     onError: (error: any) => {
       Alert.alert('Error', error.response?.data?.message || 'Failed to add comment. Please try again.');
@@ -195,10 +195,15 @@ export default function PostDetailScreen() {
   const renderComment = ({ item }: { item: Comment }) => {
     const user = item.user || { id: '', name: 'Unknown', username: '', avatar: null };
     return (
-      <View style={[styles.commentItem, { 
-        backgroundColor: colors.surface, 
-        borderBottomColor: colors.border 
-      }]}>
+      <View
+        style={[
+          styles.commentItem,
+          {
+            backgroundColor: colors.background,
+            borderBottomColor: colors.border,
+          },
+        ]}
+      >
         <Avatar source={user.avatar} size={36} fallback={user.name} />
         <View style={styles.commentContent}>
           <View style={styles.commentHeader}>
@@ -214,7 +219,7 @@ export default function PostDetailScreen() {
 
   // ---- Render empty comments ----
   const renderEmptyComments = () => (
-    <View style={[styles.emptyComments, { backgroundColor: colors.surface }]}>
+    <View style={[styles.emptyComments, { backgroundColor: colors.background }]}>
       <Feather name="message-circle" size={48} color={colors.textMuted} />
       <Text style={[styles.emptyTitle, { color: colors.text }]}>No comments yet</Text>
       <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>Be the first to start the conversation</Text>
@@ -247,7 +252,6 @@ export default function PostDetailScreen() {
     );
   }
 
-  // Get comments from the post object
   const postComments = post?.comments || [];
 
   // ---- Main render ----
@@ -259,10 +263,15 @@ export default function PostDetailScreen() {
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
       >
         {/* ─── Custom Header ─── */}
-        <View style={[styles.header, { 
-          backgroundColor: colors.surface, 
-          borderBottomColor: colors.border 
-        }]}>
+        <View
+          style={[
+            styles.header,
+            {
+              backgroundColor: colors.background,
+              borderBottomColor: colors.border,
+            },
+          ]}
+        >
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
             <Feather name="arrow-left" size={24} color={colors.text} />
           </TouchableOpacity>
@@ -281,10 +290,15 @@ export default function PostDetailScreen() {
             ListHeaderComponent={
               <View style={styles.postContainer}>
                 {post && <PostCard post={post} />}
-                <View style={[styles.commentsHeader, { 
-                  backgroundColor: colors.surface, 
-                  borderBottomColor: colors.border 
-                }]}>
+                <View
+                  style={[
+                    styles.commentsHeader,
+                    {
+                      backgroundColor: colors.background,
+                      borderBottomColor: colors.border,
+                    },
+                  ]}
+                >
                   <Text style={[styles.commentsCount, { color: colors.text }]}>
                     {postComments.length} {postComments.length === 1 ? 'Comment' : 'Comments'}
                   </Text>
@@ -297,21 +311,26 @@ export default function PostDetailScreen() {
             style={styles.flexContainer}
           />
 
-          {/* ---- Comment Input Bar (now in normal flow) ---- */}
-          <View style={[
-            styles.inputBar,
-            {
-              backgroundColor: colors.surface,
-              borderTopColor: colors.border,
-              paddingBottom: keyboardVisible ? 0 : Math.max(insets.bottom, 8),
-            }
-          ]}>
+          {/* ---- Comment Input Bar ---- */}
+          <View
+            style={[
+              styles.inputBar,
+              {
+                backgroundColor: colors.background,
+                borderTopColor: colors.border,
+                paddingBottom: keyboardVisible ? 0 : Math.max(insets.bottom, 8),
+              },
+            ]}
+          >
             <TextInput
               ref={inputRef}
-              style={[styles.input, { 
-                backgroundColor: colors.input, 
-                color: colors.text 
-              }]}
+              style={[
+                styles.input,
+                {
+                  backgroundColor: colors.input,
+                  color: colors.text,
+                },
+              ]}
               placeholder="Add a comment..."
               placeholderTextColor={colors.placeholder}
               value={commentText}
@@ -383,7 +402,6 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: '600',
   },
-  // ─── Custom Header ───
   header: {
     flexDirection: 'row',
     alignItems: 'center',
