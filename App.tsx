@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './src/contexts/AuthContext';
 import { WsProvider } from './src/contexts/WsContext';
 import { ThemeProvider } from './src/contexts/ThemeContext';
+import { WhisperProvider } from './src/contexts/WhisperContext';
 import AppNavigator from './src/navigation/AppNavigator';
 
 const queryClient = new QueryClient({
@@ -22,7 +23,9 @@ export default function App() {
         <ThemeProvider>
           <AuthProvider>
             <WsProvider>
-              <AppNavigator />
+              <WhisperProvider>
+                <AppNavigator />
+              </WhisperProvider>
             </WsProvider>
           </AuthProvider>
         </ThemeProvider>

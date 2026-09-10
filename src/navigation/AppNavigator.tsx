@@ -31,6 +31,7 @@ import BlockedUsersScreen from '../screens/BlockedUsersScreen';
 import PostDetailScreen from '../screens/PostDetailScreen';
 import EditPostScreen from '../screens/EditPostScreen';
 import NewMessageScreen from '../screens/NewMessageScreen';
+import WhisperInboxScreen from '../screens/WhisperInboxScreen';
 
 // ----- Components -----
 import SidebarContent from '../components/SidebarContent';
@@ -45,13 +46,12 @@ const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 const Drawer = createDrawerNavigator();
 
-// ── Check if web ──
 const isWeb = Platform.OS === 'web';
 const { width: screenWidth } = Dimensions.get('window');
 const maxContentWidth = 600;
 
 // ============================================================
-//  Bottom Tab Navigator with Dark Mode
+//  Bottom Tab Navigator
 // ============================================================
 function MainTabs() {
   const insets = useSafeAreaInsets();
@@ -59,9 +59,7 @@ function MainTabs() {
   const bottomInset = Math.max(insets.bottom, 0);
   const tabBarHeight = TAB_BAR_CONTENT_HEIGHT + bottomInset;
 
-  if (isWeb) {
-    return null;
-  }
+  if (isWeb) return null;
 
   return (
     <Tab.Navigator
@@ -81,9 +79,7 @@ function MainTabs() {
         tabBarInactiveTintColor: colors.textSecondary,
         tabBarStyle: {
           position: 'absolute',
-          bottom: 0,
-          left: 0,
-          right: 0,
+          bottom: 0, left: 0, right: 0,
           height: tabBarHeight,
           paddingTop: 8,
           paddingBottom: Platform.OS === 'ios' ? bottomInset : 8,
@@ -113,7 +109,7 @@ function MainTabs() {
 }
 
 // ============================================================
-//  Web Navigator (No Bottom Tabs)
+//  Web Navigator
 // ============================================================
 function WebNavigator() {
   const { colors } = useTheme();
@@ -137,6 +133,7 @@ function WebNavigator() {
       <Stack.Screen name="EditProfile" component={EditProfileScreen} />
       <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
       <Stack.Screen name="BlockedUsers" component={BlockedUsersScreen} />
+      <Stack.Screen name="WhisperInbox" component={WhisperInboxScreen} />
     </Stack.Navigator>
   );
 }
@@ -153,35 +150,27 @@ function DrawerNavigator() {
     <Drawer.Navigator
       screenOptions={{
         headerShown: false,
-        drawerStyle: {
-          width: 280,
-          backgroundColor: colors.background,
-        },
+        drawerStyle: { width: 280, backgroundColor: colors.background },
         drawerType: isWeb ? 'permanent' : 'slide',
         overlayColor: 'rgba(0,0,0,0.5)',
         swipeEnabled: !isWeb,
         drawerActiveTintColor: colors.primary,
         drawerInactiveTintColor: colors.textSecondary,
         drawerActiveBackgroundColor: 'transparent',
-        drawerItemStyle: {
-          borderRadius: 12,
-          marginHorizontal: 8,
-        },
+        drawerItemStyle: { borderRadius: 12, marginHorizontal: 8 },
       }}
       drawerContent={(props) => <SidebarContent {...props} />}
     >
-      <Drawer.Screen 
-        name="MainTabs" 
+      <Drawer.Screen
+        name="MainTabs"
         component={isWeb ? WebNavigator : MainTabs}
         options={{
           drawerLabel: 'Home',
-          drawerIcon: ({ color, size }) => (
-            <Feather name="home" size={size} color={color} />
-          ),
+          drawerIcon: ({ color, size }) => <Feather name="home" size={size} color={color} />,
         }}
       />
-      <Drawer.Screen 
-        name="Notifications" 
+      <Drawer.Screen
+        name="Notifications"
         component={NotificationsScreen}
         options={{
           drawerIcon: ({ color, size }) => (
@@ -189,9 +178,7 @@ function DrawerNavigator() {
               <Feather name="bell" size={size} color={color} />
               {unreadCount > 0 && (
                 <View style={[styles.badge, { backgroundColor: colors.primary }]}>
-                  <Text style={styles.badgeText}>
-                    {unreadCount > 99 ? '99+' : unreadCount}
-                  </Text>
+                  <Text style={styles.badgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
                 </View>
               )}
             </View>
@@ -201,75 +188,38 @@ function DrawerNavigator() {
               <Text style={{ color: colors.text }}>Notifications</Text>
               {unreadCount > 0 && (
                 <View style={[styles.badge, { backgroundColor: colors.primary }]}>
-                  <Text style={styles.badgeText}>
-                    {unreadCount > 99 ? '99+' : unreadCount}
-                  </Text>
+                  <Text style={styles.badgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
                 </View>
               )}
             </View>
           ),
         }}
       />
-      <Drawer.Screen 
-        name="Topics" 
+      <Drawer.Screen
+        name="Topics"
         component={TopicsScreen}
         options={{
-          drawerIcon: ({ color, size }) => (
-            <Feather name="hash" size={size} color={color} />
-          ),
+          drawerIcon: ({ color, size }) => <Feather name="hash" size={size} color={color} />,
         }}
       />
-      <Drawer.Screen 
-        name="TopicDetail" 
-        component={TopicDetailScreen}
-        options={{
-          drawerItemStyle: { display: 'none' },
-        }}
-      />
-      <Drawer.Screen 
-        name="PostDetail" 
-        component={PostDetailScreen}
-        options={{
-          drawerItemStyle: { display: 'none' },
-        }}
-      />
-      <Drawer.Screen 
-        name="EditProfile" 
-        component={EditProfileScreen}
-        options={{
-          drawerItemStyle: { display: 'none' },
-        }}
-      />
-      <Drawer.Screen 
-        name="ChangePassword" 
-        component={ChangePasswordScreen}
-        options={{
-          drawerItemStyle: { display: 'none' },
-        }}
-      />
-      <Drawer.Screen 
-        name="BlockedUsers" 
-        component={BlockedUsersScreen}
-        options={{
-          drawerItemStyle: { display: 'none' },
-        }}
-      />
+      <Drawer.Screen name="TopicDetail" component={TopicDetailScreen} options={{ drawerItemStyle: { display: 'none' } }} />
+      <Drawer.Screen name="PostDetail" component={PostDetailScreen} options={{ drawerItemStyle: { display: 'none' } }} />
+      <Drawer.Screen name="EditProfile" component={EditProfileScreen} options={{ drawerItemStyle: { display: 'none' } }} />
+      <Drawer.Screen name="ChangePassword" component={ChangePasswordScreen} options={{ drawerItemStyle: { display: 'none' } }} />
+      <Drawer.Screen name="BlockedUsers" component={BlockedUsersScreen} options={{ drawerItemStyle: { display: 'none' } }} />
+      <Drawer.Screen name="WhisperInbox" component={WhisperInboxScreen} options={{ drawerItemStyle: { display: 'none' } }} />
     </Drawer.Navigator>
   );
 }
 
 // ============================================================
-//  Auth Stack (Login, SignUp, ForgotPassword)
+//  Auth Stack
 // ============================================================
 function AuthStack() {
   const { colors } = useTheme();
-  
   return (
     <Stack.Navigator
-      screenOptions={{
-        headerShown: false,
-        cardStyle: { backgroundColor: colors.background },
-      }}
+      screenOptions={{ headerShown: false, cardStyle: { backgroundColor: colors.background } }}
     >
       <Stack.Screen name="Login" component={LoginScreen} />
       <Stack.Screen name="SignUp" component={SignUpScreen} />
@@ -279,20 +229,15 @@ function AuthStack() {
 }
 
 // ============================================================
-//  Main Stack (Drawer + Modals + Stack Screens)
+//  Main Stack
 // ============================================================
 function MainStack() {
   const { colors } = useTheme();
-
   return (
     <Stack.Navigator
-      screenOptions={{
-        headerShown: false,
-        cardStyle: { backgroundColor: colors.background },
-      }}
+      screenOptions={{ headerShown: false, cardStyle: { backgroundColor: colors.background } }}
     >
       <Stack.Screen name="Drawer" component={DrawerNavigator} />
-
       <Stack.Screen
         name="CreatePostModal"
         component={CreatePostScreen}
@@ -307,34 +252,29 @@ function MainStack() {
       <Stack.Screen
         name="EditPost"
         component={EditPostScreen}
-        options={{ 
-          title: 'Edit Post', 
-          presentation: 'modal',
-          cardStyle: { backgroundColor: colors.background },
-        }}
+        options={{ title: 'Edit Post', presentation: 'modal', cardStyle: { backgroundColor: colors.background } }}
       />
       <Stack.Screen
         name="NewMessage"
         component={NewMessageScreen}
-        options={{ 
-          headerShown: false,
-          cardStyle: { backgroundColor: colors.background },
-        }}
+        options={{ headerShown: false, cardStyle: { backgroundColor: colors.background } }}
       />
       <Stack.Screen
         name="ChatDetail"
         component={ChatDetailScreen}
-        options={{ 
-          title: 'Chat',
-          cardStyle: { backgroundColor: colors.background },
-        }}
+        options={{ title: 'Chat', cardStyle: { backgroundColor: colors.background } }}
+      />
+      <Stack.Screen
+        name="WhisperInbox"
+        component={WhisperInboxScreen}
+        options={{ headerShown: false, cardStyle: { backgroundColor: colors.background } }}
       />
     </Stack.Navigator>
   );
 }
 
 // ============================================================
-//  Root Navigator with Dark Mode & Welcome Screen
+//  Root Navigator
 // ============================================================
 export default function AppNavigator() {
   const { user, isLoading } = useAuth();
@@ -342,7 +282,6 @@ export default function AppNavigator() {
   const [showWelcome, setShowWelcome] = useState<boolean | null>(null);
   const [isNewUser, setIsNewUser] = useState(false);
 
-  // ── Check if user has seen welcome screen ──
   useEffect(() => {
     const checkWelcome = async () => {
       try {
@@ -354,8 +293,7 @@ export default function AppNavigator() {
           setShowWelcome(false);
           setIsNewUser(false);
         }
-      } catch (error) {
-        console.error('Error checking welcome status:', error);
+      } catch {
         setShowWelcome(false);
         setIsNewUser(false);
       }
@@ -363,9 +301,7 @@ export default function AppNavigator() {
     checkWelcome();
   }, [user]);
 
-  if (isLoading || showWelcome === null) {
-    return null;
-  }
+  if (isLoading || showWelcome === null) return null;
 
   const customTheme = {
     dark: isDark,
@@ -378,22 +314,10 @@ export default function AppNavigator() {
       notification: colors.primary,
     },
     fonts: {
-      regular: {
-        fontFamily: 'System',
-        fontWeight: '400' as const,
-      },
-      medium: {
-        fontFamily: 'System',
-        fontWeight: '500' as const,
-      },
-      bold: {
-        fontFamily: 'System',
-        fontWeight: '700' as const,
-      },
-      heavy: {
-        fontFamily: 'System',
-        fontWeight: '800' as const,
-      },
+      regular: { fontFamily: 'System', fontWeight: '400' as const },
+      medium: { fontFamily: 'System', fontWeight: '500' as const },
+      bold: { fontFamily: 'System', fontWeight: '700' as const },
+      heavy: { fontFamily: 'System', fontWeight: '800' as const },
     },
   };
 
@@ -401,10 +325,7 @@ export default function AppNavigator() {
     <View style={[styles.rootContainer, { backgroundColor: colors.background }]}>
       <NavigationContainer theme={customTheme}>
         <Stack.Navigator
-          screenOptions={{
-            headerShown: false,
-            cardStyle: { backgroundColor: colors.background },
-          }}
+          screenOptions={{ headerShown: false, cardStyle: { backgroundColor: colors.background } }}
         >
           {!user ? (
             <Stack.Screen name="Auth" component={AuthStack} />
@@ -442,7 +363,6 @@ const styles = StyleSheet.create({
       borderRightColor: 'rgba(0,0,0,0.08)',
     }),
   },
-  // ── New badge styles ──
   badge: {
     position: 'absolute',
     top: -4,
@@ -454,9 +374,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 4,
   },
-  badgeText: {
-    color: 'white',
-    fontSize: 10,
-    fontWeight: '700',
-  },
+  badgeText: { color: 'white', fontSize: 10, fontWeight: '700' },
 });

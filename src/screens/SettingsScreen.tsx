@@ -29,13 +29,11 @@ export default function SettingsScreen() {
   const { colors, isDark, toggleTheme } = useTheme();
   const { contentBottomPadding } = useTabBarHeight();
 
-  // ── State for toggles ──
   const [pushNotifications, setPushNotifications] = useState(true);
   const [emailNotifications, setEmailNotifications] = useState(true);
   const [privateAccount, setPrivateAccount] = useState(false);
   const [showOnlineStatus, setShowOnlineStatus] = useState(true);
 
-  // ── Logout handler ──
   const handleLogout = () => {
     Alert.alert(
       'Logout',
@@ -57,21 +55,18 @@ export default function SettingsScreen() {
     );
   };
 
-  // ── Open link ──
   const openLink = (url: string) => {
     Linking.openURL(url).catch(() => {
       Alert.alert('Error', 'Could not open link.');
     });
   };
 
-  // ── Section header ──
   const SectionHeader = ({ title }: { title: string }) => (
     <Text style={[styles.sectionHeader, { color: colors.textSecondary }]}>
       {title}
     </Text>
   );
 
-  // ── Menu item with icon ──
   const MenuItem = ({
     icon,
     title,
@@ -119,7 +114,6 @@ export default function SettingsScreen() {
     </TouchableOpacity>
   );
 
-  // ── Toggle menu item ──
   const ToggleItem = ({
     icon,
     title,
@@ -148,7 +142,7 @@ export default function SettingsScreen() {
   );
 
   return (
-    <SafeAreaView 
+    <SafeAreaView
       style={[
         styles.container,
         { backgroundColor: colors.background },
@@ -157,10 +151,9 @@ export default function SettingsScreen() {
           alignSelf: 'center' as 'center',
           width: '100%',
         },
-      ]} 
+      ]}
       edges={['top']}
     >
-      {/* ─── Header ─── */}
       <View style={[styles.header, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Feather name="arrow-left" size={24} color={colors.text} />
@@ -210,6 +203,17 @@ export default function SettingsScreen() {
             title="Email"
             subtitle={user?.email || 'Not set'}
             showArrow={false}
+          />
+        </View>
+
+        {/* ─── Features ─── */}
+        <SectionHeader title="Features" />
+        <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <MenuItem
+            icon="message-square"
+            title="Whisper"
+            subtitle="Receive anonymous messages"
+            onPress={() => (navigation.navigate as any)('WhisperInbox')}
           />
         </View>
 
@@ -315,7 +319,6 @@ export default function SettingsScreen() {
           showArrow={false}
         />
 
-        {/* ─── Version ─── */}
         <Text style={[styles.versionText, { color: colors.textMuted }]}>Version 1.0.0</Text>
       </ScrollView>
     </SafeAreaView>
@@ -323,9 +326,7 @@ export default function SettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
+  container: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -334,19 +335,10 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
   },
-  backButton: {
-    padding: 4,
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-  },
-  headerRight: {
-    width: 40,
-  },
-  scrollContent: {
-    paddingBottom: 32,
-  },
+  backButton: { padding: 4 },
+  headerTitle: { fontSize: 20, fontWeight: '700' },
+  headerRight: { width: 40 },
+  scrollContent: { paddingBottom: 32 },
   profileSection: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -355,18 +347,9 @@ const styles = StyleSheet.create({
     marginTop: 12,
     borderBottomWidth: 1,
   },
-  profileInfo: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  profileName: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  profileUsername: {
-    fontSize: 14,
-    marginTop: 2,
-  },
+  profileInfo: { flex: 1, marginLeft: 12 },
+  profileName: { fontSize: 16, fontWeight: '600' },
+  profileUsername: { fontSize: 14, marginTop: 2 },
   sectionHeader: {
     fontSize: 13,
     fontWeight: '600',
@@ -376,10 +359,7 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 8,
   },
-  section: {
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-  },
+  section: { borderTopWidth: 1, borderBottomWidth: 1 },
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -388,11 +368,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
   },
-  menuItemLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
+  menuItemLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   menuIconContainer: {
     width: 36,
     height: 36,
@@ -401,24 +377,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 12,
   },
-  menuItemText: {
-    flex: 1,
-  },
-  menuItemTitle: {
-    fontSize: 15,
-  },
-  menuItemSubtitle: {
-    fontSize: 13,
-    marginTop: 1,
-  },
-  menuItemRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  versionText: {
-    textAlign: 'center',
-    fontSize: 12,
-    marginTop: 16,
-  },
+  menuItemText: { flex: 1 },
+  menuItemTitle: { fontSize: 15 },
+  menuItemSubtitle: { fontSize: 13, marginTop: 1 },
+  menuItemRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  versionText: { textAlign: 'center', fontSize: 12, marginTop: 16 },
 });
