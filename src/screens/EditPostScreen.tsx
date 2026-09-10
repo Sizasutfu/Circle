@@ -288,10 +288,15 @@ export default function EditPostScreen() {
         keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
       >
         {/* ---- Header ---- */}
-        <View style={[styles.header, { 
-          backgroundColor: colors.surface, 
-          borderBottomColor: colors.border 
-        }]}>
+        <View
+          style={[
+            styles.header,
+            {
+              backgroundColor: colors.background,
+              borderBottomColor: colors.border,
+            },
+          ]}
+        >
           <TouchableOpacity onPress={handleCancel} disabled={isSaving}>
             <Text style={[styles.cancelButton, { color: colors.textSecondary }]}>Cancel</Text>
           </TouchableOpacity>
@@ -299,7 +304,11 @@ export default function EditPostScreen() {
           <TouchableOpacity
             onPress={handleSubmit}
             disabled={isSaving}
-            style={[styles.saveButton, { backgroundColor: colors.primary }, isSaving && styles.saveButtonDisabled]}
+            style={[
+              styles.saveButton,
+              { backgroundColor: colors.primary },
+              isSaving && styles.saveButtonDisabled,
+            ]}
           >
             {isSaving ? (
               <ActivityIndicator size="small" color="white" />
@@ -312,10 +321,13 @@ export default function EditPostScreen() {
         <ScrollView style={styles.body} keyboardShouldPersistTaps="handled">
           {/* ---- Text Input ---- */}
           <TextInput
-            style={[styles.textInput, { 
-              color: colors.text,
-              backgroundColor: colors.background 
-            }]}
+            style={[
+              styles.textInput,
+              {
+                color: colors.text,
+                backgroundColor: colors.background,
+              },
+            ]}
             placeholder="What's on your mind?"
             placeholderTextColor={colors.placeholder}
             multiline
@@ -355,9 +367,13 @@ export default function EditPostScreen() {
           {/* ---- Media Buttons ---- */}
           <View style={styles.mediaButtons}>
             <TouchableOpacity
-              style={[styles.mediaButton, { 
-                backgroundColor: isDark ? '#374151' : '#f3f4f6' 
-              }, (isSaving || videoUri || existingVideo) && styles.mediaButtonDisabled]}
+              style={[
+                styles.mediaButton,
+                {
+                  backgroundColor: isDark ? '#374151' : '#f3f4f6',
+                },
+                (isSaving || videoUri || existingVideo) && styles.mediaButtonDisabled,
+              ]}
               onPress={pickImage}
               disabled={isSaving || !!videoUri || !!existingVideo}
             >
@@ -365,9 +381,13 @@ export default function EditPostScreen() {
               <Text style={[styles.mediaButtonText, { color: colors.textSecondary }]}>Change Photo</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.mediaButton, { 
-                backgroundColor: isDark ? '#374151' : '#f3f4f6' 
-              }, (isSaving || imageUri || existingImage) && styles.mediaButtonDisabled]}
+              style={[
+                styles.mediaButton,
+                {
+                  backgroundColor: isDark ? '#374151' : '#f3f4f6',
+                },
+                (isSaving || imageUri || existingImage) && styles.mediaButtonDisabled,
+              ]}
               onPress={pickVideo}
               disabled={isSaving || !!imageUri || !!existingImage}
             >
