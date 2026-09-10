@@ -50,7 +50,6 @@ export default function ProfileScreen() {
   const [activeTab, setActiveTab] = useState<ProfileTab>('posts');
   const [refreshing, setRefreshing] = useState(false);
 
-  // ── Get userId or username from route params ──
   const params = route.params as { userId?: string; username?: string } | undefined;
   const targetIdentifier = params?.userId || params?.username || user?.id || '';
 
@@ -62,7 +61,6 @@ export default function ProfileScreen() {
 
   const getProfileEndpoint = () => `/users/${targetUserId || targetUsername}/profile`;
 
-  // ── Fetch profile data ──
   const {
     data: profile,
     isLoading: profileLoading,
@@ -101,10 +99,6 @@ export default function ProfileScreen() {
     retry: 2,
   });
 
-  // ── Minimal normalizer — mirrors FeedScreen's pass-through approach ──
-  // Only resolves media URLs and guarantees array safety. Does NOT touch
-  // `user` or `originalPost.user`, so the API's author data flows through
-  // untouched (same as it does on the feed).
   const normalizePost = (p: any): Post => ({
     ...p,
     id: String(p.id || ''),
@@ -124,7 +118,6 @@ export default function ProfileScreen() {
     isRepost: !!p.isRepost,
     groupId: p.groupId || null,
     reasons: Array.isArray(p.reasons) ? p.reasons : [],
-    // Original post: normalize URLs/arrays, leave `user` intact.
     originalPost: p.originalPost
       ? {
           ...p.originalPost,
@@ -147,7 +140,6 @@ export default function ProfileScreen() {
           reasons: [],
         }
       : null,
-    // `user` is spread through from `...p` and left exactly as the API sent it.
   });
 
   const effectiveUserId = profile?.id || targetUserId || user?.id || '';
@@ -243,12 +235,10 @@ export default function ProfileScreen() {
     (navigation.navigate as any)('EditProfile');
   };
 
-  // ── Render post — pass through exactly like FeedScreen does ──
   const renderPostItem = ({ item }: { item: Post }) => (
     <PostCard post={item} />
   );
 
-  // ── Not logged in ──
   if (!user) {
     return (
       <SafeAreaView style={[styles.placeholderContainer, { backgroundColor: colors.background }]} edges={['top']}>
@@ -267,7 +257,6 @@ export default function ProfileScreen() {
     );
   }
 
-  // ── Loading ──
   if (profileLoading) {
     return (
       <SafeAreaView style={[styles.loadingContainer, { backgroundColor: colors.background }]} edges={['top']}>
@@ -276,7 +265,6 @@ export default function ProfileScreen() {
     );
   }
 
-  // ── Error ──
   if (profileError || !profile) {
     return (
       <SafeAreaView style={[styles.errorContainer, { backgroundColor: colors.background }]} edges={['top']}>
@@ -290,7 +278,6 @@ export default function ProfileScreen() {
     );
   }
 
-  // ── Shared header ──
   const renderHeader = () => (
     <>
       {profile.coverImage ? (
@@ -304,7 +291,15 @@ export default function ProfileScreen() {
 
       <View style={styles.header}>
         <View style={styles.avatarRow}>
-          <View style={[styles.avatarBorder, { borderColor: colors.surface, backgroundColor: colors.surface }]}>
+          <View
+            style={[
+              styles.avatarBorder,
+              {
+                borderColor: colors.background,
+                backgroundColor: colors.background,
+              },
+            ]}
+          >
             <Avatar source={profile.avatar} size={80} fallback={profile.name} />
           </View>
           <View style={styles.headerActions}>
@@ -377,7 +372,6 @@ export default function ProfileScreen() {
     </>
   );
 
-  // ── Main render ──
   if (activeTab === 'posts') {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
