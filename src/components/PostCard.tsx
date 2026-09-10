@@ -279,7 +279,6 @@ function PostCard({
     }
 
     try {
-      console.log('🔄 Repost button pressed for post:', id);
       await repostPost(id);
     } catch (error: any) {
       console.warn('Repost failed:', error);
@@ -440,10 +439,7 @@ function PostCard({
 
   if (isRepost && (!text || text.trim() === '') && originalPost) {
     return (
-      <View style={[styles.repostWrapper, {
-        backgroundColor: isDark ? '#1f2937' : '#f9fafb',
-        borderBottomColor: colors.border
-      }]}>
+      <View style={[styles.repostWrapper, { borderBottomColor: colors.border }]}>
         <View style={styles.repostBanner}>
           <Feather name="repeat" size={14} color={colors.textMuted} />
           <Text style={[styles.repostBannerText, { color: colors.textSecondary }]}>{displayName} reposted</Text>
@@ -457,10 +453,7 @@ function PostCard({
   const hasMedia = !!(image || video);
 
   return (
-    <View style={[styles.card, {
-      backgroundColor: colors.surface,
-      borderBottomColor: colors.border
-    }]}>
+    <View style={[styles.card, { borderBottomColor: colors.border }]}>
       {isRepost && originalPost && (
         <View style={styles.repostBanner}>
           <Feather name="repeat" size={14} color={colors.textMuted} />
@@ -589,11 +582,13 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     paddingHorizontal: 0,
     paddingVertical: 12,
+    backgroundColor: 'transparent',
   },
   repostWrapper: {
     paddingHorizontal: 0,
     paddingVertical: 8,
     borderBottomWidth: 1,
+    backgroundColor: 'transparent',
   },
   repostBanner: {
     flexDirection: 'row',
