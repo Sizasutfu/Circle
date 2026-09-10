@@ -21,6 +21,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useWs } from '../contexts/WsContext';
 import { Avatar } from '../components/Avatar';
+import MessageActionSheet from '../components/MessageActionSheet';
 import api from '../api/client';
 import { timeAgo } from '../utils/helpers';
 import { resolveMediaUrl } from '../lib/media';
@@ -120,6 +121,7 @@ export default function ChatDetailScreen() {
   const [error, setError] = useState<string | null>(null);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [editingMessage, setEditingMessage] = useState<Message | null>(null);
+  const [actionTarget, setActionTarget] = useState<Message | null>(null);
 
   // Presence
   const [otherOnline, setOtherOnline] = useState(false);
@@ -393,7 +395,7 @@ export default function ChatDetailScreen() {
   const startEditing = (item: Message) => {
     setEditingMessage(item);
     setInput(item.body || item._plain || '');
-    setTimeout(() => inputRef.current?.focus(), 50);
+    setTimeout(() => inputRef.current?.focus(), 80);
   };
 
   const cancelEditing = () => {
@@ -402,21 +404,6 @@ export default function ChatDetailScreen() {
   };
 
   // ── Delete flow ──
-  const confirmDelete = (item: Message) => {
-    Alert.alert(
-      'Delete message?',
-      'This action cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => deleteMessage(item),
-        },
-      ]
-    );
-  };
-
   const deleteMessage = async (item: Message) => {
     const snapshot = messages;
     setMessages((prev) => prev.filter((m) => m.id !== item.id));
@@ -439,11 +426,7 @@ export default function ChatDetailScreen() {
     const isTemp = String(item.id).startsWith('tmp_');
     if (!isMine || isTemp) return;
 
-    Alert.alert('Message options', undefined, [
-      { text: 'Edit', onPress: () => startEditing(item) },
-      { text: 'Delete', style: 'destructive', onPress: () => confirmDelete(item) },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
+    setActionTarget(item);
   };
 
   // ── Load more ──
@@ -698,6 +681,30 @@ export default function ChatDetailScreen() {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      {/* ── Themed action sheet for message edit/delete ── */}
+      <MessageActionSheet
+        visible={!!actionTarget}
+        onClose={() => setActionTarget(null)}
+        title="Message options"
+        actions={
+          actionTarget
+            ? [
+                {
+                  label: 'Edit message',
+                  icon: 'edit-2',
+                  onPress: () => startEditing(actionTarget),
+                },
+                {
+                  label: 'Delete message',
+                  icon: 'trash-2',
+                  destructive: true,
+                  onPress: () => deleteMessage(actionTarget),
+                },
+              ]
+            : []
+        }
+      />
     </SafeAreaView>
   );
 }
