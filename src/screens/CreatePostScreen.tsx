@@ -39,10 +39,15 @@ export default function CreatePostScreen() {
   if (!user) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
-        <View style={[styles.header, { 
-          backgroundColor: colors.surface, 
-          borderBottomColor: colors.border 
-        }]}>
+        <View
+          style={[
+            styles.header,
+            {
+              backgroundColor: colors.background,
+              borderBottomColor: colors.border,
+            },
+          ]}
+        >
           <TouchableOpacity onPress={() => (navigation.navigate as any)('Login')}>
             <Text style={[styles.cancelButton, { color: colors.textSecondary }]}>Cancel</Text>
           </TouchableOpacity>
@@ -117,12 +122,12 @@ export default function CreatePostScreen() {
       CommonActions.reset({
         index: 0,
         routes: [
-          { 
+          {
             name: 'Drawer',
             state: {
               index: 0,
               routes: [
-                { 
+                {
                   name: 'Main',
                   state: {
                     index: 0,
@@ -144,7 +149,6 @@ export default function CreatePostScreen() {
       return;
     }
 
-    // Show loader
     setShowLoader(true);
     setLoading(true);
 
@@ -178,21 +182,16 @@ export default function CreatePostScreen() {
         },
       });
 
-      // ── Clear form ──
       setText('');
       setImageUri(null);
       setVideoUri(null);
-      
-      // ── Invalidate feed cache ──
+
       queryClient.invalidateQueries({ queryKey: ['feed'] });
-      
-      // ── Hide loader and navigate ──
+
       setShowLoader(false);
       setLoading(false);
-      
-      // ── Navigate to Feed ──
+
       navigateToFeed();
-      
     } catch (error: any) {
       console.error('Post creation error:', error);
       setShowLoader(false);
@@ -209,12 +208,16 @@ export default function CreatePostScreen() {
     if (text.trim() || imageUri || videoUri) {
       Alert.alert('Discard post?', 'Your draft will be lost.', [
         { text: 'Keep editing', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: () => {
-          setText('');
-          setImageUri(null);
-          setVideoUri(null);
-          navigation.goBack();
-        }},
+        {
+          text: 'Discard',
+          style: 'destructive',
+          onPress: () => {
+            setText('');
+            setImageUri(null);
+            setVideoUri(null);
+            navigation.goBack();
+          },
+        },
       ]);
     } else {
       navigation.goBack();
@@ -223,12 +226,7 @@ export default function CreatePostScreen() {
 
   // ---- Render Loader Modal ----
   const renderLoader = () => (
-    <Modal
-      transparent
-      visible={showLoader}
-      animationType="fade"
-      statusBarTranslucent
-    >
+    <Modal transparent visible={showLoader} animationType="fade" statusBarTranslucent>
       <View style={[styles.loaderOverlay, { backgroundColor: 'rgba(0,0,0,0.7)' }]}>
         <View style={[styles.loaderContainer, { backgroundColor: colors.surface }]}>
           <ActivityIndicator size="large" color={colors.primary} />
@@ -246,10 +244,15 @@ export default function CreatePostScreen() {
       {/* ─── Loader Modal ─── */}
       {renderLoader()}
 
-      <View style={[styles.header, { 
-        backgroundColor: colors.surface, 
-        borderBottomColor: colors.border 
-      }]}>
+      <View
+        style={[
+          styles.header,
+          {
+            backgroundColor: colors.background,
+            borderBottomColor: colors.border,
+          },
+        ]}
+      >
         <TouchableOpacity onPress={handleCancel} disabled={loading}>
           <Text style={[styles.cancelButton, { color: colors.textSecondary }]}>Cancel</Text>
         </TouchableOpacity>
@@ -257,7 +260,11 @@ export default function CreatePostScreen() {
         <TouchableOpacity
           onPress={handleSubmit}
           disabled={loading}
-          style={[styles.postButton, { backgroundColor: colors.primary }, loading && styles.postButtonDisabled]}
+          style={[
+            styles.postButton,
+            { backgroundColor: colors.primary },
+            loading && styles.postButtonDisabled,
+          ]}
         >
           {loading ? (
             <ActivityIndicator size="small" color="white" />
@@ -269,10 +276,13 @@ export default function CreatePostScreen() {
 
       <ScrollView style={styles.body} keyboardShouldPersistTaps="handled">
         <TextInput
-          style={[styles.textInput, { 
-            color: colors.text,
-            backgroundColor: colors.background 
-          }]}
+          style={[
+            styles.textInput,
+            {
+              color: colors.text,
+              backgroundColor: colors.background,
+            },
+          ]}
           placeholder="What's on your mind?"
           placeholderTextColor={colors.placeholder}
           multiline
@@ -301,9 +311,12 @@ export default function CreatePostScreen() {
 
         <View style={styles.mediaButtons}>
           <TouchableOpacity
-            style={[styles.mediaButton, { 
-              backgroundColor: isDark ? '#374151' : '#f3f4f6' 
-            }]}
+            style={[
+              styles.mediaButton,
+              {
+                backgroundColor: isDark ? '#374151' : '#f3f4f6',
+              },
+            ]}
             onPress={pickImage}
             disabled={loading || !!videoUri}
           >
@@ -311,9 +324,12 @@ export default function CreatePostScreen() {
             <Text style={[styles.mediaButtonText, { color: colors.textSecondary }]}>Photo</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.mediaButton, { 
-              backgroundColor: isDark ? '#374151' : '#f3f4f6' 
-            }]}
+            style={[
+              styles.mediaButton,
+              {
+                backgroundColor: isDark ? '#374151' : '#f3f4f6',
+              },
+            ]}
             onPress={pickVideo}
             disabled={loading || !!imageUri}
           >
@@ -417,7 +433,6 @@ const styles = StyleSheet.create({
   mediaButtonText: {
     fontSize: 14,
   },
-  // ── Loader Styles ──
   loaderOverlay: {
     flex: 1,
     justifyContent: 'center',
@@ -443,7 +458,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginTop: 4,
   },
-  // ── Not logged in styles ──
   notLoggedInContainer: {
     flex: 1,
     alignItems: 'center',
