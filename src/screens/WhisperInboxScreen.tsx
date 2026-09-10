@@ -1,19 +1,21 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
-  View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator,
-  Alert, RefreshControl, Share, Modal, TextInput, Image, ScrollView, KeyboardAvoidingView,
-  Platform,
+  View,
+  Text,
+  FlatList,
+  TouchableOpacity,
+  StyleSheet,
+  ActivityIndicator,
+  Alert,
+  RefreshControl,
+  Share,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
-import * as Clipboard from 'expo-clipboard';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useWhisper, WhisperMessage } from '../contexts/WhisperContext';
-import WhisperCardPreview from '../components/WhisperCardPreview';
-import { generateWhisperCard } from '../lib/whisperCard';
-import api from '../api/client';
 import { timeAgo } from '../utils/helpers';
 
 // Public base URL for shareable links (your web app)
@@ -29,13 +31,6 @@ export default function WhisperInboxScreen() {
   } = useWhisper();
 
   const [refreshing, setRefreshing] = useState(false);
-  const [replyTarget, setReplyTarget] = useState<WhisperMessage | null>(null);
-  const [replyText, setReplyText] = useState('');
-  const [posting, setPosting] = useState(false);
-
-  // Hidden card view for capture
-  const cardRef = useRef<View>(null);
-  const [cardData, setCardData] = useState<{ message: string; username: string } | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -66,10 +61,14 @@ export default function WhisperInboxScreen() {
     }
   };
 
+  // Copy link via the system share sheet (no expo-clipboard needed)
   const handleCopyLink = async () => {
     const url = `${PUBLIC_WEB_URL}/whisper/send/${settings.link_slug}`;
-    await Clipboard.setStringAsync(url);
-    Alert.alert('Copied', 'Whisper link copied to clipboard.');
+    try {
+      await Share.share({ message: url, url });
+    } catch {
+      // user dismissed — no-op
+    }
   };
 
   const handleRegenerate = () => {
@@ -89,47 +88,12 @@ export default function WhisperInboxScreen() {
     );
   };
 
-  // ── Post flow: capture the hidden card, upload, mark posted ──
-  const handlePost = async () => {
-    if (!replyTarget || !replyText.trim() || !user) return;
-    setPosting(true);
-
-    try {
-      // 1. Render the card view with the whisper text
-      setCardData({ message: replyTarget.message, username: user.username });
-
-      // 2. Wait for the next frame so the view is mounted
-      await new Promise(r => setTimeout(r, 250));
-
-      // 3. Capture it to a PNG file
-      const uri = await generateWhisperCard(cardRef);
-
-      // 4. Upload as FormData
-      const formData = new FormData();
-      formData.append('text', replyText.trim());
-      formData.append('image', {
-        uri,
-        name: `whisper-${replyTarget.id}.png`,
-        type: 'image/png',
-      } as any);
-
-      await api.post(`/whisper/${replyTarget.id}/post`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-
-      // 5. Mark posted locally
-      setReplyTarget(null);
-      setReplyText('');
-      setCardData(null);
-      await fetchInbox();
-
-      Alert.alert('Posted', 'Your reply is live on the feed.');
-    } catch (err: any) {
-      console.error('Whisper post failed:', err);
-      Alert.alert('Error', err?.response?.data?.message || 'Failed to post. Please try again.');
-    } finally {
-      setPosting(false);
-    }
+  // Reply & Post requires react-native-view-shot — needs a rebuilt dev client
+  const handleReplyPress = () => {
+    Alert.alert(
+      'Coming soon',
+      'Reply & Post needs a rebuilt dev client. Rebuild the app to enable this feature.'
+    );
   };
 
   const renderItem = ({ item }: { item: WhisperMessage }) => (
@@ -148,8 +112,8 @@ export default function WhisperInboxScreen() {
       <View style={styles.actions}>
         {!item.posted && (
           <TouchableOpacity
-            style={[styles.primaryBtn, { backgroundColor: colors.primary }]}
-            onPress={() => { setReplyTarget(item); setReplyText(''); }}
+            style={[styles.primaryBtn, { backgroundColor: colors.primary, opacity: 0.5 }]}
+            onPress={handleReplyPress}
           >
             <Feather name="message-circle" size={14} color="white" />
             <Text style={styles.primaryBtnText}>Reply & Post</Text>
@@ -204,8 +168,8 @@ export default function WhisperInboxScreen() {
             <View style={styles.linkActions}>
               {!!settings.link_slug && (
                 <TouchableOpacity onPress={handleCopyLink} style={styles.smallBtn}>
-                  <Feather name="copy" size={14} color={colors.primary} />
-                  <Text style={[styles.smallBtnText, { color: colors.primary }]}>Copy</Text>
+                  <Feather name="share-2" size={14} color={colors.primary} />
+                  <Text style={[styles.smallBtnText, { color: colors.primary }]}>Share</Text>
                 </TouchableOpacity>
               )}
               <TouchableOpacity onPress={handleRegenerate} style={styles.smallBtn}>
@@ -244,68 +208,6 @@ export default function WhisperInboxScreen() {
           ) : null
         }
       />
-
-      {/* ── Hidden card view for capture (do NOT remove) ── */}
-      {cardData && (
-        <View style={styles.hidden}>
-          <WhisperCardPreview ref={cardRef} message={cardData.message} username={cardData.username} />
-        </View>
-      )}
-
-      {/* ── Reply modal ── */}
-      <Modal visible={!!replyTarget} transparent animationType="slide" onRequestClose={() => setReplyTarget(null)}>
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={[styles.modal, { backgroundColor: colors.surface }]}>
-              <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
-                <Text style={[styles.modalTitle, { color: colors.text }]}>✍️ Reply & Post</Text>
-                <TouchableOpacity onPress={() => setReplyTarget(null)}>
-                  <Feather name="x" size={22} color={colors.text} />
-                </TouchableOpacity>
-              </View>
-
-              <ScrollView contentContainerStyle={styles.modalContent}>
-                {/* Preview bubble */}
-                <View style={styles.previewBubble}>
-                  <Text style={styles.previewLabel}>WHISPER ON CIRCLE</Text>
-                  <Text style={styles.previewText}>"{replyTarget?.message}"</Text>
-                </View>
-
-                <TextInput
-                  style={[styles.replyInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
-                  value={replyText}
-                  onChangeText={setReplyText}
-                  placeholder="Your reply… this becomes the post caption"
-                  placeholderTextColor={colors.textMuted}
-                  multiline
-                  maxLength={500}
-                />
-                <Text style={[styles.charCount, { color: colors.textMuted }]}>
-                  {500 - replyText.length} left
-                </Text>
-
-                <TouchableOpacity
-                  style={[styles.primaryBtnLg, { backgroundColor: colors.primary, opacity: posting || !replyText.trim() ? 0.5 : 1 }]}
-                  onPress={handlePost}
-                  disabled={posting || !replyText.trim()}
-                >
-                  {posting ? (
-                    <ActivityIndicator color="white" />
-                  ) : (
-                    <>
-                      <Feather name="send" size={16} color="white" />
-                      <Text style={styles.primaryBtnText}>Post to Circle feed</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-              </ScrollView>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -324,24 +226,35 @@ const styles = StyleSheet.create({
   toggleKnob: { position: 'absolute', width: 20, height: 20, borderRadius: 10, backgroundColor: 'white' },
 
   listContent: { padding: 16, paddingBottom: 32 },
-  linkCard: {
-    padding: 16, borderRadius: 12, borderWidth: 1, marginBottom: 16,
-  },
+  linkCard: { padding: 16, borderRadius: 12, borderWidth: 1, marginBottom: 16 },
   linkLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 1, marginBottom: 4 },
   linkUrl: { fontSize: 13, fontWeight: '600' },
   linkActions: { flexDirection: 'row', gap: 8, marginTop: 12 },
-  smallBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: 'rgba(108,99,255,0.1)' },
+  smallBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20,
+    backgroundColor: 'rgba(108,99,255,0.1)',
+  },
   smallBtnText: { fontSize: 12, fontWeight: '700' },
 
   card: { borderRadius: 12, borderWidth: 1, padding: 16, marginBottom: 12 },
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  anonBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
+  anonBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20,
+  },
   anonText: { color: '#8b5cf6', fontSize: 11, fontWeight: '700' },
   time: { fontSize: 11 },
   postedLabel: { fontSize: 11, color: '#22c55e', fontWeight: '600' },
   message: { fontSize: 15, lineHeight: 22 },
-  actions: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12, justifyContent: 'flex-end' },
-  primaryBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20 },
+  actions: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    marginTop: 12, justifyContent: 'flex-end',
+  },
+  primaryBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
+  },
   primaryBtnText: { color: 'white', fontWeight: '700', fontSize: 13 },
   iconBtn: { padding: 8 },
 
@@ -350,18 +263,4 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: 14, textAlign: 'center', marginTop: 6, paddingHorizontal: 32 },
 
   loadMore: { padding: 14, borderRadius: 12, borderWidth: 1, alignItems: 'center', marginTop: 12 },
-
-  hidden: { position: 'absolute', left: -9999, top: -9999 },
-
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
-  modal: { borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '85%' },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1 },
-  modalTitle: { fontSize: 17, fontWeight: '700' },
-  modalContent: { padding: 16 },
-  previewBubble: { backgroundColor: '#1a1030', borderRadius: 12, padding: 16, marginBottom: 16 },
-  previewLabel: { color: '#a78bfa', fontSize: 10, fontWeight: '800', letterSpacing: 1.5, marginBottom: 6 },
-  previewText: { color: '#e2d9f3', fontSize: 15, fontStyle: 'italic' },
-  replyInput: { minHeight: 90, borderWidth: 1, borderRadius: 12, padding: 12, fontSize: 15, textAlignVertical: 'top' },
-  charCount: { fontSize: 11, alignSelf: 'flex-end', marginTop: 4 },
-  primaryBtnLg: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8, paddingVertical: 14, borderRadius: 24, marginTop: 16 },
 });
