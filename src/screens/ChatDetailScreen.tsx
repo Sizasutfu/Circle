@@ -48,7 +48,7 @@ interface Message {
   _plain?: string;
 }
 
-// ── Animated "typing…" dots, styled like an incoming message bubble ──
+// ── Animated "typing…" dots ──
 function TypingDots({ isDark, colors }: { isDark: boolean; colors: any }) {
   const dot1 = useRef(new Animated.Value(0)).current;
   const dot2 = useRef(new Animated.Value(0)).current;
@@ -59,59 +59,30 @@ function TypingDots({ isDark, colors }: { isDark: boolean; colors: any }) {
       Animated.loop(
         Animated.sequence([
           Animated.delay(delay),
-          Animated.timing(value, {
-            toValue: 1,
-            duration: 300,
-            easing: Easing.ease,
-            useNativeDriver: true,
-          }),
-          Animated.timing(value, {
-            toValue: 0,
-            duration: 300,
-            easing: Easing.ease,
-            useNativeDriver: true,
-          }),
+          Animated.timing(value, { toValue: 1, duration: 300, easing: Easing.ease, useNativeDriver: true }),
+          Animated.timing(value, { toValue: 0, duration: 300, easing: Easing.ease, useNativeDriver: true }),
           Animated.delay(450 - delay),
         ])
       );
-
-    const anim1 = makeBounce(dot1, 0);
-    const anim2 = makeBounce(dot2, 150);
-    const anim3 = makeBounce(dot3, 300);
-    anim1.start();
-    anim2.start();
-    anim3.start();
-
-    return () => {
-      anim1.stop();
-      anim2.stop();
-      anim3.stop();
-    };
+    const a1 = makeBounce(dot1, 0);
+    const a2 = makeBounce(dot2, 150);
+    const a3 = makeBounce(dot3, 300);
+    a1.start(); a2.start(); a3.start();
+    return () => { a1.stop(); a2.stop(); a3.stop(); };
   }, [dot1, dot2, dot3]);
 
   const dotStyle = (value: Animated.Value) => ({
     opacity: value.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1] }),
-    transform: [
-      {
-        translateY: value.interpolate({ inputRange: [0, 1], outputRange: [0, -3] }),
-      },
-    ],
+    transform: [{ translateY: value.interpolate({ inputRange: [0, 1], outputRange: [0, -3] }) }],
   });
 
   return (
     <View style={styles.messageRow}>
-      <View
-        style={[
-          styles.messageBubble,
-          styles.bubbleLeft,
-          styles.typingBubble,
-          {
-            backgroundColor: isDark ? '#374151' : '#f3f4f6',
-            borderWidth: isDark ? 0 : 1,
-            borderColor: colors.border,
-          },
-        ]}
-      >
+      <View style={[styles.messageBubble, styles.bubbleLeft, styles.typingBubble, {
+        backgroundColor: isDark ? '#374151' : '#f3f4f6',
+        borderWidth: isDark ? 0 : 1,
+        borderColor: colors.border,
+      }]}>
         <Animated.View style={[styles.typingDot, { backgroundColor: colors.textMuted }, dotStyle(dot1)]} />
         <Animated.View style={[styles.typingDot, { backgroundColor: colors.textMuted }, dotStyle(dot2)]} />
         <Animated.View style={[styles.typingDot, { backgroundColor: colors.textMuted }, dotStyle(dot3)]} />
@@ -136,7 +107,6 @@ export default function ChatDetailScreen() {
   } = useWs();
 
   const { conversationId, otherUserId, otherName, otherPicture } = route.params as RouteParams;
-
   const otherAvatarUrl = resolveMediaUrl(otherPicture);
 
   const [input, setInput] = useState('');
@@ -149,8 +119,9 @@ export default function ChatDetailScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [editingMessage, setEditingMessage] = useState<Message | null>(null);
 
-  // ── Presence ──
+  // Presence
   const [otherOnline, setOtherOnline] = useState(false);
   const [otherLastActive, setOtherLastActive] = useState<string | null>(null);
   const presenceIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -159,57 +130,27 @@ export default function ChatDetailScreen() {
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRef = useRef<TextInput>(null);
 
-  // ── Track keyboard visibility ──
+  // Keyboard visibility
   useEffect(() => {
     const showSub = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
     const hideSub = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-    };
+    return () => { showSub.remove(); hideSub.remove(); };
   }, []);
 
-  // ── Fetch presence with robust parsing + debug logging ──
+  // ── Presence ──
   const fetchPresence = useCallback(async () => {
     if (!conversationId) return;
     try {
       const response = await api.get(`/dm/conversations/${conversationId}/presence`);
-
-      // Debug: log the raw shape so we can see what the server actually returns
-      console.log('🟢 Presence raw:', JSON.stringify(response.data, null, 2));
-
-      // Handle common envelopes: { data: {...} }, { data: { data: {...} } }, or flat
-      const body =
-        response.data?.data?.data ??
-        response.data?.data ??
-        response.data ??
-        {};
-
-      // Try every field name the backend might use
-      const isOnline =
-        body.online ??
-        body.isOnline ??
-        body.is_online ??
-        body.online_status ??
-        false;
-
+      const body = response.data?.data?.data ?? response.data?.data ?? response.data ?? {};
+      const isOnline = body.online ?? body.isOnline ?? body.is_online ?? false;
       const lastSeen =
-        body.last_seen_at ??
-        body.lastSeenAt ??
-        body.last_active ??
-        body.lastActive ??
-        body.last_active_at ??
-        body.lastActiveAt ??
-        body.last_seen ??
-        null;
-
-      console.log('🟢 Parsed presence:', { isOnline, lastSeen });
-
+        body.last_seen_at ?? body.lastSeenAt ?? body.last_active ??
+        body.lastActive ?? body.last_active_at ?? body.lastActiveAt ?? null;
       setOtherOnline(!!isOnline);
       setOtherLastActive(lastSeen);
-    } catch (err) {
-      // Silent fail — keep previous state rather than flip to offline on a hiccup
-      console.warn('⚠️ Presence fetch failed:', err);
+    } catch {
+      // silent
     }
   }, [conversationId]);
 
@@ -230,32 +171,18 @@ export default function ChatDetailScreen() {
       const url = beforeId
         ? `/dm/conversations/${conversationId}/messages?limit=20&before_id=${beforeId}`
         : `/dm/conversations/${conversationId}/messages?limit=20`;
-
       const response = await api.get(url);
       const data = response.data;
 
-      let msgs = [];
+      let msgs: Message[] = [];
       let hasMoreData = false;
 
-      if (data?.messages) {
-        msgs = data.messages;
-        hasMoreData = data.hasMore || false;
-      } else if (data?.data?.messages) {
-        msgs = data.data.messages;
-        hasMoreData = data.data.hasMore || false;
-      } else if (data?.data && Array.isArray(data.data)) {
-        msgs = data.data;
-        hasMoreData = msgs.length === 20;
-      } else if (Array.isArray(data)) {
-        msgs = data;
-        hasMoreData = msgs.length === 20;
-      } else if (data?.results && Array.isArray(data.results)) {
-        msgs = data.results;
-        hasMoreData = data.hasMore || false;
-      } else if (data?.items && Array.isArray(data.items)) {
-        msgs = data.items;
-        hasMoreData = data.hasMore || false;
-      }
+      if (data?.messages) { msgs = data.messages; hasMoreData = data.hasMore || false; }
+      else if (data?.data?.messages) { msgs = data.data.messages; hasMoreData = data.data.hasMore || false; }
+      else if (data?.data && Array.isArray(data.data)) { msgs = data.data; hasMoreData = msgs.length === 20; }
+      else if (Array.isArray(data)) { msgs = data; hasMoreData = msgs.length === 20; }
+      else if (data?.results && Array.isArray(data.results)) { msgs = data.results; hasMoreData = data.hasMore || false; }
+      else if (data?.items && Array.isArray(data.items)) { msgs = data.items; hasMoreData = data.hasMore || false; }
 
       return { messages: msgs, hasMore: hasMoreData };
     } catch (err) {
@@ -264,7 +191,7 @@ export default function ChatDetailScreen() {
     }
   }, [conversationId]);
 
-  // ── Initial messages load ──
+  // Initial load
   useEffect(() => {
     const loadMessages = async () => {
       setIsLoading(true);
@@ -277,8 +204,7 @@ export default function ChatDetailScreen() {
           setCursor(result.messages[0].id);
           api.patch(`/dm/conversations/${conversationId}/read`).catch(() => {});
         }
-      } catch (err) {
-        console.error('Load error:', err);
+      } catch {
         setError('Failed to load messages');
       } finally {
         setIsLoading(false);
@@ -287,16 +213,10 @@ export default function ChatDetailScreen() {
     loadMessages();
   }, [conversationId, fetchMessages]);
 
-  // ── Join conversation on mount ──
+  // Join conversation
   useEffect(() => {
-    if (conversationId) {
-      joinConversation(conversationId);
-    }
-    return () => {
-      if (conversationId) {
-        leaveConversation(conversationId);
-      }
-    };
+    if (conversationId) joinConversation(conversationId);
+    return () => { if (conversationId) leaveConversation(conversationId); };
   }, [conversationId, joinConversation, leaveConversation]);
 
   // ── WebSocket handlers ──
@@ -317,9 +237,7 @@ export default function ChatDetailScreen() {
         setTyping(data.isTyping);
         if (data.isTyping) {
           if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-          typingTimeoutRef.current = setTimeout(() => {
-            setTyping(false);
-          }, 3000);
+          typingTimeoutRef.current = setTimeout(() => setTyping(false), 3000);
         }
       }
     });
@@ -327,10 +245,28 @@ export default function ChatDetailScreen() {
     const unregMessageRead = registerHandler('message_read', (data: any) => {
       if (data.conversationId === conversationId) {
         setMessages((prev) =>
+          prev.map((m) => (m.id === data.messageId ? { ...m, is_read: true } : m))
+        );
+      }
+    });
+
+    // NEW: handle edits from other devices
+    const unregEdited = registerHandler('message_edited', (data: any) => {
+      if (data.conversationId === conversationId) {
+        setMessages((prev) =>
           prev.map((m) =>
-            m.id === data.messageId ? { ...m, is_read: true } : m
+            m.id === data.messageId
+              ? { ...m, body: data.body ?? m.body, edited_at: data.editedAt || data.edited_at || new Date().toISOString() }
+              : m
           )
         );
+      }
+    });
+
+    // NEW: handle deletes from other devices
+    const unregDeleted = registerHandler('message_deleted', (data: any) => {
+      if (data.conversationId === conversationId) {
+        setMessages((prev) => prev.filter((m) => m.id !== data.messageId));
       }
     });
 
@@ -338,17 +274,18 @@ export default function ChatDetailScreen() {
       unregNewMessage();
       unregTyping();
       unregMessageRead();
+      unregEdited();
+      unregDeleted();
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     };
   }, [conversationId, registerHandler]);
 
-  // ── Poll for new messages ──
+  // Poll for new messages
   useEffect(() => {
     const interval = setInterval(async () => {
       if (messages.length === 0) return;
       const lastMessage = messages[messages.length - 1];
       if (!lastMessage) return;
-
       try {
         const response = await api.get(
           `/dm/conversations/${conversationId}/messages/new?after_id=${lastMessage.id}`
@@ -362,25 +299,61 @@ export default function ChatDetailScreen() {
           });
           api.patch(`/dm/conversations/${conversationId}/read`).catch(() => {});
         }
-      } catch {
-        // Silent fail
-      }
+      } catch { /* silent */ }
     }, 3000);
-
     return () => clearInterval(interval);
   }, [conversationId, messages]);
 
-  // ── Send message ──
+  // ── Send / Save edit ──
   const handleSend = async () => {
     const trimmed = input.trim();
     if (!trimmed || sending) return;
 
+    // ── Edit mode ──
+    if (editingMessage) {
+      setSending(true);
+      const original = editingMessage;
+      // optimistic update
+      setMessages((prev) =>
+        prev.map((m) => (m.id === original.id ? { ...m, body: trimmed, edited_at: new Date().toISOString() } : m))
+      );
+      setEditingMessage(null);
+      setInput('');
+
+      try {
+        const response = await api.patch(
+          `/dm/conversations/${conversationId}/messages/${original.id}`,
+          { body: trimmed }
+        );
+        const updated = response.data?.data || response.data;
+        if (updated && updated.body) {
+          setMessages((prev) => prev.map((m) => (m.id === original.id ? { ...m, ...updated } : m)));
+        }
+        if (isAlive()) {
+          sendMessage({
+            type: 'edit_message',
+            conversationId,
+            messageId: original.id,
+            body: trimmed,
+          });
+        }
+        Keyboard.dismiss();
+      } catch {
+        // revert
+        setMessages((prev) => prev.map((m) => (m.id === original.id ? original : m)));
+        Alert.alert('Error', 'Failed to edit message.');
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
+
+    // ── New message ──
     setSending(true);
     sendTyping(conversationId, false);
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
 
     const tempId = `tmp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
     const tempMsg: Message = {
       id: tempId,
       sender_id: user?.id || '',
@@ -396,21 +369,12 @@ export default function ChatDetailScreen() {
         body: trimmed,
         media: null,
       });
-
       const saved = response.data?.data || response.data || response;
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
-      if (saved && saved.id) {
-        setMessages((prev) => [...prev, saved]);
-      }
-
+      if (saved && saved.id) setMessages((prev) => [...prev, saved]);
       if (isAlive()) {
-        sendMessage({
-          type: 'send_message',
-          conversationId,
-          message: saved,
-        });
+        sendMessage({ type: 'send_message', conversationId, message: saved });
       }
-
       Keyboard.dismiss();
     } catch {
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
@@ -420,19 +384,73 @@ export default function ChatDetailScreen() {
     }
   };
 
-  // ── Handle input change with typing indicator ──
+  // ── Input change ──
   const handleInputChange = (text: string) => {
     setInput(text);
-    if (!typing && isAlive()) {
-      sendTyping(conversationId, true);
-    }
+    if (editingMessage) return; // don't broadcast typing while editing
+    if (!typing && isAlive()) sendTyping(conversationId, true);
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-    typingTimeoutRef.current = setTimeout(() => {
-      sendTyping(conversationId, false);
-    }, 2000);
+    typingTimeoutRef.current = setTimeout(() => sendTyping(conversationId, false), 2000);
   };
 
-  // ── Load more messages ──
+  // ── Edit flow ──
+  const startEditing = (item: Message) => {
+    setEditingMessage(item);
+    setInput(item.body || item._plain || '');
+    setTimeout(() => inputRef.current?.focus(), 50);
+  };
+
+  const cancelEditing = () => {
+    setEditingMessage(null);
+    setInput('');
+  };
+
+  // ── Delete flow ──
+  const confirmDelete = (item: Message) => {
+    Alert.alert(
+      'Delete message?',
+      'This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => deleteMessage(item),
+        },
+      ]
+    );
+  };
+
+  const deleteMessage = async (item: Message) => {
+    const snapshot = messages;
+    setMessages((prev) => prev.filter((m) => m.id !== item.id));
+    try {
+      await api.delete(`/dm/conversations/${conversationId}/messages/${item.id}`);
+      if (isAlive()) {
+        sendMessage({ type: 'delete_message', conversationId, messageId: item.id });
+      }
+    } catch {
+      setMessages(snapshot); // revert
+      Alert.alert('Error', 'Failed to delete message.');
+    }
+  };
+
+  // ── Long press on a message ──
+  const handleLongPress = (item: Message) => {
+    const rawSenderId =
+      item.sender_id ?? (item as any).senderId ?? (item as any).userId ?? (item as any).user_id;
+    const isMine = rawSenderId != null && user?.id != null && String(rawSenderId) === String(user.id);
+    const isTemp = String(item.id).startsWith('tmp_');
+    if (!isMine || isTemp) return;
+
+    Alert.alert('Message options', undefined, [
+      { text: 'Edit', onPress: () => startEditing(item) },
+      { text: 'Delete', style: 'destructive', onPress: () => confirmDelete(item) },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
+  // ── Load more ──
   const loadMoreMessages = async () => {
     if (!hasMore || loadingMore || !cursor) return;
     setLoadingMore(true);
@@ -459,16 +477,15 @@ export default function ChatDetailScreen() {
       item.sender_id ?? (item as any).senderId ?? (item as any).userId ?? (item as any).user_id;
     const isMine = rawSenderId != null && user?.id != null && String(rawSenderId) === String(user.id);
     const isTemp = String(item.id).startsWith('tmp_');
+    const isBeingEdited = editingMessage?.id === item.id;
     const time = timeAgo(item.created_at);
 
     return (
-      <View
-        style={[
-          styles.messageRow,
-          isMine ? styles.messageRowRight : styles.messageRowLeft,
-        ]}
-      >
-        <View
+      <View style={[styles.messageRow, isMine ? styles.messageRowRight : styles.messageRowLeft]}>
+        <TouchableOpacity
+          activeOpacity={1}
+          onLongPress={() => handleLongPress(item)}
+          delayLongPress={350}
           style={[
             styles.messageBubble,
             isMine
@@ -477,28 +494,33 @@ export default function ChatDetailScreen() {
                   backgroundColor: isDark ? '#374151' : '#f3f4f6',
                   borderWidth: isDark ? 0 : 1,
                   borderColor: colors.border,
-                }]
+                }],
+            isBeingEdited && {
+              borderWidth: 2,
+              borderColor: colors.primary,
+            },
           ]}
         >
-          <Text
-            style={[
-              styles.messageText,
-              { color: isMine ? 'white' : colors.text }
-            ]}
-          >
+          <Text style={[styles.messageText, { color: isMine ? 'white' : colors.text }]}>
             {item.body || item._plain || '(empty message)'}
           </Text>
-          <Text
-            style={[
-              styles.messageTime,
-              { color: isMine ? 'rgba(255,255,255,0.7)' : colors.textMuted }
-            ]}
-          >
-            {time}
-            {isTemp && ' (sending...)'}
-            {item.is_read && isMine && !isTemp && ' ✓✓'}
-          </Text>
-        </View>
+          <View style={styles.messageMeta}>
+            {item.edited_at && (
+              <Text style={[styles.editedLabel, {
+                color: isMine ? 'rgba(255,255,255,0.7)' : colors.textMuted,
+              }]}>
+                edited
+              </Text>
+            )}
+            <Text style={[styles.messageTime, {
+              color: isMine ? 'rgba(255,255,255,0.7)' : colors.textMuted,
+            }]}>
+              {time}
+              {isTemp && ' (sending...)'}
+              {item.is_read && isMine && !isTemp && ' ✓✓'}
+            </Text>
+          </View>
+        </TouchableOpacity>
       </View>
     );
   };
@@ -507,7 +529,7 @@ export default function ChatDetailScreen() {
     return item.id ? `${item.id}-${index}` : `msg-${index}`;
   }, []);
 
-  // ── Scroll to bottom on new messages or typing ──
+  // Scroll to bottom
   useEffect(() => {
     if ((messages.length > 0 || typing) && flatListRef.current) {
       setTimeout(() => {
@@ -516,7 +538,7 @@ export default function ChatDetailScreen() {
     }
   }, [messages, typing]);
 
-  // ── Loading state ──
+  // Loading state
   if (isLoading) {
     return (
       <SafeAreaView style={[styles.loadingContainer, { backgroundColor: colors.background }]} edges={['top']}>
@@ -525,7 +547,7 @@ export default function ChatDetailScreen() {
     );
   }
 
-  // ── Error state ──
+  // Error state
   if (error) {
     return (
       <SafeAreaView style={[styles.errorContainer, { backgroundColor: colors.background }]} edges={['top']}>
@@ -553,7 +575,7 @@ export default function ChatDetailScreen() {
     );
   }
 
-  // ── Header status text ──
+  // Header status
   const statusText = typing
     ? 'Typing...'
     : otherOnline
@@ -571,11 +593,8 @@ export default function ChatDetailScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
       >
-        {/* ─── Header ─── */}
-        <View style={[styles.header, {
-          backgroundColor: colors.surface,
-          borderBottomColor: colors.border
-        }]}>
+        {/* Header */}
+        <View style={[styles.header, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
             <Feather name="arrow-left" size={24} color={colors.text} />
           </TouchableOpacity>
@@ -588,16 +607,14 @@ export default function ChatDetailScreen() {
               <Text style={[styles.headerName, { color: colors.text }]}>{otherName || 'User'}</Text>
               <View style={styles.headerStatus}>
                 <View style={[styles.statusDot, { backgroundColor: statusDotColor }]} />
-                <Text style={[styles.headerStatusText, { color: colors.textSecondary }]}>
-                  {statusText}
-                </Text>
+                <Text style={[styles.headerStatusText, { color: colors.textSecondary }]}>{statusText}</Text>
               </View>
             </View>
           </TouchableOpacity>
           <View style={styles.headerRight} />
         </View>
 
-        {/* ─── Messages ─── */}
+        {/* Messages */}
         <FlatList
           ref={flatListRef}
           data={messages}
@@ -613,15 +630,29 @@ export default function ChatDetailScreen() {
               </View>
             ) : null
           }
-          ListFooterComponent={
-            typing ? <TypingDots isDark={isDark} colors={colors} /> : null
-          }
+          ListFooterComponent={typing ? <TypingDots isDark={isDark} colors={colors} /> : null}
           inverted={false}
           showsVerticalScrollIndicator={false}
           style={{ flex: 1 }}
         />
 
-        {/* ─── Input Bar ─── */}
+        {/* Editing banner */}
+        {editingMessage && (
+          <View style={[styles.editingBanner, {
+            backgroundColor: isDark ? '#1f2937' : '#f3f4f6',
+            borderTopColor: colors.border,
+          }]}>
+            <Feather name="edit-2" size={16} color={colors.primary} />
+            <Text style={[styles.editingBannerText, { color: colors.text }]} numberOfLines={1}>
+              Editing message
+            </Text>
+            <TouchableOpacity onPress={cancelEditing} style={styles.editingClose}>
+              <Feather name="x" size={18} color={colors.textMuted} />
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Input Bar */}
         <View style={[styles.inputBar, {
           backgroundColor: colors.surface,
           borderTopColor: colors.border,
@@ -631,9 +662,9 @@ export default function ChatDetailScreen() {
             ref={inputRef}
             style={[styles.input, {
               backgroundColor: colors.input || (isDark ? '#1f2937' : '#f3f4f6'),
-              color: colors.text
+              color: colors.text,
             }]}
-            placeholder="Type a message..."
+            placeholder={editingMessage ? 'Edit message...' : 'Type a message...'}
             placeholderTextColor={colors.placeholder || '#9ca3af'}
             value={input}
             onChangeText={handleInputChange}
@@ -653,7 +684,7 @@ export default function ChatDetailScreen() {
             {sending ? (
               <ActivityIndicator size="small" color="white" />
             ) : (
-              <Feather name="send" size={18} color="white" />
+              <Feather name={editingMessage ? 'check' : 'send'} size={18} color="white" />
             )}
           </TouchableOpacity>
         </View>
@@ -700,8 +731,26 @@ const styles = StyleSheet.create({
   typingDot: { width: 7, height: 7, borderRadius: 3.5 },
   bubbleRight: { borderBottomRightRadius: 4 },
   messageText: { fontSize: 15, lineHeight: 20 },
-  messageTime: { fontSize: 10, marginTop: 4, alignSelf: 'flex-end' },
+  messageMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    marginTop: 4,
+    gap: 6,
+  },
+  messageTime: { fontSize: 10, alignSelf: 'flex-end' },
+  editedLabel: { fontSize: 10, fontStyle: 'italic' },
   loadingMore: { paddingVertical: 8, alignItems: 'center' },
+  editingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    gap: 8,
+  },
+  editingBannerText: { flex: 1, fontSize: 13, fontWeight: '500' },
+  editingClose: { padding: 4 },
   inputBar: {
     flexDirection: 'row',
     alignItems: 'center',
