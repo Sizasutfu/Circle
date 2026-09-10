@@ -56,12 +56,10 @@ export default function NewMessageScreen() {
       const thisRequestId = ++requestIdRef.current;
       setSearching(true);
       try {
-        // GET /users?search=&limit= — see userController.searchUsers
         const response = await api.get('/users', {
           params: { search: trimmed, limit: 20 },
         });
 
-        // Ignore stale responses if a newer search has since started
         if (thisRequestId !== requestIdRef.current) return;
 
         const body = response.data?.data ?? response.data ?? [];
@@ -85,7 +83,7 @@ export default function NewMessageScreen() {
 
   // ── Open or create a conversation with the tapped user ──
   const handleSelectUser = useCallback(async (selectedUser: SearchUser) => {
-    if (openingId != null) return; // already opening one
+    if (openingId != null) return;
     setOpeningId(selectedUser.id);
 
     try {
@@ -93,11 +91,6 @@ export default function NewMessageScreen() {
         recipientId: selectedUser.id,
       });
 
-      // dmController.openConversation returns the conversation via
-      // sendOk — shape of dmModel.getOrCreateConversation isn't known
-      // here, so pull the id defensively and use the user we already
-      // have (from search results) for name/avatar rather than trust
-      // unverified fields on the conversation object.
       const body = response.data?.data ?? response.data ?? {};
       const conversationId = body.id ?? body.conversationId ?? body.conversation?.id ?? null;
 
@@ -178,7 +171,15 @@ export default function NewMessageScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
       {/* ─── Header ─── */}
-      <View style={[styles.header, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
+      <View
+        style={[
+          styles.header,
+          {
+            backgroundColor: colors.background,
+            borderBottomColor: colors.border,
+          },
+        ]}
+      >
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Feather name="arrow-left" size={24} color={colors.text} />
         </TouchableOpacity>
@@ -239,7 +240,7 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '600',
     textAlign: 'center',
-    marginRight: 32, // balance the back button so title stays centered
+    marginRight: 32,
   },
   headerRight: {
     width: 32,
