@@ -126,18 +126,17 @@ export default function ChatDetailScreen() {
   const { user } = useAuth();
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
-  const { 
-    isAlive, 
-    sendMessage, 
-    registerHandler, 
-    joinConversation, 
-    leaveConversation, 
+  const {
+    isAlive,
+    sendMessage,
+    registerHandler,
+    joinConversation,
+    leaveConversation,
     sendTyping,
   } = useWs();
 
   const { conversationId, otherUserId, otherName, otherPicture } = route.params as RouteParams;
 
-  // ✅ Resolve other user's avatar
   const otherAvatarUrl = resolveMediaUrl(otherPicture);
 
   const [input, setInput] = useState('');
@@ -151,13 +150,7 @@ export default function ChatDetailScreen() {
   const [error, setError] = useState<string | null>(null);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
 
-  // ── Presence: polled via REST, matching the web app's approach ──
-  // The backend's WS layer doesn't broadcast user_online/user_offline/
-  // presence events (confirmed against the web client, which never
-  // listens for them either) — presence is derived server-side from
-  // recent heartbeats and fetched per-conversation via
-  // GET /dm/conversations/:id/presence. Poll it the same way the web
-  // app's DmContext does: once on open, then every 30s.
+  // ── Presence ──
   const [otherOnline, setOtherOnline] = useState(false);
   const [otherLastActive, setOtherLastActive] = useState<string | null>(null);
   const presenceIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -176,15 +169,47 @@ export default function ChatDetailScreen() {
     };
   }, []);
 
+  // ── Fetch presence with robust parsing + debug logging ──
   const fetchPresence = useCallback(async () => {
     if (!conversationId) return;
     try {
       const response = await api.get(`/dm/conversations/${conversationId}/presence`);
-      const body = response.data?.data ?? response.data ?? {};
-      setOtherOnline(!!body.online);
-      setOtherLastActive(body.last_seen_at ?? body.lastSeenAt ?? null);
-    } catch (error) {
-      // Silent fail
+
+      // Debug: log the raw shape so we can see what the server actually returns
+      console.log('🟢 Presence raw:', JSON.stringify(response.data, null, 2));
+
+      // Handle common envelopes: { data: {...} }, { data: { data: {...} } }, or flat
+      const body =
+        response.data?.data?.data ??
+        response.data?.data ??
+        response.data ??
+        {};
+
+      // Try every field name the backend might use
+      const isOnline =
+        body.online ??
+        body.isOnline ??
+        body.is_online ??
+        body.online_status ??
+        false;
+
+      const lastSeen =
+        body.last_seen_at ??
+        body.lastSeenAt ??
+        body.last_active ??
+        body.lastActive ??
+        body.last_active_at ??
+        body.lastActiveAt ??
+        body.last_seen ??
+        null;
+
+      console.log('🟢 Parsed presence:', { isOnline, lastSeen });
+
+      setOtherOnline(!!isOnline);
+      setOtherLastActive(lastSeen);
+    } catch (err) {
+      // Silent fail — keep previous state rather than flip to offline on a hiccup
+      console.warn('⚠️ Presence fetch failed:', err);
     }
   }, [conversationId]);
 
@@ -202,44 +227,39 @@ export default function ChatDetailScreen() {
   // ── Fetch messages ──
   const fetchMessages = useCallback(async (beforeId?: string) => {
     try {
-      const url = beforeId 
+      const url = beforeId
         ? `/dm/conversations/${conversationId}/messages?limit=20&before_id=${beforeId}`
         : `/dm/conversations/${conversationId}/messages?limit=20`;
-      
+
       const response = await api.get(url);
       const data = response.data;
-      
+
       let msgs = [];
       let hasMoreData = false;
-      
+
       if (data?.messages) {
         msgs = data.messages;
         hasMoreData = data.hasMore || false;
-      } 
-      else if (data?.data?.messages) {
+      } else if (data?.data?.messages) {
         msgs = data.data.messages;
         hasMoreData = data.data.hasMore || false;
-      } 
-      else if (data?.data && Array.isArray(data.data)) {
+      } else if (data?.data && Array.isArray(data.data)) {
         msgs = data.data;
         hasMoreData = msgs.length === 20;
-      } 
-      else if (Array.isArray(data)) {
+      } else if (Array.isArray(data)) {
         msgs = data;
         hasMoreData = msgs.length === 20;
-      }
-      else if (data?.results && Array.isArray(data.results)) {
+      } else if (data?.results && Array.isArray(data.results)) {
         msgs = data.results;
         hasMoreData = data.hasMore || false;
-      }
-      else if (data?.items && Array.isArray(data.items)) {
+      } else if (data?.items && Array.isArray(data.items)) {
         msgs = data.items;
         hasMoreData = data.hasMore || false;
       }
-      
+
       return { messages: msgs, hasMore: hasMoreData };
-    } catch (error) {
-      console.error('Error fetching messages:', error);
+    } catch (err) {
+      console.error('Error fetching messages:', err);
       return { messages: [], hasMore: false };
     }
   }, [conversationId]);
@@ -328,7 +348,7 @@ export default function ChatDetailScreen() {
       if (messages.length === 0) return;
       const lastMessage = messages[messages.length - 1];
       if (!lastMessage) return;
-      
+
       try {
         const response = await api.get(
           `/dm/conversations/${conversationId}/messages/new?after_id=${lastMessage.id}`
@@ -342,7 +362,7 @@ export default function ChatDetailScreen() {
           });
           api.patch(`/dm/conversations/${conversationId}/read`).catch(() => {});
         }
-      } catch (error) {
+      } catch {
         // Silent fail
       }
     }, 3000);
@@ -356,12 +376,11 @@ export default function ChatDetailScreen() {
     if (!trimmed || sending) return;
 
     setSending(true);
-    // Clear typing state immediately
     sendTyping(conversationId, false);
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
 
     const tempId = `tmp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
+
     const tempMsg: Message = {
       id: tempId,
       sender_id: user?.id || '',
@@ -377,24 +396,23 @@ export default function ChatDetailScreen() {
         body: trimmed,
         media: null,
       });
-      
+
       const saved = response.data?.data || response.data || response;
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
       if (saved && saved.id) {
         setMessages((prev) => [...prev, saved]);
       }
-      
+
       if (isAlive()) {
         sendMessage({
           type: 'send_message',
-          conversationId: conversationId,
+          conversationId,
           message: saved,
         });
       }
 
-      // Close keyboard so the input bar returns to its original position
       Keyboard.dismiss();
-    } catch (error) {
+    } catch {
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
       Alert.alert('Error', 'Failed to send message. Please try again.');
     } finally {
@@ -429,8 +447,8 @@ export default function ChatDetailScreen() {
         setCursor(result.messages[0]?.id || null);
       }
       setHasMore(result.hasMore);
-    } catch (error) {
-      console.error('Load more error:', error);
+    } catch (err) {
+      console.error('Load more error:', err);
     }
     setLoadingMore(false);
   };
@@ -444,25 +462,25 @@ export default function ChatDetailScreen() {
     const time = timeAgo(item.created_at);
 
     return (
-      <View 
+      <View
         style={[
           styles.messageRow,
           isMine ? styles.messageRowRight : styles.messageRowLeft,
         ]}
       >
-        <View 
+        <View
           style={[
             styles.messageBubble,
-            isMine 
-              ? [styles.bubbleRight, { backgroundColor: colors.primary }] 
-              : [styles.bubbleLeft, { 
+            isMine
+              ? [styles.bubbleRight, { backgroundColor: colors.primary }]
+              : [styles.bubbleLeft, {
                   backgroundColor: isDark ? '#374151' : '#f3f4f6',
                   borderWidth: isDark ? 0 : 1,
                   borderColor: colors.border,
                 }]
           ]}
         >
-          <Text 
+          <Text
             style={[
               styles.messageText,
               { color: isMine ? 'white' : colors.text }
@@ -470,7 +488,7 @@ export default function ChatDetailScreen() {
           >
             {item.body || item._plain || '(empty message)'}
           </Text>
-          <Text 
+          <Text
             style={[
               styles.messageTime,
               { color: isMine ? 'rgba(255,255,255,0.7)' : colors.textMuted }
@@ -485,12 +503,11 @@ export default function ChatDetailScreen() {
     );
   };
 
-  // ── Key extractor with unique keys ──
   const keyExtractor = useCallback((item: Message, index: number) => {
     return item.id ? `${item.id}-${index}` : `msg-${index}`;
   }, []);
 
-  // ── Scroll to bottom on new messages, or when typing starts ──
+  // ── Scroll to bottom on new messages or typing ──
   useEffect(() => {
     if ((messages.length > 0 || typing) && flatListRef.current) {
       setTimeout(() => {
@@ -515,8 +532,8 @@ export default function ChatDetailScreen() {
         <Feather name="alert-circle" size={48} color="#ef4444" />
         <Text style={[styles.errorTitle, { color: colors.text }]}>Failed to load messages</Text>
         <Text style={[styles.errorSubtitle, { color: colors.textSecondary }]}>{error}</Text>
-        <TouchableOpacity 
-          style={[styles.retryButton, { backgroundColor: colors.primary }]} 
+        <TouchableOpacity
+          style={[styles.retryButton, { backgroundColor: colors.primary }]}
           onPress={() => {
             setError(null);
             setIsLoading(true);
@@ -536,7 +553,17 @@ export default function ChatDetailScreen() {
     );
   }
 
-  // ── Main render with KeyboardAvoidingView wrapping everything ──
+  // ── Header status text ──
+  const statusText = typing
+    ? 'Typing...'
+    : otherOnline
+    ? 'Online'
+    : otherLastActive
+    ? `Last seen ${timeAgo(otherLastActive)}`
+    : 'Offline';
+
+  const statusDotColor = typing || otherOnline ? '#22c55e' : colors.textMuted;
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
       <KeyboardAvoidingView
@@ -545,24 +572,24 @@ export default function ChatDetailScreen() {
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
       >
         {/* ─── Header ─── */}
-        <View style={[styles.header, { 
-          backgroundColor: colors.surface, 
-          borderBottomColor: colors.border 
+        <View style={[styles.header, {
+          backgroundColor: colors.surface,
+          borderBottomColor: colors.border
         }]}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
             <Feather name="arrow-left" size={24} color={colors.text} />
           </TouchableOpacity>
-          <TouchableOpacity 
-            style={styles.headerInfo} 
+          <TouchableOpacity
+            style={styles.headerInfo}
             onPress={() => (navigation.navigate as any)('Profile', { userId: otherUserId })}
           >
             <Avatar source={otherAvatarUrl} size={36} fallback={otherName || 'User'} />
             <View style={styles.headerText}>
               <Text style={[styles.headerName, { color: colors.text }]}>{otherName || 'User'}</Text>
               <View style={styles.headerStatus}>
-                <View style={[styles.statusDot, { backgroundColor: typing ? '#22c55e' : (otherOnline ? '#22c55e' : colors.textMuted) }]} />
+                <View style={[styles.statusDot, { backgroundColor: statusDotColor }]} />
                 <Text style={[styles.headerStatusText, { color: colors.textSecondary }]}>
-                  {typing ? 'Typing...' : (otherOnline ? 'Online' : 'Offline')}
+                  {statusText}
                 </Text>
               </View>
             </View>
@@ -595,16 +622,16 @@ export default function ChatDetailScreen() {
         />
 
         {/* ─── Input Bar ─── */}
-        <View style={[styles.inputBar, { 
-          backgroundColor: colors.surface, 
+        <View style={[styles.inputBar, {
+          backgroundColor: colors.surface,
           borderTopColor: colors.border,
           paddingBottom: keyboardVisible ? 0 : Math.max(insets.bottom, 8),
         }]}>
           <TextInput
             ref={inputRef}
-            style={[styles.input, { 
-              backgroundColor: colors.input || (isDark ? '#1f2937' : '#f3f4f6'), 
-              color: colors.text 
+            style={[styles.input, {
+              backgroundColor: colors.input || (isDark ? '#1f2937' : '#f3f4f6'),
+              color: colors.text
             }]}
             placeholder="Type a message..."
             placeholderTextColor={colors.placeholder || '#9ca3af'}
@@ -636,41 +663,13 @@ export default function ChatDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 32,
-  },
-  errorTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginTop: 12,
-  },
-  errorSubtitle: {
-    fontSize: 14,
-    textAlign: 'center',
-    marginTop: 4,
-  },
-  retryButton: {
-    marginTop: 20,
-    paddingHorizontal: 32,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  retryButtonText: {
-    color: 'white',
-    fontWeight: '600',
-    fontSize: 16,
-  },
+  container: { flex: 1 },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  errorContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32 },
+  errorTitle: { fontSize: 18, fontWeight: '600', marginTop: 12 },
+  errorSubtitle: { fontSize: 14, textAlign: 'center', marginTop: 4 },
+  retryButton: { marginTop: 20, paddingHorizontal: 32, paddingVertical: 10, borderRadius: 8 },
+  retryButtonText: { color: 'white', fontWeight: '600', fontSize: 16 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -678,91 +677,31 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderBottomWidth: 1,
   },
-  backButton: {
-    padding: 4,
-  },
-  headerInfo: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginLeft: 8,
-  },
-  headerText: {
-    marginLeft: 10,
-  },
-  headerName: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  headerStatus: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 1,
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 4,
-  },
-  headerStatusText: {
-    fontSize: 12,
-  },
-  headerRight: {
-    width: 40,
-  },
-  messagesContainer: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    flexGrow: 1,
-  },
-  messageRow: {
-    marginVertical: 3,
-    flexDirection: 'row',
-    width: '100%',
-  },
-  messageRowLeft: {
-    justifyContent: 'flex-start',
-  },
-  messageRowRight: {
-    justifyContent: 'flex-end',
-  },
+  backButton: { padding: 4 },
+  headerInfo: { flex: 1, flexDirection: 'row', alignItems: 'center', marginLeft: 8 },
+  headerText: { marginLeft: 10 },
+  headerName: { fontSize: 16, fontWeight: '600' },
+  headerStatus: { flexDirection: 'row', alignItems: 'center', marginTop: 1 },
+  statusDot: { width: 8, height: 8, borderRadius: 4, marginRight: 4 },
+  headerStatusText: { fontSize: 12 },
+  headerRight: { width: 40 },
+  messagesContainer: { paddingHorizontal: 12, paddingVertical: 8, flexGrow: 1 },
+  messageRow: { marginVertical: 3, flexDirection: 'row', width: '100%' },
+  messageRowLeft: { justifyContent: 'flex-start' },
+  messageRowRight: { justifyContent: 'flex-end' },
   messageBubble: {
     maxWidth: '75%',
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 18,
   },
-  bubbleLeft: {
-    borderBottomLeftRadius: 4,
-  },
-  typingBubble: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    gap: 4,
-  },
-  typingDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-  },
-  bubbleRight: {
-    borderBottomRightRadius: 4,
-  },
-  messageText: {
-    fontSize: 15,
-    lineHeight: 20,
-  },
-  messageTime: {
-    fontSize: 10,
-    marginTop: 4,
-    alignSelf: 'flex-end',
-  },
-  loadingMore: {
-    paddingVertical: 8,
-    alignItems: 'center',
-  },
+  bubbleLeft: { borderBottomLeftRadius: 4 },
+  typingBubble: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, gap: 4 },
+  typingDot: { width: 7, height: 7, borderRadius: 3.5 },
+  bubbleRight: { borderBottomRightRadius: 4 },
+  messageText: { fontSize: 15, lineHeight: 20 },
+  messageTime: { fontSize: 10, marginTop: 4, alignSelf: 'flex-end' },
+  loadingMore: { paddingVertical: 8, alignItems: 'center' },
   inputBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -788,7 +727,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
   },
-  sendButtonDisabled: {
-    opacity: 0.5,
-  },
+  sendButtonDisabled: { opacity: 0.5 },
 });
