@@ -24,11 +24,6 @@ import {
 } from '../hooks/useNotifications';
 import { timeAgo, safeString } from '../utils/helpers';
 
-type RootStackParamList = {
-  PostDetail: { postId: string };
-  Profile: { userId: string };
-};
-
 export default function NotificationsScreen() {
   const navigation = useNavigation();
   const { user } = useAuth();
@@ -120,16 +115,16 @@ export default function NotificationsScreen() {
             text: 'View',
             onPress: () => {
               if (notification.postId) {
-                navigation.navigate('PostDetail' as never, { postId: notification.postId } as never);
+                (navigation.navigate as any)('PostDetail', { postId: notification.postId });
               } else if (notification.userId) {
-                navigation.navigate('Profile' as never, { userId: notification.userId } as never);
+                (navigation.navigate as any)('Profile', { userId: notification.userId });
               }
               setNewNotification(null);
-            }
+            },
           },
           {
             text: 'Dismiss',
-            onPress: () => setNewNotification(null)
+            onPress: () => setNewNotification(null),
           },
         ]
       );
@@ -177,11 +172,11 @@ export default function NotificationsScreen() {
     }
     const type = notification.type;
     if (['like', 'comment', 'repost'].includes(type) && notification.postId) {
-      navigation.navigate('PostDetail' as never, { postId: notification.postId } as never);
+      (navigation.navigate as any)('PostDetail', { postId: notification.postId });
     } else if (type === 'follow' && notification.userId) {
-      navigation.navigate('Profile' as never, { userId: notification.userId } as never);
+      (navigation.navigate as any)('Profile', { userId: notification.userId });
     } else if (type === 'mention' && notification.postId) {
-      navigation.navigate('PostDetail' as never, { postId: notification.postId } as never);
+      (navigation.navigate as any)('PostDetail', { postId: notification.postId });
     }
   };
 
@@ -392,7 +387,7 @@ export default function NotificationsScreen() {
         onEndReachedThreshold={0.3}
         contentContainerStyle={[
           notifications.length === 0 ? { flex: 1 } : { paddingBottom: 16 },
-          { backgroundColor: colors.background }
+          { backgroundColor: colors.background },
         ]}
         showsVerticalScrollIndicator={false}
       />
@@ -402,34 +397,34 @@ export default function NotificationsScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1
+    flex: 1,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
-    alignItems: 'center'
+    alignItems: 'center',
   },
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 32
+    paddingHorizontal: 32,
   },
   errorTitle: {
     fontSize: 18,
     fontWeight: '600',
-    marginTop: 12
+    marginTop: 12,
   },
   retryButton: {
     marginTop: 20,
     paddingHorizontal: 32,
     paddingVertical: 10,
-    borderRadius: 8
+    borderRadius: 8,
   },
   retryButtonText: {
     color: 'white',
     fontWeight: '600',
-    fontSize: 16
+    fontSize: 16,
   },
   header: {
     flexDirection: 'row',
@@ -437,11 +432,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderBottomWidth: 1
+    borderBottomWidth: 1,
   },
   headerTitle: {
     fontSize: 20,
-    fontWeight: '700'
+    fontWeight: '700',
   },
   headerRight: {
     flexDirection: 'row',
@@ -450,7 +445,7 @@ const styles = StyleSheet.create({
   },
   markAllRead: {
     fontSize: 14,
-    fontWeight: '500'
+    fontWeight: '500',
   },
   connectionBadge: {
     padding: 4,
@@ -465,14 +460,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderBottomWidth: 1
+    borderBottomWidth: 1,
   },
   unread: {
-    backgroundColor: '#f0f4ff'
+    backgroundColor: '#f0f4ff',
   },
   avatarContainer: {
     position: 'relative',
-    marginRight: 12
+    marginRight: 12,
   },
   iconBadge: {
     position: 'absolute',
@@ -484,40 +479,40 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
-    borderColor: 'white'
+    borderColor: 'white',
   },
   content: {
-    flex: 1
+    flex: 1,
   },
   text: {
     fontSize: 14,
-    lineHeight: 20
+    lineHeight: 20,
   },
   userName: {
-    fontWeight: '700'
+    fontWeight: '700',
   },
   actionText: {
-    color: '#4b5563'
+    color: '#4b5563',
   },
   postPreview: {
     fontSize: 13,
     marginTop: 2,
-    fontStyle: 'italic'
+    fontStyle: 'italic',
   },
   commentText: {
     fontSize: 13,
     marginTop: 2,
     padding: 6,
-    borderRadius: 6
+    borderRadius: 6,
   },
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 4,
-    gap: 12
+    gap: 12,
   },
   timestamp: {
-    fontSize: 12
+    fontSize: 12,
   },
   connectionStatus: {
     flexDirection: 'row',
@@ -537,17 +532,17 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 32
+    paddingHorizontal: 32,
   },
   emptyTitle: {
     fontSize: 18,
     fontWeight: '600',
-    marginTop: 16
+    marginTop: 16,
   },
   emptySubtitle: {
     fontSize: 14,
     textAlign: 'center',
-    marginTop: 8
+    marginTop: 8,
   },
   footerLoader: {
     paddingVertical: 20,
