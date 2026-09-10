@@ -27,7 +27,88 @@ import api from '../api/client';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-// ── Throttle helper ──
+// ─── Robust helpers ──────────────────────────────────────────
+// The backend may return likes/reposts as:
+//   • array of ID strings/numbers  →  ['12', '34']
+//   • array of user objects        →  [{ id: 12 }, { id: 34 }]
+//   • a boolean flag               →  { likedByMe: true }
+//   • just a count                 →  { likesCount: 5 }
+// These helpers handle every case.
+
+function normalizeId(value: any): string | null {
+  if (value == null) return null;
+  return String(value);
+}
+
+function isUserInList(list: any, currentUserId: any): boolean {
+  if (!currentUserId) return false;
+  if (!Array.isArray(list)) return false;
+  const uid = String(currentUserId);
+
+  return list.some((entry: any) => {
+    if (entry == null) return false;
+    // Simple ID
+    if (typeof entry === 'string' || typeof entry === 'number') {
+      return String(entry) === uid;
+    }
+    // Object shape — try every plausible key
+    const candidate =
+      entry.id ??
+      entry.userId ??
+      entry.user_id ??
+      entry.user?.id ??
+      entry.actorId ??
+      entry.actor_id;
+    return candidate != null && String(candidate) === uid;
+  });
+}
+
+function isLikedByMe(post: any, currentUserId: any): boolean {
+  if (!post || !currentUserId) return false;
+  // Explicit boolean flags win if present
+  const flag =
+    post.likedByMe ??
+    post.liked_by_me ??
+    post.isLiked ??
+    post.is_liked ??
+    post.liked;
+  if (typeof flag === 'boolean') return flag;
+
+  return isUserInList(post.likes, currentUserId);
+}
+
+function isRepostedByMe(post: any, currentUserId: any): boolean {
+  if (!post || !currentUserId) return false;
+  const flag =
+    post.repostedByMe ??
+    post.reposted_by_me ??
+    post.isReposted ??
+    post.is_reposted ??
+    post.reposted;
+  if (typeof flag === 'boolean') return flag;
+
+  return isUserInList(post.reposts, currentUserId);
+}
+
+function getLikeCount(post: any): number {
+  if (!post) return 0;
+  if (typeof post.likesCount === 'number') return post.likesCount;
+  if (typeof post.likeCount === 'number') return post.likeCount;
+  if (typeof post.like_count === 'number') return post.like_count;
+  if (Array.isArray(post.likes)) return post.likes.length;
+  return 0;
+}
+
+function getRepostCount(post: any): number {
+  if (!post) return 0;
+  if (typeof post.repostsCount === 'number') return post.repostsCount;
+  if (typeof post.repostCount === 'number') return post.repostCount;
+  if (typeof post.repost_count === 'number') return post.repost_count;
+  if (Array.isArray(post.reposts)) return post.reposts.length;
+  return 0;
+}
+
+// ─── Throttle helper ─────────────────────────────────────────
 function throttle(fn: Function, limit: number) {
   let lastCall = 0;
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -35,7 +116,6 @@ function throttle(fn: Function, limit: number) {
 
   return function (...args: any[]) {
     const now = Date.now();
-
     if (!pending) {
       pending = true;
       timeoutId = setTimeout(() => {
@@ -94,7 +174,6 @@ interface PostCardProps {
   isVisible?: boolean;
 }
 
-// ── Shared throttle instance for link previews ──
 const throttleLinkPreview = throttle((fn: Function) => fn(), 500);
 
 function PostCard({
@@ -114,19 +193,63 @@ function PostCard({
   const { likePost, unlikePost, repost: repostPost } = usePostActions(currentUser);
 
   const {
-    id = '', text = '', image = null, video = null, createdAt = '', likes = [], comments = [], reposts = [],
+    id = '', text = '', image = null, video = null, createdAt = '',
     shares = 0, viewCount = 0, videoViews = 0, isLive = false, liveSessionId = null,
     commentCount = 0, repostCount = 0, isRepost = false, originalPost = null,
     groupId = null, reasons = [], user = undefined
   } = post || {};
 
-  const safeLikes = Array.isArray(likes) ? likes : [];
-  const safeReposts = Array.isArray(reposts) ? reposts : [];
-  const safeComments = Array.isArray(comments) ? comments : [];
+  const safeComments = Array.isArray(post?.comments) ? post.comments : [];
 
-  const likeCount = safeLikes.length;
-  const liked = currentUser ? safeLikes.some((id: string) => id === currentUser.id) : false;
-  const reposted = currentUser ? safeReposts.some((id: string) => id === currentUser.id) : false;
+  // ── Robust prop-derived state ──
+  const propLiked = isLikedByMe(post, currentUser?.id);
+  const propLikeCount = getLikeCount(post);
+  const propReposted = isRepostedByMe(post, currentUser?.id);
+  const propRepostCount = getRepostCount(post);
+
+  // ── Local optimistic state ──
+  const [localLiked, setLocalLiked] = useState(propLiked);
+  const [localLikeCount, setLocalLikeCount] = useState(propLikeCount);
+  const [localReposted, setLocalReposted] = useState(propReposted);
+  const [localRepostCount, setLocalRepostCount] = useState(propRepostCount);
+
+  // One-time debug log so you can see the shape the server returns
+  useEffect(() => {
+    if (__DEV__ && currentUser) {
+      // eslint-disable-next-line no-console
+      console.log('🔍 PostCard like/repost state', {
+        postId: post?.id,
+        currentUserId: currentUser.id,
+        likesRaw: post?.likes,
+        likesType: Array.isArray(post?.likes) ? 'array' : typeof post?.likes,
+        firstLike: Array.isArray(post?.likes) ? post?.likes?.[0] : undefined,
+        propLiked,
+        propLikeCount,
+        repostsRaw: post?.reposts,
+        propReposted,
+        propRepostCount,
+      });
+    }
+  }, [post?.id, currentUser?.id, propLiked, propReposted]);
+
+  // Sync from props, but only when the prop-derived value actually changes
+  useEffect(() => {
+    setLocalLiked(propLiked);
+  }, [propLiked]);
+
+  useEffect(() => {
+    // Only overwrite count if the prop count is meaningful (>= local count
+    // after a like, or <= after an unlike). Simplest: trust the server value.
+    setLocalLikeCount(propLikeCount);
+  }, [propLikeCount]);
+
+  useEffect(() => {
+    setLocalReposted(propReposted);
+  }, [propReposted]);
+
+  useEffect(() => {
+    setLocalRepostCount(propRepostCount);
+  }, [propRepostCount]);
 
   const displayName = user?.name || 'Anonymous';
   const username = user?.username || '';
@@ -156,13 +279,9 @@ function PostCard({
     return mentions.some((m: string) => m.toLowerCase() === currentUser.username?.toLowerCase());
   }, [text, currentUser]);
 
-  // ── Navigation helpers ──
   const goToProfile = () => {
-    if (userId) {
-      (navigation.navigate as any)('Profile', { userId });
-    } else if (username) {
-      (navigation.navigate as any)('Profile', { username });
-    }
+    if (userId) (navigation.navigate as any)('Profile', { userId });
+    else if (username) (navigation.navigate as any)('Profile', { username });
   };
   const goToPostDetail = () => (navigation.navigate as any)('PostDetail', { postId: id });
   const handleEditPost = () => {
@@ -170,7 +289,6 @@ function PostCard({
     (navigation.navigate as any)('EditPost', { postId: id });
   };
 
-  // ── Throttled link preview fetch ──
   const previewFetchedRef = useRef(false);
 
   useEffect(() => {
@@ -181,12 +299,10 @@ function PostCard({
     const url = urlMatch[0];
 
     previewFetchedRef.current = true;
-
     const controller = new AbortController();
 
     throttleLinkPreview(() => {
       if (!post || !isVisible || previewFetchedRef.current === false) return;
-
       setPreviewLoading(true);
       setPreviewError(false);
 
@@ -216,9 +332,7 @@ function PostCard({
   }, [id, text, image, video, isVisible]);
 
   useEffect(() => {
-    if (!isVisible) {
-      videoRef.current?.pauseAsync?.().catch(() => {});
-    }
+    if (!isVisible) videoRef.current?.pauseAsync?.().catch(() => {});
   }, [isVisible]);
 
   const handleVideoPlaybackStatus = (status: any) => {
@@ -229,63 +343,65 @@ function PostCard({
     }
   };
 
+  // ── Like ──
   const handleLike = async () => {
     if (!currentUser) {
-      Alert.alert(
-        'Sign In Required',
-        'Please log in to like posts.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Log In', onPress: () => (navigation.navigate as any)('Login') }
-        ]
-      );
+      Alert.alert('Sign In Required', 'Please log in to like posts.', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Log In', onPress: () => (navigation.navigate as any)('Login') },
+      ]);
       return;
     }
 
+    const wasLiked = localLiked;
+    const prevCount = localLikeCount;
+
+    setLocalLiked(!wasLiked);
+    setLocalLikeCount(wasLiked ? Math.max(0, prevCount - 1) : prevCount + 1);
+
     try {
-      if (liked) {
-        await unlikePost(id);
-      } else {
-        await likePost(id);
-      }
+      if (wasLiked) await unlikePost(id);
+      else await likePost(id);
     } catch (error: any) {
+      setLocalLiked(wasLiked);
+      setLocalLikeCount(prevCount);
       console.warn('Like failed:', error);
       if (error.response?.status === 401) {
-        Alert.alert(
-          'Session Expired',
-          'Please log in again to continue.',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Log In', onPress: () => (navigation.navigate as any)('Login') }
-          ]
-        );
+        Alert.alert('Session Expired', 'Please log in again to continue.', [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Log In', onPress: () => (navigation.navigate as any)('Login') },
+        ]);
       } else {
         Alert.alert('Error', 'Failed to like post. Please try again.');
       }
     }
   };
 
+  // ── Repost ──
   const handleRepost = async () => {
     if (!currentUser) {
-      Alert.alert(
-        'Sign In Required',
-        'Please log in to repost.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Log In', onPress: () => (navigation.navigate as any)('Login') }
-        ]
-      );
+      Alert.alert('Sign In Required', 'Please log in to repost.', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Log In', onPress: () => (navigation.navigate as any)('Login') },
+      ]);
       return;
     }
+
+    const wasReposted = localReposted;
+    const prevCount = localRepostCount;
+
+    setLocalReposted(!wasReposted);
+    setLocalRepostCount(wasReposted ? Math.max(0, prevCount - 1) : prevCount + 1);
 
     try {
       await repostPost(id);
     } catch (error: any) {
+      setLocalReposted(wasReposted);
+      setLocalRepostCount(prevCount);
       console.warn('Repost failed:', error);
     }
   };
 
-  // ── Comment button: navigate to PostDetail (and fire parent callback) ──
   const handleComment = () => {
     (navigation.navigate as any)('PostDetail', { postId: id, focusComment: true });
     onComment?.(id);
@@ -517,11 +633,7 @@ function PostCard({
       </View>
 
       {hasMedia && (
-        <TouchableOpacity
-          activeOpacity={1}
-          onPress={goToPostDetail}
-          style={styles.fullBleedWrapper}
-        >
+        <TouchableOpacity activeOpacity={1} onPress={goToPostDetail} style={styles.fullBleedWrapper}>
           {renderMedia()}
         </TouchableOpacity>
       )}
@@ -531,21 +643,37 @@ function PostCard({
         <View style={styles.content}>
           <View style={[styles.engagementBar, { borderTopColor: colors.border, marginTop: hasMedia ? 12 : 0 }]}>
             <TouchableOpacity style={styles.engagementButton} onPress={handleLike}>
-              <Feather name="heart" size={22} color={liked ? '#ef4444' : colors.textMuted} />
-              <Text style={[styles.engagementText, { color: colors.textSecondary }]}>{likeCount}</Text>
+              <Feather name="heart" size={22} color={localLiked ? '#ef4444' : colors.textMuted} />
+              <Text style={[
+                styles.engagementText,
+                { color: localLiked ? '#ef4444' : colors.textSecondary },
+              ]}>
+                {localLikeCount}
+              </Text>
             </TouchableOpacity>
+
             <TouchableOpacity style={styles.engagementButton} onPress={handleComment}>
               <Feather name="message-circle" size={22} color={colors.textMuted} />
-              <Text style={[styles.engagementText, { color: colors.textSecondary }]}>{commentCount ?? safeComments.length}</Text>
+              <Text style={[styles.engagementText, { color: colors.textSecondary }]}>
+                {commentCount ?? safeComments.length}
+              </Text>
             </TouchableOpacity>
+
             <TouchableOpacity style={styles.engagementButton} onPress={handleRepost}>
-              <Feather name="repeat" size={22} color={reposted ? '#3b82f6' : colors.textMuted} />
-              <Text style={[styles.engagementText, { color: colors.textSecondary }]}>{repostCount ?? safeReposts.length}</Text>
+              <Feather name="repeat" size={22} color={localReposted ? '#22c55e' : colors.textMuted} />
+              <Text style={[
+                styles.engagementText,
+                { color: localReposted ? '#22c55e' : colors.textSecondary },
+              ]}>
+                {localRepostCount}
+              </Text>
             </TouchableOpacity>
+
             <TouchableOpacity style={styles.engagementButton} onPress={handleShare}>
               <Feather name="share-2" size={22} color={colors.textMuted} />
               <Text style={[styles.engagementText, { color: colors.textSecondary }]}>{shares || 0}</Text>
             </TouchableOpacity>
+
             <TouchableOpacity style={styles.engagementButton} onPress={handleQuote}>
               <Feather name="message-square" size={22} color={colors.textMuted} />
             </TouchableOpacity>
@@ -596,26 +724,15 @@ const styles = StyleSheet.create({
     marginLeft: 44,
     marginBottom: 4,
   },
-  repostBannerText: {
-    fontSize: 12,
-    marginLeft: 4,
-  },
-  repostBannerTime: {
-    fontSize: 12,
-    marginLeft: 8,
-  },
+  repostBannerText: { fontSize: 12, marginLeft: 4 },
+  repostBannerTime: { fontSize: 12, marginLeft: 8 },
   cardInner: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     paddingHorizontal: 16,
   },
-  avatarTouch: {
-    width: 40,
-    marginRight: 12,
-  },
-  content: {
-    flex: 1,
-  },
+  avatarTouch: { width: 40, marginRight: 12 },
+  content: { flex: 1 },
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -627,184 +744,67 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flex: 1,
   },
-  nameContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  name: {
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  username: {
-    fontSize: 13,
-    marginLeft: 4,
-  },
-  time: {
-    fontSize: 13,
-    marginLeft: 4,
-  },
-  groupBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 12,
-    marginLeft: 6,
-  },
-  groupBadgeText: {
-    fontSize: 11,
-  },
-  actionsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  viewCountRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginRight: 8,
-  },
-  viewCountText: {
-    fontSize: 12,
-    marginLeft: 4,
-  },
-  reasonButton: {
-    padding: 4,
-  },
+  nameContainer: { flexDirection: 'row', alignItems: 'center' },
+  name: { fontSize: 15, fontWeight: '700' },
+  username: { fontSize: 13, marginLeft: 4 },
+  time: { fontSize: 13, marginLeft: 4 },
+  groupBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12, marginLeft: 6 },
+  groupBadgeText: { fontSize: 11 },
+  actionsRow: { flexDirection: 'row', alignItems: 'center' },
+  viewCountRow: { flexDirection: 'row', alignItems: 'center', marginRight: 8 },
+  viewCountText: { fontSize: 12, marginLeft: 4 },
+  reasonButton: { padding: 4 },
   reasonPopover: {
-    position: 'absolute',
-    top: 28,
-    right: 0,
-    borderWidth: 1,
-    borderRadius: 8,
+    position: 'absolute', top: 28, right: 0, borderWidth: 1, borderRadius: 8,
     padding: 12,
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-    width: 200,
-    zIndex: 10,
+    shadowOpacity: 0.1, shadowRadius: 4, elevation: 3, width: 200, zIndex: 10,
   },
-  reasonTitle: {
-    fontSize: 12,
-    fontWeight: '600',
-    marginBottom: 6,
-  },
-  reasonItem: {
-    fontSize: 12,
-    marginTop: 4,
-  },
-  dropdownButton: {
-    padding: 4,
-  },
+  reasonTitle: { fontSize: 12, fontWeight: '600', marginBottom: 6 },
+  reasonItem: { fontSize: 12, marginTop: 4 },
+  dropdownButton: { padding: 4 },
   dropdownMenu: {
-    position: 'absolute',
-    right: 0,
-    top: 28,
-    borderWidth: 1,
-    borderRadius: 8,
+    position: 'absolute', right: 0, top: 28, borderWidth: 1, borderRadius: 8,
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-    minWidth: 160,
-    paddingVertical: 4,
-    zIndex: 10,
+    shadowOpacity: 0.1, shadowRadius: 4, elevation: 3,
+    minWidth: 160, paddingVertical: 4, zIndex: 10,
   },
   dropdownItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 16, paddingVertical: 10,
   },
-  dropdownItemText: {
-    fontSize: 14,
-    marginLeft: 12,
-  },
-  dropdownDivider: {
-    height: 1,
-    marginVertical: 4,
-  },
+  dropdownItemText: { fontSize: 14, marginLeft: 12 },
+  dropdownDivider: { height: 1, marginVertical: 4 },
   mentionBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 12,
-    marginLeft: 6,
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12, marginLeft: 6,
   },
-  mentionBadgeText: {
-    fontSize: 11,
-    marginLeft: 4,
-  },
-  postText: {
-    fontSize: 15,
-    lineHeight: 22,
-    marginTop: 6,
-  },
-  showMore: {
-    fontSize: 14,
-    marginTop: 4,
-  },
-  fullBleedWrapper: {
-    width: '100%',
-    marginTop: 12,
-  },
-  mediaContainer: {
-    width: '100%',
-    overflow: 'hidden',
-  },
-  mediaPlayer: {
-    width: '100%',
-    height: SCREEN_WIDTH * 0.5625,
-  },
-  mediaImage: {
-    width: '100%',
-    height: SCREEN_WIDTH,
-  },
+  mentionBadgeText: { fontSize: 11, marginLeft: 4 },
+  postText: { fontSize: 15, lineHeight: 22, marginTop: 6 },
+  showMore: { fontSize: 14, marginTop: 4 },
+  fullBleedWrapper: { width: '100%', marginTop: 12 },
+  mediaContainer: { width: '100%', overflow: 'hidden' },
+  mediaPlayer: { width: '100%', height: SCREEN_WIDTH * 0.5625 },
+  mediaImage: { width: '100%', height: SCREEN_WIDTH },
   videoPlaceholder: {
-    width: '100%',
-    height: SCREEN_WIDTH * 0.5625,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: '100%', height: SCREEN_WIDTH * 0.5625,
+    alignItems: 'center', justifyContent: 'center',
   },
-  videoErrorContainer: {
-    padding: 24,
-    alignItems: 'center',
-  },
-  videoErrorText: {
-    fontSize: 14,
-    marginTop: 8,
-  },
+  videoErrorContainer: { padding: 24, alignItems: 'center' },
+  videoErrorText: { fontSize: 14, marginTop: 8 },
   engagementBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingTop: 12,
     borderTopWidth: 1,
   },
-  engagementButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  engagementText: {
-    fontSize: 14,
-    marginLeft: 6,
-  },
+  engagementButton: { flexDirection: 'row', alignItems: 'center' },
+  engagementText: { fontSize: 14, marginLeft: 6 },
   lightbox: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.9)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.9)',
+    justifyContent: 'center', alignItems: 'center',
   },
-  lightboxClose: {
-    position: 'absolute',
-    top: 40,
-    right: 20,
-    zIndex: 10,
-  },
-  lightboxScroll: {
-    flexGrow: 1,
-    justifyContent: 'center',
-  },
-  lightboxImage: {
-    width: SCREEN_WIDTH,
-    height: SCREEN_WIDTH * 1.2,
-  },
+  lightboxClose: { position: 'absolute', top: 40, right: 20, zIndex: 10 },
+  lightboxScroll: { flexGrow: 1, justifyContent: 'center' },
+  lightboxImage: { width: SCREEN_WIDTH, height: SCREEN_WIDTH * 1.2 },
 });
