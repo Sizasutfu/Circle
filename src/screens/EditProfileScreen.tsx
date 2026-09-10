@@ -42,7 +42,6 @@ export default function EditProfileScreen() {
   const { colors, isDark } = useTheme();
   const queryClient = useQueryClient();
 
-  // ── Form state ──
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [bio, setBio] = useState('');
@@ -54,7 +53,6 @@ export default function EditProfileScreen() {
   const [coverUri, setCoverUri] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // ── Fetch current profile ──
   const {
     data: profile,
     isLoading: profileLoading,
@@ -81,7 +79,6 @@ export default function EditProfileScreen() {
     enabled: !!user,
   });
 
-  // ── Populate form when profile loads ──
   useEffect(() => {
     if (profile) {
       setName(profile.name || '');
@@ -94,7 +91,6 @@ export default function EditProfileScreen() {
     }
   }, [profile]);
 
-  // ── Update profile mutation ──
   const updateProfileMutation = useMutation({
     mutationFn: async (data: FormData) => {
       const response = await api.put(`/users/${user?.id}`, data, {
@@ -117,7 +113,6 @@ export default function EditProfileScreen() {
     },
   });
 
-  // ── Pick avatar ──
   const pickAvatar = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
@@ -137,7 +132,6 @@ export default function EditProfileScreen() {
     }
   };
 
-  // ── Pick cover image ──
   const pickCover = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
@@ -157,19 +151,15 @@ export default function EditProfileScreen() {
     }
   };
 
-  // ── Remove avatar ──
   const removeAvatar = () => {
     setAvatarUri(null);
   };
 
-  // ── Remove cover ──
   const removeCover = () => {
     setCoverUri(null);
   };
 
-  // ── Submit form ──
   const handleSubmit = () => {
-    // Validation
     if (!name.trim()) {
       Alert.alert('Error', 'Name is required.');
       return;
@@ -220,7 +210,6 @@ export default function EditProfileScreen() {
     updateProfileMutation.mutate(formData);
   };
 
-  // ── Loading state ──
   if (profileLoading) {
     return (
       <SafeAreaView style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
@@ -237,10 +226,15 @@ export default function EditProfileScreen() {
         keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
       >
         {/* ─── Header ─── */}
-        <View style={[styles.header, { 
-          backgroundColor: colors.surface, 
-          borderBottomColor: colors.border 
-        }]}>
+        <View
+          style={[
+            styles.header,
+            {
+              backgroundColor: colors.background,
+              borderBottomColor: colors.border,
+            },
+          ]}
+        >
           <TouchableOpacity onPress={() => navigation.goBack()} disabled={updateProfileMutation.isPending}>
             <Text style={[styles.cancelButton, { color: colors.textSecondary }]}>Cancel</Text>
           </TouchableOpacity>
@@ -248,7 +242,11 @@ export default function EditProfileScreen() {
           <TouchableOpacity
             onPress={handleSubmit}
             disabled={updateProfileMutation.isPending}
-            style={[styles.saveButton, { backgroundColor: colors.primary }, updateProfileMutation.isPending && styles.saveButtonDisabled]}
+            style={[
+              styles.saveButton,
+              { backgroundColor: colors.primary },
+              updateProfileMutation.isPending && styles.saveButtonDisabled,
+            ]}
           >
             {updateProfileMutation.isPending ? (
               <ActivityIndicator size="small" color="white" />
@@ -307,15 +305,17 @@ export default function EditProfileScreen() {
 
           {/* ─── Form Fields ─── */}
           <View style={styles.form}>
-            {/* Name */}
             <View style={styles.field}>
               <Text style={[styles.label, { color: colors.text }]}>Name</Text>
               <TextInput
-                style={[styles.input, { 
-                  backgroundColor: colors.input, 
-                  borderColor: colors.inputBorder,
-                  color: colors.text 
-                }]}
+                style={[
+                  styles.input,
+                  {
+                    backgroundColor: colors.input,
+                    borderColor: colors.inputBorder,
+                    color: colors.text,
+                  },
+                ]}
                 value={name}
                 onChangeText={setName}
                 placeholder="Your full name"
@@ -324,15 +324,17 @@ export default function EditProfileScreen() {
               />
             </View>
 
-            {/* Username */}
             <View style={styles.field}>
               <Text style={[styles.label, { color: colors.text }]}>Username</Text>
               <TextInput
-                style={[styles.input, { 
-                  backgroundColor: colors.input, 
-                  borderColor: colors.inputBorder,
-                  color: colors.text 
-                }]}
+                style={[
+                  styles.input,
+                  {
+                    backgroundColor: colors.input,
+                    borderColor: colors.inputBorder,
+                    color: colors.text,
+                  },
+                ]}
                 value={username}
                 onChangeText={setUsername}
                 placeholder="username"
@@ -343,15 +345,17 @@ export default function EditProfileScreen() {
               <Text style={[styles.helperText, { color: colors.textMuted }]}>Letters, numbers, and underscores only.</Text>
             </View>
 
-            {/* Email */}
             <View style={styles.field}>
               <Text style={[styles.label, { color: colors.text }]}>Email</Text>
               <TextInput
-                style={[styles.input, { 
-                  backgroundColor: colors.input, 
-                  borderColor: colors.inputBorder,
-                  color: colors.text 
-                }]}
+                style={[
+                  styles.input,
+                  {
+                    backgroundColor: colors.input,
+                    borderColor: colors.inputBorder,
+                    color: colors.text,
+                  },
+                ]}
                 value={email}
                 onChangeText={setEmail}
                 placeholder="you@example.com"
@@ -362,15 +366,18 @@ export default function EditProfileScreen() {
               />
             </View>
 
-            {/* Bio */}
             <View style={styles.field}>
               <Text style={[styles.label, { color: colors.text }]}>Bio</Text>
               <TextInput
-                style={[styles.input, styles.textArea, { 
-                  backgroundColor: colors.input, 
-                  borderColor: colors.inputBorder,
-                  color: colors.text 
-                }]}
+                style={[
+                  styles.input,
+                  styles.textArea,
+                  {
+                    backgroundColor: colors.input,
+                    borderColor: colors.inputBorder,
+                    color: colors.text,
+                  },
+                ]}
                 value={bio}
                 onChangeText={setBio}
                 placeholder="Tell people about yourself..."
@@ -383,15 +390,17 @@ export default function EditProfileScreen() {
               <Text style={[styles.charCount, { color: colors.textMuted }]}>{bio.length}/160</Text>
             </View>
 
-            {/* Phone */}
             <View style={styles.field}>
               <Text style={[styles.label, { color: colors.text }]}>Phone</Text>
               <TextInput
-                style={[styles.input, { 
-                  backgroundColor: colors.input, 
-                  borderColor: colors.inputBorder,
-                  color: colors.text 
-                }]}
+                style={[
+                  styles.input,
+                  {
+                    backgroundColor: colors.input,
+                    borderColor: colors.inputBorder,
+                    color: colors.text,
+                  },
+                ]}
                 value={phone}
                 onChangeText={setPhone}
                 placeholder="+1 234 567 8900"
@@ -401,15 +410,17 @@ export default function EditProfileScreen() {
               />
             </View>
 
-            {/* Location */}
             <View style={styles.field}>
               <Text style={[styles.label, { color: colors.text }]}>Location</Text>
               <TextInput
-                style={[styles.input, { 
-                  backgroundColor: colors.input, 
-                  borderColor: colors.inputBorder,
-                  color: colors.text 
-                }]}
+                style={[
+                  styles.input,
+                  {
+                    backgroundColor: colors.input,
+                    borderColor: colors.inputBorder,
+                    color: colors.text,
+                  },
+                ]}
                 value={location}
                 onChangeText={setLocation}
                 placeholder="City, Country"
@@ -418,15 +429,17 @@ export default function EditProfileScreen() {
               />
             </View>
 
-            {/* Website */}
             <View style={styles.field}>
               <Text style={[styles.label, { color: colors.text }]}>Website</Text>
               <TextInput
-                style={[styles.input, { 
-                  backgroundColor: colors.input, 
-                  borderColor: colors.inputBorder,
-                  color: colors.text 
-                }]}
+                style={[
+                  styles.input,
+                  {
+                    backgroundColor: colors.input,
+                    borderColor: colors.inputBorder,
+                    color: colors.text,
+                  },
+                ]}
                 value={website}
                 onChangeText={setWebsite}
                 placeholder="https://yourwebsite.com"
