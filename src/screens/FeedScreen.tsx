@@ -44,7 +44,7 @@ export default function FeedScreen() {
   const flatListRef = useRef<FlatList>(null);
   const { registerHandler } = useWs();
   const queryClient = useQueryClient();
-  
+
   const scrollY = useRef(new Animated.Value(0)).current;
   const fabTranslateY = useRef(new Animated.Value(0)).current;
   const fabOpacity = useRef(new Animated.Value(1)).current;
@@ -80,7 +80,7 @@ export default function FeedScreen() {
   useEffect(() => {
     const unregisterLikeUpdate = registerHandler('like_update', (data: any) => {
       console.log('📊 Like update via WebSocket:', data);
-      
+
       queryClient.setQueryData(['feed', activeTab], (oldData: any) => {
         if (!oldData) return oldData;
 
@@ -104,7 +104,7 @@ export default function FeedScreen() {
 
     const unregisterRepostUpdate = registerHandler('repost_update', (data: any) => {
       console.log('📊 Repost update via WebSocket:', data);
-      
+
       queryClient.setQueryData(['feed', activeTab], (oldData: any) => {
         if (!oldData) return oldData;
 
@@ -129,7 +129,7 @@ export default function FeedScreen() {
 
     const unregisterCommentUpdate = registerHandler('comment_update', (data: any) => {
       console.log('📊 Comment update via WebSocket:', data);
-      
+
       queryClient.setQueryData(['feed', activeTab], (oldData: any) => {
         if (!oldData) return oldData;
 
@@ -178,9 +178,9 @@ export default function FeedScreen() {
 
   const renderItem = useCallback(
     ({ item }: { item: FeedPost }) => (
-      <PostCard 
+      <PostCard
         key={`${item.id}-${item.likes?.length || 0}-${item.reposts?.length || 0}`}
-        post={item} 
+        post={item}
       />
     ),
     []
@@ -197,7 +197,7 @@ export default function FeedScreen() {
       listener: ({ nativeEvent }: { nativeEvent: { contentOffset: { y: number } } }) => {
         const currentScrollY = nativeEvent.contentOffset.y;
         const scrollDelta = currentScrollY - lastScrollY.current;
-        
+
         if (Math.abs(scrollDelta) > 5) {
           if (scrollDelta > 0 && fabVisible) {
             setFabVisible(false);
@@ -237,7 +237,7 @@ export default function FeedScreen() {
   const ListFooterComponent = useMemo(() => {
     if (!isFetchingNextPage) return null;
     return (
-      <View style={[styles.footerLoader, { backgroundColor: colors.background }]}>
+      <View style={[styles.footerLoader, { backgroundColor: 'transparent' }]}>
         <ActivityIndicator size="small" color={colors.primary} />
       </View>
     );
@@ -313,8 +313,8 @@ export default function FeedScreen() {
   return (
     <View style={containerStyle}>
       {/* ─── AppHeader ─── */}
-      <AppHeader 
-        title="Circle" 
+      <AppHeader
+        title="Circle"
         showMenu={true}
         rightActions={[
           {
@@ -326,10 +326,15 @@ export default function FeedScreen() {
       />
 
       {/* ─── Tabs ─── */}
-      <View style={[styles.tabsContainer, { 
-        backgroundColor: colors.surface, 
-        borderBottomColor: colors.border 
-      }]}>
+      <View
+        style={[
+          styles.tabsContainer,
+          {
+            backgroundColor: 'transparent',
+            borderBottomColor: colors.border,
+          },
+        ]}
+      >
         <TouchableOpacity
           style={[styles.tab, activeTab === 'global' && styles.tabActive]}
           onPress={() => setActiveTab('global')}
@@ -367,7 +372,7 @@ export default function FeedScreen() {
         ListFooterComponent={ListFooterComponent}
         contentContainerStyle={[
           styles.feedContent,
-          { paddingBottom: contentBottomPadding }
+          { paddingBottom: contentBottomPadding },
         ]}
         showsVerticalScrollIndicator={false}
         removeClippedSubviews={true}
@@ -468,6 +473,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     borderBottomWidth: 1,
     paddingHorizontal: 16,
+    backgroundColor: 'transparent',
   },
   tab: {
     paddingVertical: 12,
@@ -492,6 +498,7 @@ const styles = StyleSheet.create({
   footerLoader: {
     paddingVertical: 16,
     alignItems: 'center',
+    backgroundColor: 'transparent',
   },
   fabContainer: {
     position: 'absolute',
