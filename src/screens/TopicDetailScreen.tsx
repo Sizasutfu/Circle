@@ -20,7 +20,6 @@ import { useTopicFeed, useFollowTopic } from '../hooks/useExplore';
 import { useQueryClient } from '@tanstack/react-query';
 import PostCard from '../components/PostCard';
 
-// ✅ Create Animated component
 const AnimatedFlatList = Animated.createAnimatedComponent(FlatList);
 
 export default function TopicDetailScreen() {
@@ -32,7 +31,6 @@ export default function TopicDetailScreen() {
   const queryClient = useQueryClient();
   const flatListRef = useRef<FlatList>(null);
 
-  // ── Get topic from route params ──
   const topic = (route.params as any)?.topic || '';
   const decodedTopic = useMemo(() => {
     try {
@@ -42,11 +40,9 @@ export default function TopicDetailScreen() {
     }
   }, [topic]);
 
-  // ── State ──
   const [isFollowing, setIsFollowing] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  // ── Fetch topic posts ──
   const {
     data: topicFeedData,
     isLoading: feedLoading,
@@ -61,17 +57,14 @@ export default function TopicDetailScreen() {
     return topicFeedData.pages.flatMap((page) => page.posts) || [];
   }, [topicFeedData]);
 
-  // ── Follow topic mutation ──
   const followTopic = useFollowTopic();
 
-  // ── Handle follow/unfollow ──
   const handleFollowToggle = useCallback(async () => {
     try {
       const newFollowing = !isFollowing;
       setIsFollowing(newFollowing);
       await followTopic.mutateAsync(decodedTopic);
-      
-      // Update cache if needed
+
       queryClient.setQueryData(['explore', 'topics', 50], (oldData: any) => {
         if (!oldData) return oldData;
         return oldData.map((t: any) => {
@@ -82,32 +75,27 @@ export default function TopicDetailScreen() {
         });
       });
     } catch (error) {
-      // Rollback on error
       setIsFollowing(!isFollowing);
       console.error('Error following topic:', error);
     }
   }, [isFollowing, decodedTopic, followTopic, queryClient]);
 
-  // ── Handle refresh ──
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     await refetchFeed();
     setRefreshing(false);
   }, [refetchFeed]);
 
-  // ── Handle load more ──
   const handleLoadMore = useCallback(() => {
     if (hasNextPage && !isFetchingNextPage) {
       fetchNextPage();
     }
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
-  // ── Navigate back ──
   const handleBack = useCallback(() => {
     navigation.goBack();
   }, [navigation]);
 
-  // ── Render post item ──
   const renderPostItem = ({ item }: { item: any }) => (
     <PostCard
       key={`${item.id}-${item.likes?.length || 0}-${item.reposts?.length || 0}`}
@@ -115,12 +103,16 @@ export default function TopicDetailScreen() {
     />
   );
 
-  // ── Render header ──
   const renderHeader = () => (
-    <View style={[styles.header, { 
-      backgroundColor: colors.surface, 
-      borderBottomColor: colors.border 
-    }]}>
+    <View
+      style={[
+        styles.header,
+        {
+          backgroundColor: colors.background,
+          borderBottomColor: colors.border,
+        },
+      ]}
+    >
       <View style={styles.headerContent}>
         <TouchableOpacity onPress={handleBack} style={styles.backButton}>
           <Feather name="arrow-left" size={24} color={colors.text} />
@@ -129,7 +121,7 @@ export default function TopicDetailScreen() {
           #{decodedTopic}
         </Text>
         {user && (
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[
               styles.followButton,
               {
@@ -138,10 +130,12 @@ export default function TopicDetailScreen() {
             ]}
             onPress={handleFollowToggle}
           >
-            <Text style={[
-              styles.followButtonText,
-              { color: isFollowing ? colors.text : 'white' }
-            ]}>
+            <Text
+              style={[
+                styles.followButtonText,
+                { color: isFollowing ? colors.text : 'white' },
+              ]}
+            >
               {isFollowing ? 'Following' : 'Follow'}
             </Text>
           </TouchableOpacity>
@@ -155,7 +149,6 @@ export default function TopicDetailScreen() {
     </View>
   );
 
-  // ── Render footer ──
   const renderFooter = () => {
     if (!isFetchingNextPage) return null;
     return (
@@ -168,7 +161,6 @@ export default function TopicDetailScreen() {
     );
   };
 
-  // ── Render empty state ──
   const renderEmpty = () => (
     <View style={styles.emptyContainer}>
       <Feather name="hash" size={64} color={colors.textMuted} />
@@ -179,7 +171,6 @@ export default function TopicDetailScreen() {
     </View>
   );
 
-  // ── Render loading ──
   if (feedLoading && topicPosts.length === 0) {
     return (
       <SafeAreaView style={[styles.loadingContainer, { backgroundColor: colors.background }]} edges={['top']}>
@@ -188,7 +179,6 @@ export default function TopicDetailScreen() {
     );
   }
 
-  // ── Main render ──
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
       {renderHeader()}
