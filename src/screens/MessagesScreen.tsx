@@ -18,7 +18,7 @@ import { Avatar } from '../components/Avatar';
 import { useTabBarHeight } from '../hooks/useTabBarHeight';
 import api from '../api/client';
 import { timeAgo } from '../utils/helpers';
-import { resolveMediaUrl } from '../lib/media'; // ✅ Import the helper
+import { resolveMediaUrl } from '../lib/media';
 
 interface Conversation {
   id: string;
@@ -85,19 +85,19 @@ export default function MessagesScreen() {
     const isMine = item.last_sender_id === user?.id;
     const preview = isMine ? `You: ${item.last_message || 'Media'}` : item.last_message || 'Media';
     const time = timeAgo(item.last_message_at);
-    
-    // ✅ Resolve avatar URL using the helper
+
     const avatarUrl = resolveMediaUrl(item.other_picture);
 
     return (
       <TouchableOpacity
         style={[
           styles.conversationItem,
-          { 
-            backgroundColor: colors.surface, 
-            borderBottomColor: colors.border 
+          {
+            backgroundColor: colors.background,
+            borderBottomColor: colors.border,
           },
-          isUnread && { backgroundColor: isDark ? '#1f2937' : '#f0f4ff' }
+          // Unread highlight — subtle tint that still respects the app background
+          isUnread && { backgroundColor: isDark ? '#1f2937' : '#f0f4ff' },
         ]}
         onPress={() => openConversation(item)}
         activeOpacity={0.7}
@@ -109,26 +109,23 @@ export default function MessagesScreen() {
         />
         <View style={styles.conversationContent}>
           <View style={styles.conversationHeader}>
-            <Text style={[
-              styles.userName, 
-              { color: colors.text },
-              isUnread && { color: colors.text }
-            ]}>
+            <Text style={[styles.userName, { color: colors.text }]}>
               {item.other_name}
             </Text>
-            <Text style={[
-              styles.timestamp, 
-              { color: colors.textMuted },
-              isUnread && { color: colors.text }
-            ]}>
+            <Text
+              style={[
+                styles.timestamp,
+                { color: isUnread ? colors.primary : colors.textMuted },
+              ]}
+            >
               {time}
             </Text>
           </View>
           <Text
             style={[
-              styles.lastMessage, 
+              styles.lastMessage,
               { color: colors.textSecondary },
-              isUnread && { color: colors.text, fontWeight: '700' }
+              isUnread && { color: colors.text, fontWeight: '700' },
             ]}
             numberOfLines={1}
           >
@@ -194,10 +191,15 @@ export default function MessagesScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
-      <View style={[styles.header, { 
-        backgroundColor: colors.surface, 
-        borderBottomColor: colors.border 
-      }]}>
+      <View
+        style={[
+          styles.header,
+          {
+            backgroundColor: colors.background,
+            borderBottomColor: colors.border,
+          },
+        ]}
+      >
         <Text style={[styles.headerTitle, { color: colors.text }]}>Messages</Text>
         <TouchableOpacity onPress={handleNewMessage} style={styles.newButton}>
           <Feather name="edit-2" size={22} color={colors.text} />
@@ -218,7 +220,7 @@ export default function MessagesScreen() {
         }
         contentContainerStyle={[
           styles.listContent,
-          { paddingBottom: contentBottomPadding }
+          { paddingBottom: contentBottomPadding },
         ]}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={renderEmpty}
