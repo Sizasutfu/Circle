@@ -64,14 +64,12 @@ export default function BlockedUsersScreen() {
     },
   });
 
-  // ── Pull to refresh ──
   const handleRefresh = async () => {
     setRefreshing(true);
     await refetch();
     setRefreshing(false);
   };
 
-  // ── Confirm unblock ──
   const confirmUnblock = (user: BlockedUser) => {
     Alert.alert(
       'Unblock User',
@@ -87,15 +85,16 @@ export default function BlockedUsersScreen() {
     );
   };
 
-  // ── Render blocked user item ──
   const renderBlockedUser = ({ item }: { item: BlockedUser }) => (
-    <View style={[
-      styles.userItem, 
-      { 
-        backgroundColor: colors.surface, 
-        borderBottomColor: colors.border 
-      }
-    ]}>
+    <View
+      style={[
+        styles.userItem,
+        {
+          backgroundColor: colors.background,
+          borderBottomColor: colors.border,
+        },
+      ]}
+    >
       <TouchableOpacity
         style={styles.userInfo}
         onPress={() => (navigation.navigate as any)('Profile', { userId: item.id })}
@@ -120,7 +119,6 @@ export default function BlockedUsersScreen() {
     </View>
   );
 
-  // ── Empty state ──
   const renderEmpty = () => (
     <View style={styles.emptyContainer}>
       <Feather name="user-x" size={64} color={colors.textMuted} />
@@ -131,7 +129,6 @@ export default function BlockedUsersScreen() {
     </View>
   );
 
-  // ── Loading state ──
   if (isLoading) {
     return (
       <SafeAreaView style={[styles.loadingContainer, { backgroundColor: colors.background }]} edges={['top']}>
@@ -140,7 +137,6 @@ export default function BlockedUsersScreen() {
     );
   }
 
-  // ── Error state ──
   if (isError) {
     return (
       <SafeAreaView style={[styles.errorContainer, { backgroundColor: colors.background }]} edges={['top']}>
@@ -156,10 +152,15 @@ export default function BlockedUsersScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
       {/* ─── Header ─── */}
-      <View style={[styles.header, { 
-        backgroundColor: colors.surface, 
-        borderBottomColor: colors.border 
-      }]}>
+      <View
+        style={[
+          styles.header,
+          {
+            backgroundColor: colors.background,
+            borderBottomColor: colors.border,
+          },
+        ]}
+      >
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Feather name="arrow-left" size={24} color={colors.text} />
         </TouchableOpacity>
@@ -169,10 +170,15 @@ export default function BlockedUsersScreen() {
 
       {/* ─── Count ─── */}
       {blockedUsers.length > 0 && (
-        <View style={[styles.countContainer, { 
-          backgroundColor: colors.surface, 
-          borderBottomColor: colors.border 
-        }]}>
+        <View
+          style={[
+            styles.countContainer,
+            {
+              backgroundColor: colors.background,
+              borderBottomColor: colors.border,
+            },
+          ]}
+        >
           <Text style={[styles.countText, { color: colors.textSecondary }]}>
             {blockedUsers.length} {blockedUsers.length === 1 ? 'user' : 'users'} blocked
           </Text>
