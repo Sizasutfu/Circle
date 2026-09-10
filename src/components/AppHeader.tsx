@@ -12,11 +12,14 @@ import { Feather } from '@expo/vector-icons';
 import { useNavigation, DrawerActions } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAuth } from '../contexts/AuthContext';
+import { useUnreadCount } from '../hooks/useNotifications';
 
 interface AppHeaderProps {
   title?: string;
   showBack?: boolean;
   showMenu?: boolean;
+  showNotifications?: boolean; // NEW: includes bell icon with unread badge
   rightActions?: {
     icon: keyof typeof Feather.glyphMap;
     onPress: () => void;
@@ -31,6 +34,7 @@ export default function AppHeader({
   title = 'Circle',
   showBack = false,
   showMenu = true,
+  showNotifications = false, // default off
   rightActions = [],
   onBackPress,
   transparent = false,
@@ -39,6 +43,8 @@ export default function AppHeader({
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
+  const { user } = useAuth();
+  const { data: unreadCount = 0 } = useUnreadCount(user?.id || '');
 
   // ── Animation for premium feel ──
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -71,6 +77,22 @@ export default function AppHeader({
   const handleMenuPress = () => {
     navigation.dispatch(DrawerActions.openDrawer());
   };
+
+  const handleNotificationPress = () => {
+    navigation.navigate('Notifications' as never);
+  };
+
+  // ── Build right actions (including notifications if enabled) ──
+  const allActions = [
+    ...(showNotifications
+      ? [{
+          icon: 'bell' as keyof typeof Feather.glyphMap,
+          onPress: handleNotificationPress,
+          badge: unreadCount,
+        }]
+      : []),
+    ...rightActions,
+  ];
 
   // ── Dynamic header styles ──
   const headerStyles = [
@@ -180,11 +202,11 @@ export default function AppHeader({
 
         {/* ─── Right Section ─── */}
         <View style={styles.rightSection}>
-          {rightActions.map((action, index) => (
+          {allActions.map((action, index) => (
             <TouchableOpacity
               key={index}
               onPress={action.onPress}
-              style={styles.actionButton}
+              style={buttonStyles}
               activeOpacity={0.6}
             >
               <Feather

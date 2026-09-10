@@ -8,7 +8,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Platform, View, StyleSheet, Dimensions } from 'react-native';
+import { Platform, View, StyleSheet, Dimensions, Text } from 'react-native';
 
 // ----- Screens -----
 import WelcomeScreen from '../screens/WelcomeScreen';
@@ -34,6 +34,9 @@ import NewMessageScreen from '../screens/NewMessageScreen';
 
 // ----- Components -----
 import SidebarContent from '../components/SidebarContent';
+
+// ----- Hooks -----
+import { useUnreadCount } from '../hooks/useNotifications';
 
 // ----- Shared layout -----
 import { TAB_BAR_CONTENT_HEIGHT } from '../constants/layout';
@@ -143,6 +146,8 @@ function WebNavigator() {
 // ============================================================
 function DrawerNavigator() {
   const { colors } = useTheme();
+  const { user } = useAuth();
+  const { data: unreadCount = 0 } = useUnreadCount(user?.id || '');
 
   return (
     <Drawer.Navigator
@@ -180,7 +185,28 @@ function DrawerNavigator() {
         component={NotificationsScreen}
         options={{
           drawerIcon: ({ color, size }) => (
-            <Feather name="bell" size={size} color={color} />
+            <View style={{ position: 'relative' }}>
+              <Feather name="bell" size={size} color={color} />
+              {unreadCount > 0 && (
+                <View style={[styles.badge, { backgroundColor: colors.primary }]}>
+                  <Text style={styles.badgeText}>
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </Text>
+                </View>
+              )}
+            </View>
+          ),
+          drawerLabel: () => (
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={{ color: colors.text }}>Notifications</Text>
+              {unreadCount > 0 && (
+                <View style={[styles.badge, { backgroundColor: colors.primary }]}>
+                  <Text style={styles.badgeText}>
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </Text>
+                </View>
+              )}
+            </View>
           ),
         }}
       />
@@ -321,9 +347,7 @@ export default function AppNavigator() {
     const checkWelcome = async () => {
       try {
         if (user) {
-          // User is logged in, check if they've seen welcome
           const hasSeen = await AsyncStorage.getItem('hasSeenWelcome');
-          // If user hasn't seen welcome and is logged in, show it
           setShowWelcome(!hasSeen);
           setIsNewUser(!hasSeen);
         } else {
@@ -343,7 +367,6 @@ export default function AppNavigator() {
     return null;
   }
 
-  // ── Create custom theme for NavigationContainer ──
   const customTheme = {
     dark: isDark,
     colors: {
@@ -384,10 +407,8 @@ export default function AppNavigator() {
           }}
         >
           {!user ? (
-            // ─── Auth Screens (Not Logged In) ───
             <Stack.Screen name="Auth" component={AuthStack} />
           ) : showWelcome ? (
-            // ─── Welcome Screen (Logged in + New User) ───
             <Stack.Screen name="Welcome" options={{ headerShown: false }}>
               {() => (
                 <WelcomeScreen
@@ -399,7 +420,6 @@ export default function AppNavigator() {
               )}
             </Stack.Screen>
           ) : (
-            // ─── Main Screens (Logged in + Seen Welcome) ───
             <Stack.Screen name="Main" component={MainStack} />
           )}
         </Stack.Navigator>
@@ -421,5 +441,22 @@ const styles = StyleSheet.create({
       borderLeftColor: 'rgba(0,0,0,0.08)',
       borderRightColor: 'rgba(0,0,0,0.08)',
     }),
+  },
+  // ── New badge styles ──
+  badge: {
+    position: 'absolute',
+    top: -4,
+    right: -10,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  badgeText: {
+    color: 'white',
+    fontSize: 10,
+    fontWeight: '700',
   },
 });

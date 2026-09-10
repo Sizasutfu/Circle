@@ -207,9 +207,9 @@ export default function ProfileScreen() {
     }
     try {
       if (profile?.isFollowed) {
-        await api.delete(`/users/${effectiveUserId}/follow`);
+        await api.delete(`/follow/${effectiveUserId}`);
       } else {
-        await api.post(`/users/${effectiveUserId}/follow`);
+        await api.post(`/follow/${effectiveUserId}`);
       }
       refetchProfile();
     } catch (error) {
