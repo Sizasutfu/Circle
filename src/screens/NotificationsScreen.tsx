@@ -24,7 +24,6 @@ import {
 } from '../hooks/useNotifications';
 import { timeAgo, safeString } from '../utils/helpers';
 
-// Define navigation params type
 type RootStackParamList = {
   PostDetail: { postId: string };
   Profile: { userId: string };
@@ -46,17 +45,15 @@ export default function NotificationsScreen() {
     hasNextPage,
     isFetchingNextPage,
   } = useNotifications(userId);
-  
+
   const { mutate: markRead } = useMarkNotificationRead();
   const { mutate: markAllRead } = useMarkAllNotificationsRead(userId);
   const [refreshing, setRefreshing] = useState(false);
   const [newNotification, setNewNotification] = useState<Notification | null>(null);
   const [isConnected, setIsConnected] = useState(false);
 
-  // Flatten all pages of notifications
   const notifications = data?.pages?.flatMap(page => page.notifications) || [];
 
-  // Check connection status periodically
   useEffect(() => {
     const checkConnection = () => {
       setIsConnected(isAlive());
@@ -66,15 +63,12 @@ export default function NotificationsScreen() {
     return () => clearInterval(interval);
   }, [isAlive]);
 
-  // Register WebSocket handlers for notifications
   useEffect(() => {
     if (!userId) return;
 
-    // Handle new notification from WebSocket
     const unregisterNewNotification = registerHandler('new-notification', (data: any) => {
       console.log('🔔 New notification via WebSocket:', data);
-      
-      // Map the incoming data to match our Notification type
+
       const notification: Notification = {
         id: data.id || data.notificationId || '',
         type: data.type || 'like',
@@ -95,8 +89,7 @@ export default function NotificationsScreen() {
       };
 
       setNewNotification(notification);
-      
-      // Show alert
+
       const displayName = notification.user?.name || 'Someone';
       let actionText = '';
       switch (notification.type) {
@@ -123,8 +116,8 @@ export default function NotificationsScreen() {
         '🔔 New Notification',
         `${displayName} ${actionText}`,
         [
-          { 
-            text: 'View', 
+          {
+            text: 'View',
             onPress: () => {
               if (notification.postId) {
                 navigation.navigate('PostDetail' as never, { postId: notification.postId } as never);
@@ -134,35 +127,30 @@ export default function NotificationsScreen() {
               setNewNotification(null);
             }
           },
-          { 
-            text: 'Dismiss', 
-            onPress: () => setNewNotification(null) 
+          {
+            text: 'Dismiss',
+            onPress: () => setNewNotification(null)
           },
         ]
       );
 
-      // Refetch notifications to update the list
       refetch();
     });
 
-    // Handle notification read updates
     const unregisterNotificationRead = registerHandler('notification-read', (data: any) => {
       console.log('✅ Notification marked as read via WebSocket:', data);
       refetch();
     });
 
-    // Handle all notifications read
     const unregisterAllRead = registerHandler('all-notifications-read', (data: any) => {
       console.log('✅ All notifications marked as read via WebSocket:', data);
       refetch();
     });
 
-    // Handle unread count updates
     const unregisterUnreadCount = registerHandler('unread-count-updated', (data: any) => {
       console.log('📊 Unread count updated via WebSocket:', data);
     });
 
-    // Cleanup handlers
     return () => {
       unregisterNewNotification();
       unregisterNotificationRead();
@@ -183,7 +171,6 @@ export default function NotificationsScreen() {
     }
   };
 
-  // ✅ Fixed: Navigation with proper typing
   const handleNotificationPress = (notification: Notification) => {
     if (!notification.read) {
       markRead(notification.id);
@@ -203,9 +190,9 @@ export default function NotificationsScreen() {
   };
 
   const getSafeDisplayName = (notification: Notification): string => {
-    if (notification.user?.name && 
-        notification.user.name !== 'Unknown' && 
-        notification.user.name !== 'null' && 
+    if (notification.user?.name &&
+        notification.user.name !== 'Unknown' &&
+        notification.user.name !== 'null' &&
         notification.user.name !== 'undefined') {
       return notification.user.name;
     }
@@ -225,7 +212,7 @@ export default function NotificationsScreen() {
   const renderNotification = ({ item }: { item: Notification }) => {
     const { type, postText, commentText, createdAt, read, text } = item;
     const time = timeAgo(createdAt);
-    
+
     const displayName = getSafeDisplayName(item);
     const avatar = getSafeAvatar(item);
 
@@ -267,9 +254,9 @@ export default function NotificationsScreen() {
       <TouchableOpacity
         style={[
           styles.notificationItem,
-          { 
-            backgroundColor: read ? colors.surface : (isDark ? '#1f2937' : '#f0f4ff'),
-            borderBottomColor: colors.border 
+          {
+            backgroundColor: read ? colors.background : (isDark ? '#1f2937' : '#f0f4ff'),
+            borderBottomColor: colors.border,
           },
           !read && styles.unread,
         ]}
@@ -300,9 +287,9 @@ export default function NotificationsScreen() {
             </Text>
           )}
           {commentText && type === 'comment' && (
-            <Text style={[styles.commentText, { 
+            <Text style={[styles.commentText, {
               color: colors.text,
-              backgroundColor: isDark ? '#374151' : '#f3f4f6' 
+              backgroundColor: isDark ? '#374151' : '#f3f4f6',
             }]}>
               💬 {safeString(commentText)}
             </Text>
@@ -368,10 +355,15 @@ export default function NotificationsScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
-      <View style={[styles.header, { 
-        backgroundColor: colors.surface, 
-        borderBottomColor: colors.border 
-      }]}>
+      <View
+        style={[
+          styles.header,
+          {
+            backgroundColor: colors.background,
+            borderBottomColor: colors.border,
+          },
+        ]}
+      >
         <Text style={[styles.headerTitle, { color: colors.text }]}>Notifications</Text>
         <View style={styles.headerRight}>
           {isConnected && (
@@ -409,56 +401,56 @@ export default function NotificationsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1 
+  container: {
+    flex: 1
   },
-  loadingContainer: { 
-    flex: 1, 
-    justifyContent: 'center', 
-    alignItems: 'center' 
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center'
   },
-  errorContainer: { 
-    flex: 1, 
-    justifyContent: 'center', 
-    alignItems: 'center', 
-    paddingHorizontal: 32 
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 32
   },
-  errorTitle: { 
-    fontSize: 18, 
-    fontWeight: '600', 
-    marginTop: 12 
+  errorTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginTop: 12
   },
-  retryButton: { 
-    marginTop: 20, 
-    paddingHorizontal: 32, 
-    paddingVertical: 10, 
-    borderRadius: 8 
+  retryButton: {
+    marginTop: 20,
+    paddingHorizontal: 32,
+    paddingVertical: 10,
+    borderRadius: 8
   },
-  retryButtonText: { 
-    color: 'white', 
-    fontWeight: '600', 
-    fontSize: 16 
+  retryButtonText: {
+    color: 'white',
+    fontWeight: '600',
+    fontSize: 16
   },
-  header: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'center', 
-    paddingHorizontal: 16, 
-    paddingVertical: 12, 
-    borderBottomWidth: 1 
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1
   },
-  headerTitle: { 
-    fontSize: 20, 
-    fontWeight: '700' 
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: '700'
   },
   headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
   },
-  markAllRead: { 
-    fontSize: 14, 
-    fontWeight: '500' 
+  markAllRead: {
+    fontSize: 14,
+    fontWeight: '500'
   },
   connectionBadge: {
     padding: 4,
@@ -469,63 +461,63 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: '#22c55e',
   },
-  notificationItem: { 
-    flexDirection: 'row', 
-    paddingHorizontal: 16, 
-    paddingVertical: 12, 
-    borderBottomWidth: 1 
+  notificationItem: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1
   },
-  unread: { 
-    backgroundColor: '#f0f4ff' 
+  unread: {
+    backgroundColor: '#f0f4ff'
   },
-  avatarContainer: { 
-    position: 'relative', 
-    marginRight: 12 
+  avatarContainer: {
+    position: 'relative',
+    marginRight: 12
   },
-  iconBadge: { 
-    position: 'absolute', 
-    bottom: -4, 
-    right: -4, 
-    width: 22, 
-    height: 22, 
-    borderRadius: 11, 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    borderWidth: 2, 
-    borderColor: 'white' 
+  iconBadge: {
+    position: 'absolute',
+    bottom: -4,
+    right: -4,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'white'
   },
-  content: { 
-    flex: 1 
+  content: {
+    flex: 1
   },
-  text: { 
-    fontSize: 14, 
-    lineHeight: 20 
+  text: {
+    fontSize: 14,
+    lineHeight: 20
   },
-  userName: { 
-    fontWeight: '700' 
+  userName: {
+    fontWeight: '700'
   },
-  actionText: { 
-    color: '#4b5563' 
+  actionText: {
+    color: '#4b5563'
   },
-  postPreview: { 
-    fontSize: 13, 
-    marginTop: 2, 
-    fontStyle: 'italic' 
+  postPreview: {
+    fontSize: 13,
+    marginTop: 2,
+    fontStyle: 'italic'
   },
-  commentText: { 
-    fontSize: 13, 
-    marginTop: 2, 
-    padding: 6, 
-    borderRadius: 6 
+  commentText: {
+    fontSize: 13,
+    marginTop: 2,
+    padding: 6,
+    borderRadius: 6
   },
-  metaRow: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    marginTop: 4, 
-    gap: 12 
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+    gap: 12
   },
-  timestamp: { 
-    fontSize: 12 
+  timestamp: {
+    fontSize: 12
   },
   connectionStatus: {
     flexDirection: 'row',
@@ -541,21 +533,21 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: 10,
   },
-  emptyContainer: { 
-    flex: 1, 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    paddingHorizontal: 32 
+  emptyContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32
   },
-  emptyTitle: { 
-    fontSize: 18, 
-    fontWeight: '600', 
-    marginTop: 16 
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginTop: 16
   },
-  emptySubtitle: { 
-    fontSize: 14, 
-    textAlign: 'center', 
-    marginTop: 8 
+  emptySubtitle: {
+    fontSize: 14,
+    textAlign: 'center',
+    marginTop: 8
   },
   footerLoader: {
     paddingVertical: 20,
