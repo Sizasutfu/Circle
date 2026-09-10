@@ -83,7 +83,8 @@ function MainTabs() {
           height: tabBarHeight,
           paddingTop: 8,
           paddingBottom: Platform.OS === 'ios' ? bottomInset : 8,
-          backgroundColor: colors.tabBar,
+          // ✅ Matches the app background
+          backgroundColor: colors.background,
           borderTopWidth: 1,
           borderTopColor: colors.border,
           shadowColor: isDark ? 'transparent' : '#000',
