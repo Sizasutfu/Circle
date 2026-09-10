@@ -250,7 +250,6 @@ export default function ChatDetailScreen() {
       }
     });
 
-    // NEW: handle edits from other devices
     const unregEdited = registerHandler('message_edited', (data: any) => {
       if (data.conversationId === conversationId) {
         setMessages((prev) =>
@@ -263,7 +262,6 @@ export default function ChatDetailScreen() {
       }
     });
 
-    // NEW: handle deletes from other devices
     const unregDeleted = registerHandler('message_deleted', (data: any) => {
       if (data.conversationId === conversationId) {
         setMessages((prev) => prev.filter((m) => m.id !== data.messageId));
@@ -313,7 +311,6 @@ export default function ChatDetailScreen() {
     if (editingMessage) {
       setSending(true);
       const original = editingMessage;
-      // optimistic update
       setMessages((prev) =>
         prev.map((m) => (m.id === original.id ? { ...m, body: trimmed, edited_at: new Date().toISOString() } : m))
       );
@@ -339,7 +336,6 @@ export default function ChatDetailScreen() {
         }
         Keyboard.dismiss();
       } catch {
-        // revert
         setMessages((prev) => prev.map((m) => (m.id === original.id ? original : m)));
         Alert.alert('Error', 'Failed to edit message.');
       } finally {
@@ -387,7 +383,7 @@ export default function ChatDetailScreen() {
   // ── Input change ──
   const handleInputChange = (text: string) => {
     setInput(text);
-    if (editingMessage) return; // don't broadcast typing while editing
+    if (editingMessage) return;
     if (!typing && isAlive()) sendTyping(conversationId, true);
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     typingTimeoutRef.current = setTimeout(() => sendTyping(conversationId, false), 2000);
@@ -430,7 +426,7 @@ export default function ChatDetailScreen() {
         sendMessage({ type: 'delete_message', conversationId, messageId: item.id });
       }
     } catch {
-      setMessages(snapshot); // revert
+      setMessages(snapshot);
       Alert.alert('Error', 'Failed to delete message.');
     }
   };
@@ -594,7 +590,15 @@ export default function ChatDetailScreen() {
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
       >
         {/* Header */}
-        <View style={[styles.header, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
+        <View
+          style={[
+            styles.header,
+            {
+              backgroundColor: colors.background,
+              borderBottomColor: colors.border,
+            },
+          ]}
+        >
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
             <Feather name="arrow-left" size={24} color={colors.text} />
           </TouchableOpacity>
@@ -653,11 +657,16 @@ export default function ChatDetailScreen() {
         )}
 
         {/* Input Bar */}
-        <View style={[styles.inputBar, {
-          backgroundColor: colors.surface,
-          borderTopColor: colors.border,
-          paddingBottom: keyboardVisible ? 0 : Math.max(insets.bottom, 8),
-        }]}>
+        <View
+          style={[
+            styles.inputBar,
+            {
+              backgroundColor: colors.background,
+              borderTopColor: colors.border,
+              paddingBottom: keyboardVisible ? 0 : Math.max(insets.bottom, 8),
+            },
+          ]}
+        >
           <TextInput
             ref={inputRef}
             style={[styles.input, {
