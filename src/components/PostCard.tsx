@@ -28,13 +28,6 @@ import api from '../api/client';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // ─── Robust helpers ──────────────────────────────────────────
-// The backend may return likes/reposts as:
-//   • array of ID strings/numbers  →  ['12', '34']
-//   • array of user objects        →  [{ id: 12 }, { id: 34 }]
-//   • a boolean flag               →  { likedByMe: true }
-//   • just a count                 →  { likesCount: 5 }
-// These helpers handle every case.
-
 function normalizeId(value: any): string | null {
   if (value == null) return null;
   return String(value);
@@ -47,11 +40,9 @@ function isUserInList(list: any, currentUserId: any): boolean {
 
   return list.some((entry: any) => {
     if (entry == null) return false;
-    // Simple ID
     if (typeof entry === 'string' || typeof entry === 'number') {
       return String(entry) === uid;
     }
-    // Object shape — try every plausible key
     const candidate =
       entry.id ??
       entry.userId ??
@@ -65,7 +56,6 @@ function isUserInList(list: any, currentUserId: any): boolean {
 
 function isLikedByMe(post: any, currentUserId: any): boolean {
   if (!post || !currentUserId) return false;
-  // Explicit boolean flags win if present
   const flag =
     post.likedByMe ??
     post.liked_by_me ??
@@ -108,7 +98,6 @@ function getRepostCount(post: any): number {
   return 0;
 }
 
-// ─── Throttle helper ─────────────────────────────────────────
 function throttle(fn: Function, limit: number) {
   let lastCall = 0;
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -201,22 +190,18 @@ function PostCard({
 
   const safeComments = Array.isArray(post?.comments) ? post.comments : [];
 
-  // ── Robust prop-derived state ──
   const propLiked = isLikedByMe(post, currentUser?.id);
   const propLikeCount = getLikeCount(post);
   const propReposted = isRepostedByMe(post, currentUser?.id);
   const propRepostCount = getRepostCount(post);
 
-  // ── Local optimistic state ──
   const [localLiked, setLocalLiked] = useState(propLiked);
   const [localLikeCount, setLocalLikeCount] = useState(propLikeCount);
   const [localReposted, setLocalReposted] = useState(propReposted);
   const [localRepostCount, setLocalRepostCount] = useState(propRepostCount);
 
-  // One-time debug log so you can see the shape the server returns
   useEffect(() => {
     if (__DEV__ && currentUser) {
-      // eslint-disable-next-line no-console
       console.log('🔍 PostCard like/repost state', {
         postId: post?.id,
         currentUserId: currentUser.id,
@@ -232,14 +217,11 @@ function PostCard({
     }
   }, [post?.id, currentUser?.id, propLiked, propReposted]);
 
-  // Sync from props, but only when the prop-derived value actually changes
   useEffect(() => {
     setLocalLiked(propLiked);
   }, [propLiked]);
 
   useEffect(() => {
-    // Only overwrite count if the prop count is meaningful (>= local count
-    // after a like, or <= after an unlike). Simplest: trust the server value.
     setLocalLikeCount(propLikeCount);
   }, [propLikeCount]);
 
@@ -343,7 +325,6 @@ function PostCard({
     }
   };
 
-  // ── Like ──
   const handleLike = async () => {
     if (!currentUser) {
       Alert.alert('Sign In Required', 'Please log in to like posts.', [
@@ -377,7 +358,6 @@ function PostCard({
     }
   };
 
-  // ── Repost ──
   const handleRepost = async () => {
     if (!currentUser) {
       Alert.alert('Sign In Required', 'Please log in to repost.', [
@@ -641,7 +621,7 @@ function PostCard({
       <View style={styles.cardInner}>
         <View style={styles.avatarTouch} />
         <View style={styles.content}>
-          <View style={[styles.engagementBar, { borderTopColor: colors.border, marginTop: hasMedia ? 12 : 0 }]}>
+          <View style={[styles.engagementBar, { marginTop: hasMedia ? 12 : 0 }]}>
             <TouchableOpacity style={styles.engagementButton} onPress={handleLike}>
               <Feather name="heart" size={22} color={localLiked ? '#ef4444' : colors.textMuted} />
               <Text style={[
@@ -796,7 +776,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingTop: 12,
-    borderTopWidth: 1,
+    // ✅ Removed borderTopWidth and borderTopColor
   },
   engagementButton: { flexDirection: 'row', alignItems: 'center' },
   engagementText: { fontSize: 14, marginLeft: 6 },
