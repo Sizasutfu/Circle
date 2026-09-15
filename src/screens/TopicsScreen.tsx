@@ -38,7 +38,6 @@ import { useTabBarHeight } from '../hooks/useTabBarHeight';
 import { useWs } from '../contexts/WsContext';
 import { useQueryClient } from '@tanstack/react-query';
 
-// ✅ Create Animated components
 const AnimatedFlatList = Animated.createAnimatedComponent(FlatList);
 
 const SEARCH_TABS: { id: 'all' | SearchResultType; label: string }[] = [
@@ -48,7 +47,6 @@ const SEARCH_TABS: { id: 'all' | SearchResultType; label: string }[] = [
   { id: 'group', label: 'Groups' },
 ];
 
-// ── Safe string helper ──
 function safeString(value: any): string {
   if (value === null || value === undefined) return '';
   if (typeof value === 'string') return value;
@@ -61,7 +59,6 @@ function safeString(value: any): string {
   }
 }
 
-// ── Safe joined text helper ──
 function joinedText(createdAt: string | null | undefined): string {
   if (!createdAt) return 'New member';
   try {
@@ -85,7 +82,6 @@ export default function ExploreScreen() {
   const queryClient = useQueryClient();
   const flatListRef = useRef<FlatList>(null);
 
-  // ── Search state ──
   const [searchInput, setSearchInput] = useState('');
   const [inputFocused, setInputFocused] = useState(false);
   const [searchType, setSearchType] = useState<'all' | SearchResultType>('all');
@@ -94,10 +90,9 @@ export default function ExploreScreen() {
   const isSearching = trimmedQuery.length >= 2;
   const showHistory = inputFocused && searchInput.trim().length === 0;
 
-  // ── Default explore data ──
   const { data: topics = [], isLoading: topicsLoading } = useTopics();
-  const { 
-    data: trendingData, 
+  const {
+    data: trendingData,
     isLoading: trendingLoading,
     refetch: refetchTrending,
     fetchNextPage: fetchMoreTrending,
@@ -107,7 +102,6 @@ export default function ExploreScreen() {
   const { data: people = [], isLoading: peopleLoading } = useRecommendedPeople(user?.id);
   const { data: newMembers = [], isLoading: newMembersLoading } = useNewMembers();
 
-  // Flatten trending posts
   const trendingPosts = useMemo(() => {
     const allPosts = trendingData?.pages?.flatMap((page: any) => page.posts) || [];
     const seen = new Set();
@@ -123,7 +117,6 @@ export default function ExploreScreen() {
     }));
   }, [trendingData]);
 
-  // ── Search data ──
   const {
     data: searchData,
     isLoading: searchLoading,
@@ -136,17 +129,14 @@ export default function ExploreScreen() {
     [searchData]
   );
 
-  // ── Search history ──
   const { data: history = [] } = useSearchHistory();
   const saveHistory = useSaveSearchHistory();
   const deleteHistoryEntry = useDeleteSearchHistoryEntry();
   const clearHistory = useClearSearchHistory();
 
-  // ── Follow state ──
   const [followingIds, setFollowingIds] = useState<Set<number>>(new Set());
   const followToggle = useFollowToggle();
 
-  // ── WebSocket handlers for real-time updates ──
   useEffect(() => {
     const unregisterLikeUpdate = registerHandler('like_update', (data: any) => {
       queryClient.setQueryData(['explore', 'trending'], (oldData: any) => {
@@ -256,7 +246,6 @@ export default function ExploreScreen() {
     (navigation.navigate as any)('CreatePostModal');
   }, [navigation]);
 
-  // ── Handle topic press - navigate to TopicsScreen ──
   const handleTopicPress = useCallback((topic: string) => {
     (navigation.navigate as any)('Topics');
   }, [navigation]);
@@ -288,8 +277,6 @@ export default function ExploreScreen() {
     refetchTrending();
   }, [refetchTrending]);
 
-  // ── Render functions ──
-
   const renderTrendingItem = ({ item, index }: { item: any; index: number }) => {
     const rank = item.rank || index + 1;
     let rankColor = colors.textMuted;
@@ -312,7 +299,7 @@ export default function ExploreScreen() {
           key={`post-${item.id}-${item.likes?.length || 0}-${item.reposts?.length || 0}`}
           post={item}
         />
-        <View style={[styles.rankContainer, { backgroundColor: colors.surface }]}>
+        <View style={[styles.rankContainer, { backgroundColor: colors.background }]}>
           <View style={[styles.rankBadge, { backgroundColor: rankBg, borderColor: colors.border }]}>
             <Text style={[styles.rankText, { color: rankColor }]}>
               #{safeString(rank)}
@@ -333,7 +320,6 @@ export default function ExploreScreen() {
 
   const renderExploreHeader = () => (
     <View>
-      {/* Trending Topics */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Trending Topics</Text>
@@ -361,7 +347,6 @@ export default function ExploreScreen() {
         )}
       </View>
 
-      {/* People You May Know */}
       {user && (
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>People You May Know</Text>
@@ -385,7 +370,6 @@ export default function ExploreScreen() {
         </View>
       )}
 
-      {/* New Members */}
       {user && newMembers.length > 0 && (
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>New Members</Text>
@@ -471,23 +455,31 @@ export default function ExploreScreen() {
     );
   };
 
-  // ── Main render ──
-
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
       {/* Header */}
-      <View style={[styles.header, { 
-        backgroundColor: colors.surface, 
-        borderBottomColor: colors.border 
-      }]}>
+      <View
+        style={[
+          styles.header,
+          {
+            backgroundColor: colors.background,
+            borderBottomColor: colors.border,
+          },
+        ]}
+      >
         <Text style={[styles.headerTitle, { color: colors.text }]}>Explore</Text>
       </View>
 
       {/* Search Bar */}
-      <View style={[styles.searchContainer, { 
-        backgroundColor: colors.surface, 
-        borderColor: colors.border 
-      }]}>
+      <View
+        style={[
+          styles.searchContainer,
+          {
+            backgroundColor: colors.background,
+            borderColor: colors.border,
+          },
+        ]}
+      >
         <Feather name="search" size={20} color={colors.textMuted} style={styles.searchIcon} />
         <TextInput
           style={[styles.searchInput, { color: colors.text }]}
@@ -511,10 +503,15 @@ export default function ExploreScreen() {
 
       {/* Search history dropdown */}
       {showHistory && history.length > 0 && (
-        <View style={[styles.historyContainer, { 
-          backgroundColor: colors.surface, 
-          borderColor: colors.border 
-        }]}>
+        <View
+          style={[
+            styles.historyContainer,
+            {
+              backgroundColor: colors.background,
+              borderColor: colors.border,
+            },
+          ]}
+        >
           <View style={styles.historyHeader}>
             <Text style={[styles.historyTitle, { color: colors.textSecondary }]}>Recent searches</Text>
             <TouchableOpacity onPress={() => clearHistory.mutate()}>
@@ -572,7 +569,6 @@ export default function ExploreScreen() {
           />
         )
       ) : !showHistory ? (
-        // ✅ Use AnimatedFlatList here
         <AnimatedFlatList
           ref={flatListRef}
           data={trendingPosts}
@@ -594,7 +590,7 @@ export default function ExploreScreen() {
           contentContainerStyle={[
             styles.feedContent,
             { paddingBottom: contentBottomPadding + 80 },
-            trendingPosts.length === 0 && { flex: 1 }
+            trendingPosts.length === 0 && { flex: 1 },
           ]}
           showsVerticalScrollIndicator={false}
           removeClippedSubviews={true}
@@ -602,14 +598,13 @@ export default function ExploreScreen() {
           maxToRenderPerBatch={5}
           updateCellsBatchingPeriod={50}
           windowSize={7}
-          // ✅ Remove onScroll since we're not using it
         />
       ) : null}
 
       {/* FAB */}
       {!isSearching && user && (
-        <TouchableOpacity 
-          style={[styles.fab, { backgroundColor: colors.primary }]} 
+        <TouchableOpacity
+          style={[styles.fab, { backgroundColor: colors.primary }]}
           onPress={handleCreatePost}
           activeOpacity={0.8}
         >

@@ -163,15 +163,13 @@ export default function PostDetailScreen() {
         id: String(rawUser.id || raw.userId || ''),
         name: rawUser.name || raw.author || 'Anonymous',
         username: rawUser.username || raw.authorUsername || '',
-        avatar: resolveMediaUrl(rawUser.avatar || rawUser.picture || raw.authorPicture || null),
-        verified: !!rawUser.verified || !!rawAuthorVerified(raw),
+        avatar: resolveMediaUrl(
+          rawUser.avatar || rawUser.picture || raw.authorPicture || null
+        ),
+        verified: !!rawUser.verified || !!raw.authorVerified,
       },
     };
   };
-
-  // Small helper to keep normalizePost readable
-  const rawAuthorVerified = (raw: any) =>
-    raw.user?.verified || raw.authorVerified || false;
 
   // ---- Flatten the comment tree for FlatList ----
   const flattenComments = (comments: Comment[], depth = 0): FlatComment[] => {
@@ -257,6 +255,14 @@ export default function PostDetailScreen() {
     setReplyingTo(null);
   };
 
+  // ---- Open comment detail ----
+  const openCommentDetail = (comment: Comment) => {
+    (navigation.navigate as any)('CommentDetail', {
+      commentId: comment.id,
+      postId,
+    });
+  };
+
   // ---- Render comment item (recursive depth rendered via _depth) ----
   const renderComment = ({ item }: { item: FlatComment }) => {
     const user = item.user || { id: '', name: 'Unknown', username: '', avatar: null };
@@ -264,7 +270,9 @@ export default function PostDetailScreen() {
     const indent = Math.min(item._depth, 3) * 24; // cap visual depth
 
     return (
-      <View
+      <TouchableOpacity
+        activeOpacity={0.7}
+        onPress={() => openCommentDetail(item)}
         style={[
           styles.commentItem,
           {
@@ -291,10 +299,14 @@ export default function PostDetailScreen() {
           </View>
           <Text style={[styles.commentText, { color: colors.text }]}>{item.text}</Text>
 
-          {/* Reply button */}
+          {/* Reply button — stopPropagation so tapping it doesn't open the detail */}
           <TouchableOpacity
             style={styles.replyButton}
-            onPress={() => handleReplyPress(item)}
+            onPress={(e) => {
+              // @ts-ignore – RN synthetic event supports stopPropagation
+              e?.stopPropagation?.();
+              handleReplyPress(item);
+            }}
             activeOpacity={0.6}
           >
             <Feather name="corner-down-right" size={14} color={colors.textMuted} />
@@ -303,7 +315,7 @@ export default function PostDetailScreen() {
             </Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </TouchableOpacity>
     );
   };
 

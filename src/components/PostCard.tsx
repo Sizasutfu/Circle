@@ -20,7 +20,8 @@ import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
 import { usePostActions } from '../hooks/useFeed';
 import { useTheme } from '../contexts/ThemeContext';
-import { Avatar } from './Avatar';
+import { Avatar } from '../components/Avatar';
+import VerificationBadge from '../components/VerificationBadge';
 import { timeAgo, formatNumber, safeString } from '../utils/helpers';
 import { extractMentions } from '../lib/formatText';
 import api from '../api/client';
@@ -58,7 +59,6 @@ function isLikedByMe(post: any, currentUserId: any): boolean {
     post.is_liked ??
     post.liked;
   if (typeof flag === 'boolean') return flag;
-
   return isUserInList(post.likes, currentUserId);
 }
 
@@ -71,7 +71,6 @@ function isRepostedByMe(post: any, currentUserId: any): boolean {
     post.is_reposted ??
     post.reposted;
   if (typeof flag === 'boolean') return flag;
-
   return isUserInList(post.reposts, currentUserId);
 }
 
@@ -100,53 +99,6 @@ function getCommentCount(post: any, fallbackComments?: any[]): number {
   if (Array.isArray(post.comments)) return post.comments.length;
   if (Array.isArray(fallbackComments)) return fallbackComments.length;
   return 0;
-}
-
-// Normalize a repost's embedded original so the recursive PostCard
-// always has real counts, regardless of backend shape.
-function normalizeOriginalPost(original: any, outer: any): any {
-  if (!original) return original;
-
-  const outerLikes = Array.isArray(outer?.likes) ? outer.likes : [];
-  const outerReposts = Array.isArray(outer?.reposts) ? outer.reposts : [];
-  const outerComments = Array.isArray(outer?.comments) ? outer.comments : [];
-
-  // Preserve whatever count fields the backend already sent
-  const likeCount =
-    typeof original.likesCount === 'number' ? original.likesCount :
-    typeof original.likeCount === 'number' ? original.likeCount :
-    typeof original.like_count === 'number' ? original.like_count :
-    Array.isArray(original.likes) ? original.likes.length :
-    typeof outer?.likeCount === 'number' ? outer.likeCount :
-    outerLikes.length;
-
-  const repostCount =
-    typeof original.repostsCount === 'number' ? original.repostsCount :
-    typeof original.repostCount === 'number' ? original.repostCount :
-    typeof original.repost_count === 'number' ? original.repost_count :
-    Array.isArray(original.reposts) ? original.reposts.length :
-    typeof outer?.repostCount === 'number' ? outer.repostCount :
-    outerReposts.length;
-
-  const commentCount =
-    typeof original.commentCount === 'number' ? original.commentCount :
-    typeof original.comment_count === 'number' ? original.comment_count :
-    Array.isArray(original.comments) ? original.comments.length :
-    typeof outer?.commentCount === 'number' ? outer.commentCount :
-    outerComments.length;
-
-  return {
-    ...original,
-    likes: Array.isArray(original.likes) ? original.likes : outerLikes,
-    reposts: Array.isArray(original.reposts) ? original.reposts : outerReposts,
-    comments: Array.isArray(original.comments) ? original.comments : outerComments,
-    likeCount,
-    repostCount,
-    commentCount,
-    shares: original.shares ?? outer?.shares ?? 0,
-    viewCount: original.viewCount ?? outer?.viewCount ?? 0,
-    videoViews: original.videoViews ?? outer?.videoViews ?? 0,
-  };
 }
 
 function throttle(fn: Function, limit: number) {
@@ -257,12 +209,7 @@ function PostCard({
       console.log('🔍 PostCard like/repost state', {
         postId: post?.id,
         currentUserId: currentUser.id,
-        likesRaw: post?.likes,
-        propLiked,
-        propLikeCount,
-        repostsRaw: post?.reposts,
-        propReposted,
-        propRepostCount,
+        propLiked, propLikeCount, propReposted, propRepostCount,
       });
     }
   }, [post?.id, currentUser?.id, propLiked, propReposted]);
@@ -572,10 +519,7 @@ function PostCard({
 
   if (!post) return null;
 
-  // ── Plain repost (no quote text) ──
-  // Normalize the embedded original so the inner card always shows counts.
   if (isRepost && (!text || text.trim() === '') && originalPost) {
-    const normalizedOriginal = normalizeOriginalPost(originalPost, post);
     return (
       <View style={[styles.repostWrapper, { borderBottomColor: colors.border }]}>
         <View style={styles.repostBanner}>
@@ -583,14 +527,7 @@ function PostCard({
           <Text style={[styles.repostBannerText, { color: colors.textSecondary }]}>{displayName} reposted</Text>
           <Text style={[styles.repostBannerTime, { color: colors.textMuted }]}>{relativeTime}</Text>
         </View>
-        <PostCard
-          post={normalizedOriginal}
-          groupMap={groupMap}
-          onComment={onComment}
-          onQuote={onQuote}
-          isMentioned={isMentioned}
-          isVisible={isVisible}
-        />
+        <PostCard post={originalPost} groupMap={groupMap} onComment={onComment} onQuote={onQuote} isMentioned={isMentioned} isVisible={isVisible} />
       </View>
     );
   }
@@ -615,25 +552,33 @@ function PostCard({
         <View style={styles.content}>
           <View style={styles.headerRow}>
             <View style={styles.userInfo}>
+              {/* ✅ Name + verification badge */}
               <TouchableOpacity onPress={goToProfile} style={styles.nameContainer}>
                 <Text style={[styles.name, { color: colors.text }]}>
                   {displayName}
-                  {isVerified && <Feather name="check-circle" size={14} color="#3b82f6" />}
                 </Text>
+                {isVerified && (
+                  <VerificationBadge size={14} style={styles.verifiedBadge} />
+                )}
               </TouchableOpacity>
+
               {renderMentionBadge()}
+
               {username && (
                 <TouchableOpacity onPress={goToProfile}>
                   <Text style={[styles.username, { color: colors.textSecondary }]}>@{username}</Text>
                 </TouchableOpacity>
               )}
+
               <Text style={[styles.time, { color: colors.textMuted }]}>· {relativeTime}</Text>
+
               {groupTopic && (
                 <View style={[styles.groupBadge, { backgroundColor: isDark ? '#374151' : '#eff6ff' }]}>
                   <Text style={[styles.groupBadgeText, { color: '#3b82f6' }]}>{groupTopic}</Text>
                 </View>
               )}
             </View>
+
             <View style={styles.actionsRow}>
               {renderViewCounts()}
               {renderReasonButton()}
@@ -775,6 +720,7 @@ const styles = StyleSheet.create({
   },
   nameContainer: { flexDirection: 'row', alignItems: 'center' },
   name: { fontSize: 15, fontWeight: '700' },
+  verifiedBadge: { marginLeft: 4 },   // ✅ spacing between name and badge
   username: { fontSize: 13, marginLeft: 4 },
   time: { fontSize: 13, marginLeft: 4 },
   groupBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12, marginLeft: 6 },

@@ -154,7 +154,7 @@ export default function SettingsScreen() {
       ]}
       edges={['top']}
     >
-      <View style={[styles.header, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
+      <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Feather name="arrow-left" size={24} color={colors.text} />
         </TouchableOpacity>
@@ -171,7 +171,7 @@ export default function SettingsScreen() {
       >
         {/* ─── Profile Section ─── */}
         <TouchableOpacity
-          style={[styles.profileSection, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}
+          style={[styles.profileSection, { backgroundColor: colors.background, borderBottomColor: colors.border }]}
           onPress={() => (navigation.navigate as any)('Profile')}
           activeOpacity={0.7}
         >
@@ -187,7 +187,7 @@ export default function SettingsScreen() {
 
         {/* ─── Account Settings ─── */}
         <SectionHeader title="Account" />
-        <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <View style={[styles.section, { backgroundColor: colors.background, borderColor: colors.border }]}>
           <MenuItem
             icon="user"
             title="Edit Profile"
@@ -208,7 +208,7 @@ export default function SettingsScreen() {
 
         {/* ─── Features ─── */}
         <SectionHeader title="Features" />
-        <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <View style={[styles.section, { backgroundColor: colors.background, borderColor: colors.border }]}>
           <MenuItem
             icon="message-square"
             title="Whisper"
@@ -219,7 +219,7 @@ export default function SettingsScreen() {
 
         {/* ─── Privacy ─── */}
         <SectionHeader title="Privacy" />
-        <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <View style={[styles.section, { backgroundColor: colors.background, borderColor: colors.border }]}>
           <ToggleItem
             icon="eye"
             title="Private Account"
@@ -246,7 +246,7 @@ export default function SettingsScreen() {
 
         {/* ─── Notifications ─── */}
         <SectionHeader title="Notifications" />
-        <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <View style={[styles.section, { backgroundColor: colors.background, borderColor: colors.border }]}>
           <ToggleItem
             icon="bell"
             title="Push Notifications"
@@ -263,7 +263,7 @@ export default function SettingsScreen() {
 
         {/* ─── Appearance ─── */}
         <SectionHeader title="Appearance" />
-        <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <View style={[styles.section, { backgroundColor: colors.background, borderColor: colors.border }]}>
           <View style={[styles.menuItem, { borderBottomColor: colors.border }]}>
             <View style={styles.menuItemLeft}>
               <View style={[styles.menuIconContainer, { backgroundColor: isDark ? '#374151' : '#f0f4ff' }]}>
@@ -282,7 +282,7 @@ export default function SettingsScreen() {
 
         {/* ─── Support ─── */}
         <SectionHeader title="Support" />
-        <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <View style={[styles.section, { backgroundColor: colors.background, borderColor: colors.border }]}>
           <MenuItem
             icon="help-circle"
             title="Help Center"

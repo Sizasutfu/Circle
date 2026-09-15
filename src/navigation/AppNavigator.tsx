@@ -29,6 +29,7 @@ import EditProfileScreen from '../screens/EditProfileScreen';
 import ChangePasswordScreen from '../screens/ChangePasswordScreen';
 import BlockedUsersScreen from '../screens/BlockedUsersScreen';
 import PostDetailScreen from '../screens/PostDetailScreen';
+import CommentDetailScreen from '../screens/CommentDetailScreen';
 import EditPostScreen from '../screens/EditPostScreen';
 import NewMessageScreen from '../screens/NewMessageScreen';
 import WhisperInboxScreen from '../screens/WhisperInboxScreen';
@@ -83,7 +84,6 @@ function MainTabs() {
           height: tabBarHeight,
           paddingTop: 8,
           paddingBottom: Platform.OS === 'ios' ? bottomInset : 8,
-          // ✅ Matches the app background
           backgroundColor: colors.background,
           borderTopWidth: 1,
           borderTopColor: colors.border,
@@ -131,6 +131,7 @@ function WebNavigator() {
       <Stack.Screen name="Topics" component={TopicsScreen} />
       <Stack.Screen name="TopicDetail" component={TopicDetailScreen} />
       <Stack.Screen name="PostDetail" component={PostDetailScreen} />
+      <Stack.Screen name="CommentDetail" component={CommentDetailScreen} />
       <Stack.Screen name="EditProfile" component={EditProfileScreen} />
       <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
       <Stack.Screen name="BlockedUsers" component={BlockedUsersScreen} />
@@ -205,6 +206,7 @@ function DrawerNavigator() {
       />
       <Drawer.Screen name="TopicDetail" component={TopicDetailScreen} options={{ drawerItemStyle: { display: 'none' } }} />
       <Drawer.Screen name="PostDetail" component={PostDetailScreen} options={{ drawerItemStyle: { display: 'none' } }} />
+      <Drawer.Screen name="CommentDetail" component={CommentDetailScreen} options={{ drawerItemStyle: { display: 'none' } }} />
       <Drawer.Screen name="EditProfile" component={EditProfileScreen} options={{ drawerItemStyle: { display: 'none' } }} />
       <Drawer.Screen name="ChangePassword" component={ChangePasswordScreen} options={{ drawerItemStyle: { display: 'none' } }} />
       <Drawer.Screen name="BlockedUsers" component={BlockedUsersScreen} options={{ drawerItemStyle: { display: 'none' } }} />
@@ -268,6 +270,11 @@ function MainStack() {
       <Stack.Screen
         name="WhisperInbox"
         component={WhisperInboxScreen}
+        options={{ headerShown: false, cardStyle: { backgroundColor: colors.background } }}
+      />
+      <Stack.Screen
+        name="CommentDetail"
+        component={CommentDetailScreen}
         options={{ headerShown: false, cardStyle: { backgroundColor: colors.background } }}
       />
     </Stack.Navigator>

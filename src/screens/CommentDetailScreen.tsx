@@ -23,6 +23,7 @@ import api from '../api/client';
 import { timeAgo } from '../utils/helpers';
 import { resolveMediaUrl } from '../lib/media';
 
+// ===== TYPES =====
 interface RouteParams {
   commentId: string;
   postId?: string;
@@ -39,6 +40,7 @@ interface Comment {
     name: string;
     username: string;
     avatar?: string | null;
+    verified?: boolean;
   };
 }
 
@@ -46,6 +48,7 @@ interface FlatComment extends Comment {
   _depth: number;
 }
 
+// ===== COMPONENT =====
 export default function CommentDetailScreen() {
   const route = useRoute();
   const navigation = useNavigation();
@@ -60,27 +63,44 @@ export default function CommentDetailScreen() {
   const [replyingTo, setReplyingTo] = useState<Comment | null>(null);
   const inputRef = useRef<TextInput>(null);
 
+  // Keyboard visibility for dynamic padding
   useEffect(() => {
     const showSub = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
     const hideSub = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
-    return () => { showSub.remove(); hideSub.remove(); };
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
   }, []);
 
-  // ---- Normalize comment (recursive) ----
+  // ---- Normalize comment (recursive for replies) ----
   const normalizeComment = (c: any): Comment => {
     const rawUser = c.user || {};
-    const replies = Array.isArray(c.replies) ? c.replies : [];
+    const rawReplies = Array.isArray(c.replies) ? c.replies : [];
+
     return {
       id: String(c.id || ''),
       text: c.text || c.content || '',
       createdAt: c.createdAt || c.created_at || new Date().toISOString(),
-      parentId: c.parentId || c.parent_id || null,
-      replies: replies.map(normalizeComment),
+      parentId: c.parentId ?? c.parent_id ?? null,
+      replies: rawReplies.map(normalizeComment),
       user: {
-        id: String(rawUser.id || c.userId || ''),
-        name: rawUser.name || c.author || rawUser.username || 'Anonymous',
-        username: rawUser.username || c.authorUsername || '',
-        avatar: resolveMediaUrl(rawUser.avatar || rawUser.picture || c.authorPicture || null),
+        id: String(rawUser.id || c.userId || c.user_id || ''),
+        name:
+          rawUser.name ||
+          c.name ||
+          rawUser.username ||
+          c.username ||
+          'Anonymous',
+        username: rawUser.username || c.username || '',
+        avatar: resolveMediaUrl(
+          rawUser.avatar ||
+            rawUser.picture ||
+            c.picture ||
+            c.avatar ||
+            null
+        ),
+        verified: !!(rawUser.verified || c.verified),
       },
     };
   };
@@ -94,9 +114,13 @@ export default function CommentDetailScreen() {
   } = useQuery({
     queryKey: ['comment-thread', commentId],
     queryFn: async () => {
-      const response = await api.get(`/posts/comments/${commentId}/thread`);
+      console.log('📦 Fetching comment thread:', commentId);
+      const response = await api.get(`/comments/${commentId}/thread`);
+      console.log('📦 Comment thread response:', JSON.stringify(response.data, null, 2));
+
       const body = response.data?.data ?? response.data ?? {};
       const raw = body.comment ?? body;
+
       return {
         comment: normalizeComment(raw),
         postId: body.postId ?? raw.postId ?? initialPostId ?? null,
@@ -122,7 +146,7 @@ export default function CommentDetailScreen() {
   // ---- Add reply ----
   const addReplyMutation = useMutation({
     mutationFn: async ({ text, parentId }: { text: string; parentId: string }) => {
-      const response = await api.post(`/posts/${postId}/comment`, { text, parentId });
+      const response = await api.post(`/comments/${parentId}/reply`, { text });
       return response.data;
     },
     onSuccess: () => {
@@ -139,6 +163,7 @@ export default function CommentDetailScreen() {
   const handleSend = async () => {
     const trimmed = commentText.trim();
     if (!trimmed) return;
+
     if (!currentUser) {
       Alert.alert('Sign In Required', 'Please log in to reply.', [
         { text: 'Cancel', style: 'cancel' },
@@ -146,17 +171,20 @@ export default function CommentDetailScreen() {
       ]);
       return;
     }
-    if (!postId) return;
 
+    // Reply target: the comment the user tapped, or the root comment
     const parentId = replyingTo?.id ?? rootComment?.id;
     if (!parentId) return;
 
     setIsSending(true);
     try {
-      await addReplyMutation.mutateAsync({ text: trimmed, parentId });
+      await addReplyMutation.mutateAsync({ text: trimmed, parentId: String(parentId) });
       inputRef.current?.blur();
-    } catch {}
-    finally { setIsSending(false); }
+    } catch (err) {
+      console.warn('Reply failed:', err);
+    } finally {
+      setIsSending(false);
+    }
   };
 
   const handleReplyPress = (comment: Comment) => {
@@ -173,10 +201,11 @@ export default function CommentDetailScreen() {
 
   const cancelReply = () => setReplyingTo(null);
 
-  // ---- Root comment header card ----
+  // ---- Render root comment as header card ----
   const renderRootComment = () => {
     if (!rootComment) return null;
     const u = rootComment.user;
+
     return (
       <View style={[styles.rootCard, { borderBottomColor: colors.border }]}>
         <View style={styles.rootHeader}>
@@ -189,8 +218,12 @@ export default function CommentDetailScreen() {
           <View style={{ flex: 1 }}>
             <TouchableOpacity
               onPress={() => (navigation.navigate as any)('Profile', { userId: u.id })}
+              style={styles.nameRow}
             >
               <Text style={[styles.rootName, { color: colors.text }]}>{u.name}</Text>
+              {u.verified && (
+                <Feather name="check-circle" size={14} color="#3b82f6" style={{ marginLeft: 4 }} />
+              )}
             </TouchableOpacity>
             {!!u.username && (
               <Text style={[styles.rootUsername, { color: colors.textSecondary }]}>
@@ -226,11 +259,18 @@ export default function CommentDetailScreen() {
             </TouchableOpacity>
           )}
         </View>
+
+        {/* Replies header */}
+        {flatReplies.length > 0 && (
+          <Text style={[styles.repliesHeader, { color: colors.textSecondary }]}>
+            {flatReplies.length} {flatReplies.length === 1 ? 'reply' : 'replies'}
+          </Text>
+        )}
       </View>
     );
   };
 
-  // ---- Reply row ----
+  // ---- Render reply row ----
   const renderReply = ({ item }: { item: FlatComment }) => {
     const u = item.user;
     const indent = Math.min(item._depth, 3) * 20;
@@ -242,10 +282,17 @@ export default function CommentDetailScreen() {
           { borderBottomColor: colors.border, paddingLeft: 16 + indent },
         ]}
       >
-        <Avatar source={u.avatar} size={32} fallback={u.name} />
+        <TouchableOpacity
+          onPress={() => (navigation.navigate as any)('Profile', { userId: u.id })}
+        >
+          <Avatar source={u.avatar} size={32} fallback={u.name} />
+        </TouchableOpacity>
         <View style={styles.replyContent}>
           <View style={styles.replyHeader}>
             <Text style={[styles.replyName, { color: colors.text }]}>{u.name}</Text>
+            {u.verified && (
+              <Feather name="check-circle" size={12} color="#3b82f6" style={{ marginLeft: 3 }} />
+            )}
             {!!u.username && (
               <Text style={[styles.replyUsername, { color: colors.textSecondary }]}>
                 @{u.username}
@@ -255,7 +302,19 @@ export default function CommentDetailScreen() {
               · {timeAgo(item.createdAt)}
             </Text>
           </View>
+
+          {/* If this reply is a nested reply, show who it's replying to */}
+          {item._depth > 0 && item.parentId && (
+            <Text style={[styles.replyingToLine, { color: colors.textMuted }]} numberOfLines={1}>
+              Replying to{' '}
+              <Text style={{ color: colors.primary }}>
+                @{flatReplies.find((r) => r.id === String(item.parentId))?.user.username || 'someone'}
+              </Text>
+            </Text>
+          )}
+
           <Text style={[styles.replyText, { color: colors.text }]}>{item.text}</Text>
+
           <TouchableOpacity
             style={styles.replyButton}
             onPress={() => handleReplyPress(item)}
@@ -279,19 +338,32 @@ export default function CommentDetailScreen() {
     </View>
   );
 
-  // ---- Loading ----
+  // ---- Loading state ----
   if (isLoading) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+      <SafeAreaView
+        style={[styles.container, { backgroundColor: colors.background }]}
+        edges={['top']}
+      >
+        <View style={[styles.header, { borderBottomColor: colors.border }]}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+            <Feather name="arrow-left" size={24} color={colors.text} />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>Comment</Text>
+          <View style={{ width: 32 }} />
+        </View>
         <ActivityIndicator size="large" color={colors.primary} style={{ flex: 1 }} />
       </SafeAreaView>
     );
   }
 
-  // ---- Error ----
+  // ---- Error state ----
   if (isError || !rootComment) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+      <SafeAreaView
+        style={[styles.container, { backgroundColor: colors.background }]}
+        edges={['top']}
+      >
         <View style={[styles.header, { borderBottomColor: colors.border }]}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
             <Feather name="arrow-left" size={24} color={colors.text} />
@@ -313,17 +385,25 @@ export default function CommentDetailScreen() {
     );
   }
 
+  // ---- Main render ----
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: colors.background }]}
+      edges={['top']}
+    >
       <KeyboardAvoidingView
         style={styles.flexContainer}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
       >
         {/* Header */}
         <View
           style={[
             styles.header,
-            { borderBottomColor: colors.border, backgroundColor: colors.background },
+            {
+              borderBottomColor: colors.border,
+              backgroundColor: colors.background,
+            },
           ]}
         >
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
@@ -356,7 +436,10 @@ export default function CommentDetailScreen() {
             ]}
           >
             <Feather name="corner-down-right" size={16} color={colors.primary} />
-            <Text style={[styles.replyBannerText, { color: colors.text }]} numberOfLines={1}>
+            <Text
+              style={[styles.replyBannerText, { color: colors.text }]}
+              numberOfLines={1}
+            >
               Replying to{' '}
               <Text style={{ color: colors.primary, fontWeight: '600' }}>
                 @{replyingTo.user.username || replyingTo.user.name}
@@ -381,7 +464,10 @@ export default function CommentDetailScreen() {
         >
           <TextInput
             ref={inputRef}
-            style={[styles.input, { backgroundColor: colors.input, color: colors.text }]}
+            style={[
+              styles.input,
+              { backgroundColor: colors.input, color: colors.text },
+            ]}
             placeholder={
               replyingTo
                 ? `Reply to @${replyingTo.user.username || replyingTo.user.name}...`
@@ -418,6 +504,7 @@ export default function CommentDetailScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   flexContainer: { flex: 1 },
+
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -431,6 +518,7 @@ const styles = StyleSheet.create({
 
   listContent: { paddingBottom: 24 },
 
+  // ── Root comment card ──
   rootCard: {
     paddingHorizontal: 16,
     paddingTop: 16,
@@ -439,6 +527,7 @@ const styles = StyleSheet.create({
   },
   rootHeader: { flexDirection: 'row', alignItems: 'center' },
   rootAvatar: { marginRight: 12 },
+  nameRow: { flexDirection: 'row', alignItems: 'center' },
   rootName: { fontSize: 16, fontWeight: '700' },
   rootUsername: { fontSize: 13, marginTop: 1 },
   rootText: { fontSize: 17, lineHeight: 24, marginTop: 12 },
@@ -453,6 +542,15 @@ const styles = StyleSheet.create({
   rootAction: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   rootActionText: { fontSize: 13, fontWeight: '600' },
 
+  repliesHeader: {
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginTop: 16,
+  },
+
+  // ── Reply rows ──
   replyItem: {
     flexDirection: 'row',
     paddingRight: 16,
@@ -460,10 +558,15 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
   },
   replyContent: { flex: 1, marginLeft: 10 },
-  replyHeader: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' },
+  replyHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+  },
   replyName: { fontSize: 13, fontWeight: '600' },
   replyUsername: { fontSize: 12, marginLeft: 4 },
   replyTime: { fontSize: 11, marginLeft: 6 },
+  replyingToLine: { fontSize: 11, marginTop: 2 },
   replyText: { fontSize: 14, marginTop: 2, lineHeight: 20 },
   replyButton: {
     flexDirection: 'row',
@@ -471,13 +574,16 @@ const styles = StyleSheet.create({
     gap: 4,
     marginTop: 6,
     alignSelf: 'flex-start',
+    paddingVertical: 2,
   },
   replyButtonText: { fontSize: 12, fontWeight: '600' },
 
+  // ── Empty replies ──
   emptyReplies: { paddingVertical: 48, alignItems: 'center' },
   emptyTitle: { fontSize: 15, fontWeight: '600', marginTop: 12 },
   emptySubtitle: { fontSize: 13, marginTop: 4 },
 
+  // ── Reply banner ──
   replyBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -489,6 +595,7 @@ const styles = StyleSheet.create({
   replyBannerText: { flex: 1, fontSize: 13 },
   replyBannerClose: { padding: 4 },
 
+  // ── Input bar ──
   inputBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -515,6 +622,7 @@ const styles = StyleSheet.create({
   },
   sendButtonDisabled: { opacity: 0.5 },
 
+  // ── Error ──
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
