@@ -15,7 +15,7 @@ import {
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
-import { Video, ResizeMode } from 'expo-av';
+import { Video, ResizeMode, AVPlaybackStatus } from 'expo-av';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
 import { usePostActions } from '../hooks/useFeed';
@@ -82,7 +82,6 @@ function getCommentCount(post: any, fallbackComments?: any[]): number {
   return 0;
 }
 
-// ✅ Video view count resolver — handles every field name
 function getVideoViewCount(post: any): number {
   if (!post) return 0;
   if (typeof post.videoViews === 'number') return post.videoViews;
@@ -194,7 +193,6 @@ function PostCard({
   const [localLikeCount, setLocalLikeCount] = useState(propLikeCount);
   const [localReposted, setLocalReposted] = useState(propReposted);
   const [localRepostCount, setLocalRepostCount] = useState(propRepostCount);
-  // ✅ Local video view count — increments live as plays are recorded
   const [localVideoViews, setLocalVideoViews] = useState(propVideoViews);
 
   useEffect(() => { setLocalLiked(propLiked); }, [propLiked]);
@@ -224,6 +222,9 @@ function PostCard({
   const videoRef = useRef<Video>(null);
   const videoViewRecorded = useRef(false);
   const [lightboxVisible, setLightboxVisible] = useState(false);
+
+  // ✅ Video playback state — drives the center play/pause button
+  const [isPlaying, setIsPlaying] = useState(false);
 
   const isMentionedInText = useMemo(() => {
     if (!currentUser || !text) return false;
@@ -283,29 +284,54 @@ function PostCard({
     };
   }, [id, text, image, video, isVisible]);
 
+  // Pause video when it scrolls out of view
   useEffect(() => {
-    if (!isVisible) videoRef.current?.pauseAsync?.().catch(() => {});
+    if (!isVisible) {
+      videoRef.current?.pauseAsync?.().catch(() => {});
+      setIsPlaying(false);
+    }
   }, [isVisible]);
 
-  // ✅ Fires a video-view record when a user watches > 30% of the video
-  const handleVideoPlaybackStatus = (status: any) => {
-    if (!status.isLoaded || videoViewRecorded.current) return;
+  // ✅ Update isPlaying + record view at 30% watched
+  const handleVideoPlaybackStatus = (status: AVPlaybackStatus) => {
+    if (!status.isLoaded) return;
+
+    // Track play/pause state for the button icon
+    setIsPlaying(!!status.isPlaying);
+
+    // Record one view per session once 30% is watched
+    if (videoViewRecorded.current) return;
     if (status.durationMillis && status.positionMillis / status.durationMillis > 0.3) {
       videoViewRecorded.current = true;
 
       const watchedSeconds = Math.round(status.positionMillis / 1000);
       const duration = Math.round(status.durationMillis / 1000);
 
-      api.post(`/posts/${id}/video-view`, {
-        watchedSeconds,
-        duration,
-      }).then((res) => {
-        // Server returns { counted, views } — update local count if it counted
-        const body = res.data?.data ?? res.data ?? {};
-        if (body?.counted && typeof body.views === 'number') {
-          setLocalVideoViews(body.views);
+      api.post(`/posts/${id}/video-view`, { watchedSeconds, duration })
+        .then((res) => {
+          const body = res.data?.data ?? res.data ?? {};
+          if (body?.counted && typeof body.views === 'number') {
+            setLocalVideoViews(body.views);
+          }
+        })
+        .catch(() => {});
+    }
+  };
+
+  // ✅ Toggle play/pause on tap
+  const handleTogglePlay = async () => {
+    if (!videoRef.current) return;
+    try {
+      const status = await videoRef.current.getStatusAsync();
+      if (status.isLoaded) {
+        if (status.isPlaying) {
+          await videoRef.current.pauseAsync();
+        } else {
+          await videoRef.current.playAsync();
         }
-      }).catch(() => {});
+      }
+    } catch (err) {
+      console.warn('Video toggle error:', err);
     }
   };
 
@@ -387,12 +413,14 @@ function PostCard({
   };
 
   // ── Media ──
-  // Image → lightbox
-  // Video → native controls + video views overlay (bottom-left)
   const renderMedia = () => {
     if (video) {
       return (
-        <View style={styles.mediaContainer}>
+        <TouchableOpacity
+          activeOpacity={1}
+          onPress={handleTogglePlay}
+          style={styles.mediaContainer}
+        >
           {videoError ? (
             <View style={[styles.videoErrorContainer, { backgroundColor: isDark ? '#1f2937' : '#f3f4f6' }]}>
               <Feather name="video-off" size={32} color={colors.textMuted} />
@@ -407,12 +435,25 @@ function PostCard({
                 resizeMode={ResizeMode.CONTAIN}
                 shouldPlay={false}
                 isLooping={false}
-                useNativeControls
+                isMuted={false}
+                useNativeControls={false}
                 onError={() => setVideoError(true)}
                 onPlaybackStatusUpdate={handleVideoPlaybackStatus}
               />
 
-              {/* ✅ Video views overlay — bottom-left corner */}
+              {/* ✅ Center play/pause button — always visible */}
+              <View style={styles.centerPlayOverlay} pointerEvents="none">
+                <View style={styles.centerPlayButton}>
+                  <Feather
+                    name={isPlaying ? 'pause' : 'play'}
+                    size={32}
+                    color="#ffffff"
+                    style={!isPlaying ? { marginLeft: 4 } : undefined}
+                  />
+                </View>
+              </View>
+
+              {/* ✅ Video views overlay — bottom-left */}
               {localVideoViews > 0 && (
                 <View style={styles.videoViewsOverlay} pointerEvents="none">
                   <Feather name="eye" size={12} color="#ffffff" />
@@ -427,7 +468,7 @@ function PostCard({
               <Feather name="play-circle" size={40} color={colors.textMuted} />
             </View>
           )}
-        </View>
+        </TouchableOpacity>
       );
     }
 
@@ -775,7 +816,13 @@ const styles = StyleSheet.create({
   postText: { fontSize: 15, lineHeight: 22, marginTop: 6 },
   showMore: { fontSize: 14, marginTop: 4 },
   fullBleedWrapper: { width: '100%', marginTop: 12 },
-  mediaContainer: { width: '100%', overflow: 'hidden', position: 'relative' },
+
+  mediaContainer: {
+    width: '100%',
+    overflow: 'hidden',
+    position: 'relative',
+    backgroundColor: '#000',
+  },
   mediaPlayer: { width: '100%', height: SCREEN_WIDTH * 0.5625 },
   mediaImage: { width: '100%', height: SCREEN_WIDTH },
   videoPlaceholder: {
@@ -785,7 +832,24 @@ const styles = StyleSheet.create({
   videoErrorContainer: { padding: 24, alignItems: 'center' },
   videoErrorText: { fontSize: 14, marginTop: 8 },
 
-  // ✅ Video views overlay
+  // ✅ Center play/pause button — always visible
+  centerPlayOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  centerPlayButton: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.9)',
+  },
+
+  // ✅ Video views overlay — bottom-left
   videoViewsOverlay: {
     position: 'absolute',
     bottom: 10,
