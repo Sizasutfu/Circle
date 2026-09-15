@@ -44,11 +44,10 @@ export default function SettingsScreen() {
           text: 'Logout',
           style: 'destructive',
           onPress: async () => {
+            // ✅ Just clear auth state.
+            // The root navigator swaps to the Auth stack automatically
+            // as soon as `user` becomes null — no manual reset needed.
             await logout();
-            navigation.reset({
-              index: 0,
-              routes: [{ name: 'Login' as never }],
-            });
           },
         },
       ]
@@ -209,6 +208,12 @@ export default function SettingsScreen() {
         {/* ─── Features ─── */}
         <SectionHeader title="Features" />
         <View style={[styles.section, { backgroundColor: colors.background, borderColor: colors.border }]}>
+          <MenuItem
+            icon="bar-chart-2"
+            title="Dashboard"
+            subtitle="Your stats and engagement"
+            onPress={() => (navigation.navigate as any)('Dashboard')}
+          />
           <MenuItem
             icon="message-square"
             title="Whisper"
