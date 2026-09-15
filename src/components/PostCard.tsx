@@ -20,56 +20,37 @@ import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
 import { usePostActions } from '../hooks/useFeed';
 import { useTheme } from '../contexts/ThemeContext';
-import { Avatar } from '../components/Avatar';
-import VerificationBadge from '../components/VerificationBadge';
+import { Avatar } from './Avatar';
+import VerificationBadge from './VerificationBadge';
 import { timeAgo, formatNumber, safeString } from '../utils/helpers';
 import { extractMentions } from '../lib/formatText';
 import api from '../api/client';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-// ─── Robust helpers ──────────────────────────────────────────
 function isUserInList(list: any, currentUserId: any): boolean {
   if (!currentUserId) return false;
   if (!Array.isArray(list)) return false;
   const uid = String(currentUserId);
-
   return list.some((entry: any) => {
     if (entry == null) return false;
-    if (typeof entry === 'string' || typeof entry === 'number') {
-      return String(entry) === uid;
-    }
+    if (typeof entry === 'string' || typeof entry === 'number') return String(entry) === uid;
     const candidate =
-      entry.id ??
-      entry.userId ??
-      entry.user_id ??
-      entry.user?.id ??
-      entry.actorId ??
-      entry.actor_id;
+      entry.id ?? entry.userId ?? entry.user_id ?? entry.user?.id ?? entry.actorId ?? entry.actor_id;
     return candidate != null && String(candidate) === uid;
   });
 }
 
 function isLikedByMe(post: any, currentUserId: any): boolean {
   if (!post || !currentUserId) return false;
-  const flag =
-    post.likedByMe ??
-    post.liked_by_me ??
-    post.isLiked ??
-    post.is_liked ??
-    post.liked;
+  const flag = post.likedByMe ?? post.liked_by_me ?? post.isLiked ?? post.is_liked ?? post.liked;
   if (typeof flag === 'boolean') return flag;
   return isUserInList(post.likes, currentUserId);
 }
 
 function isRepostedByMe(post: any, currentUserId: any): boolean {
   if (!post || !currentUserId) return false;
-  const flag =
-    post.repostedByMe ??
-    post.reposted_by_me ??
-    post.isReposted ??
-    post.is_reposted ??
-    post.reposted;
+  const flag = post.repostedByMe ?? post.reposted_by_me ?? post.isReposted ?? post.is_reposted ?? post.reposted;
   if (typeof flag === 'boolean') return flag;
   return isUserInList(post.reposts, currentUserId);
 }
@@ -105,7 +86,6 @@ function throttle(fn: Function, limit: number) {
   let lastCall = 0;
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
   let pending = false;
-
   return function (...args: any[]) {
     const now = Date.now();
     if (!pending) {
@@ -319,13 +299,10 @@ function PostCard({
       ]);
       return;
     }
-
     const wasLiked = localLiked;
     const prevCount = localLikeCount;
-
     setLocalLiked(!wasLiked);
     setLocalLikeCount(wasLiked ? Math.max(0, prevCount - 1) : prevCount + 1);
-
     try {
       if (wasLiked) await unlikePost(id);
       else await likePost(id);
@@ -352,13 +329,10 @@ function PostCard({
       ]);
       return;
     }
-
     const wasReposted = localReposted;
     const prevCount = localRepostCount;
-
     setLocalReposted(!wasReposted);
     setLocalRepostCount(wasReposted ? Math.max(0, prevCount - 1) : prevCount + 1);
-
     try {
       await repostPost(id);
     } catch (error: any) {
@@ -394,6 +368,9 @@ function PostCard({
     );
   };
 
+  // ── Media ──
+  // Image: tap opens the lightbox (full screen preview)
+  // Video: tap toggles play/pause via native controls
   const renderMedia = () => {
     if (video) {
       return (
@@ -423,9 +400,14 @@ function PostCard({
         </View>
       );
     }
+
     if (image) {
       return (
-        <View style={styles.mediaContainer}>
+        <TouchableOpacity
+          activeOpacity={0.9}
+          onPress={openLightbox}
+          style={styles.mediaContainer}
+        >
           <Image
             source={{ uri: image }}
             style={[styles.mediaImage, { backgroundColor: isDark ? '#1f2937' : '#f3f4f6' }]}
@@ -435,9 +417,10 @@ function PostCard({
             recyclingKey={image}
             onError={() => console.log('Image failed to load:', image)}
           />
-        </View>
+        </TouchableOpacity>
       );
     }
+
     return null;
   };
 
@@ -552,7 +535,6 @@ function PostCard({
         <View style={styles.content}>
           <View style={styles.headerRow}>
             <View style={styles.userInfo}>
-              {/* ✅ Name + verification badge */}
               <TouchableOpacity onPress={goToProfile} style={styles.nameContainer}>
                 <Text style={[styles.name, { color: colors.text }]}>
                   {displayName}
@@ -606,10 +588,11 @@ function PostCard({
         </View>
       </View>
 
+      {/* ✅ Media no longer navigates — image opens lightbox, video uses native controls */}
       {hasMedia && (
-        <TouchableOpacity activeOpacity={1} onPress={goToPostDetail} style={styles.fullBleedWrapper}>
+        <View style={styles.fullBleedWrapper}>
           {renderMedia()}
-        </TouchableOpacity>
+        </View>
       )}
 
       <View style={styles.cardInner}>
@@ -660,7 +643,12 @@ function PostCard({
           <TouchableOpacity style={styles.lightboxClose} onPress={closeLightbox}>
             <Feather name="x" size={30} color="white" />
           </TouchableOpacity>
-          <ScrollView contentContainerStyle={styles.lightboxScroll}>
+          <ScrollView
+            contentContainerStyle={styles.lightboxScroll}
+            maximumZoomScale={3}
+            minimumZoomScale={1}
+            centerContent
+          >
             {image && (
               <Image
                 source={{ uri: image }}
@@ -720,7 +708,7 @@ const styles = StyleSheet.create({
   },
   nameContainer: { flexDirection: 'row', alignItems: 'center' },
   name: { fontSize: 15, fontWeight: '700' },
-  verifiedBadge: { marginLeft: 4 },   // ✅ spacing between name and badge
+  verifiedBadge: { marginLeft: 4 },
   username: { fontSize: 13, marginLeft: 4 },
   time: { fontSize: 13, marginLeft: 4 },
   groupBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12, marginLeft: 6 },
