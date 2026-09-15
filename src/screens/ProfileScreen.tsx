@@ -53,6 +53,9 @@ export default function ProfileScreen() {
   const params = route.params as { userId?: string; username?: string } | undefined;
   const targetIdentifier = params?.userId || params?.username || user?.id || '';
 
+  // ✅ Show back button only when navigated to with a specific user param
+  const showBackButton = !!(params?.userId || params?.username);
+
   const isNumeric = !isNaN(Number(targetIdentifier)) && targetIdentifier !== '';
   const targetUserId = isNumeric ? targetIdentifier : '';
   const targetUsername = !isNumeric ? targetIdentifier : '';
@@ -221,11 +224,8 @@ export default function ProfileScreen() {
         text: 'Logout',
         style: 'destructive',
         onPress: async () => {
+          // ✅ Just clear auth state — root navigator swaps to Auth automatically
           await logout();
-          navigation.reset({
-            index: 0,
-            routes: [{ name: 'Login' as never }],
-          });
         },
       },
     ]);
@@ -233,6 +233,15 @@ export default function ProfileScreen() {
 
   const handleEditProfile = () => {
     (navigation.navigate as any)('EditProfile');
+  };
+
+  const handleBack = () => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      // Fallback: navigate to the Feed tab
+      (navigation.navigate as any)('Feed');
+    }
   };
 
   const renderPostItem = ({ item }: { item: Post }) => (
@@ -372,6 +381,26 @@ export default function ProfileScreen() {
     </>
   );
 
+  // ✅ Floating back button — only shown when arriving from another screen
+  const renderBackButton = () => {
+    if (!showBackButton) return null;
+    return (
+      <TouchableOpacity
+        style={[
+          styles.backButton,
+          {
+            top: insets.top + 8,
+            backgroundColor: isDark ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.5)',
+          },
+        ]}
+        onPress={handleBack}
+        activeOpacity={0.7}
+      >
+        <Feather name="arrow-left" size={22} color="#fff" />
+      </TouchableOpacity>
+    );
+  };
+
   if (activeTab === 'posts') {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -405,6 +434,7 @@ export default function ProfileScreen() {
             )
           }
         />
+        {renderBackButton()}
       </View>
     );
   }
@@ -441,6 +471,7 @@ export default function ProfileScreen() {
           )}
         </View>
       </ScrollView>
+      {renderBackButton()}
     </View>
   );
 }
@@ -515,6 +546,19 @@ const styles = StyleSheet.create({
   tabActive: { borderBottomWidth: 2, borderBottomColor: '#6C63FF' },
   tabText: { fontSize: 16, fontWeight: '600' },
   tabTextActive: { color: '#6C63FF' },
+
+  // ✅ Floating back button styles
+  backButton: {
+    position: 'absolute',
+    left: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+  },
+
   content: { paddingHorizontal: 4 },
   postsContainer: { paddingVertical: 4 },
   emptyState: { paddingVertical: 64, alignItems: 'center' },
