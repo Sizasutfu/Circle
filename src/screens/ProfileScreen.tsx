@@ -43,7 +43,7 @@ interface ProfileData {
 }
 
 const STICKY_HEADER_HEIGHT = 56;
-const SCROLL_THRESHOLD = 120; // px of scroll before the bar is fully opaque
+const SCROLL_THRESHOLD = 120;
 
 export default function ProfileScreen() {
   const navigation = useNavigation();
@@ -57,8 +57,6 @@ export default function ProfileScreen() {
 
   const params = route.params as { userId?: string; username?: string } | undefined;
   const targetIdentifier = params?.userId || params?.username || user?.id || '';
-
-  const showBackButton = !!(params?.userId || params?.username);
 
   const isNumeric = !isNaN(Number(targetIdentifier)) && targetIdentifier !== '';
   const targetUserId = isNumeric ? targetIdentifier : '';
@@ -229,6 +227,8 @@ export default function ProfileScreen() {
     (navigation.navigate as any)('EditProfile');
   };
 
+  // ✅ Always show the back button. When there's no history
+  //    (e.g. user opened the Profile tab first), fall back to Feed.
   const handleBack = () => {
     if (navigation.canGoBack()) {
       navigation.goBack();
@@ -244,24 +244,15 @@ export default function ProfileScreen() {
   // ── Animated scroll value driving the sticky bar ──
   const scrollY = useRef(new Animated.Value(0)).current;
 
-  // Fade the sticky bar in as the user scrolls past the avatar area
   const stickyOpacity = scrollY.interpolate({
     inputRange: [SCROLL_THRESHOLD - 40, SCROLL_THRESHOLD],
     outputRange: [0, 1],
     extrapolate: 'clamp',
   });
 
-  // Translate the title up a bit to give a subtle entrance
   const stickyTranslateY = scrollY.interpolate({
     inputRange: [SCROLL_THRESHOLD - 40, SCROLL_THRESHOLD],
     outputRange: [8, 0],
-    extrapolate: 'clamp',
-  });
-
-  // The floating back button's solid background appears as we scroll
-  const backButtonBg = scrollY.interpolate({
-    inputRange: [0, SCROLL_THRESHOLD],
-    outputRange: [0.5, 0],
     extrapolate: 'clamp',
   });
 
@@ -270,7 +261,7 @@ export default function ProfileScreen() {
     { useNativeDriver: true }
   );
 
-  // ── Loading / error states (before profile loaded) ──
+  // ── Not logged in ──
   if (!user) {
     return (
       <SafeAreaView style={[styles.placeholderContainer, { backgroundColor: colors.background }]} edges={['top']}>
@@ -310,7 +301,7 @@ export default function ProfileScreen() {
     );
   }
 
-  // ── Sticky top bar — fades in as you scroll, always has the back button ──
+  // ── Sticky top bar ──
   const renderStickyHeader = () => {
     const headerTop = insets.top;
 
@@ -330,15 +321,13 @@ export default function ProfileScreen() {
         pointerEvents="box-none"
       >
         <View style={styles.stickyHeaderInner}>
-          {showBackButton && (
-            <TouchableOpacity
-              onPress={handleBack}
-              style={styles.stickyBackButton}
-              activeOpacity={0.7}
-            >
-              <Feather name="arrow-left" size={22} color={colors.text} />
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity
+            onPress={handleBack}
+            style={styles.stickyBackButton}
+            activeOpacity={0.7}
+          >
+            <Feather name="arrow-left" size={22} color={colors.text} />
+          </TouchableOpacity>
           <View style={styles.stickyTitleWrap}>
             <Text
               style={[styles.stickyName, { color: colors.text }]}
@@ -358,37 +347,29 @@ export default function ProfileScreen() {
     );
   };
 
-  // ── Floating back button over the cover — visible while at the top ──
-  const renderFloatingBackButton = () => {
-    if (!showBackButton) return null;
-
-    return (
-      <Animated.View
-        style={[
-          styles.floatingBackButton,
-          {
-            top: insets.top + 8,
-            // Fade OUT as the sticky header fades IN — avoids two arrows
-            opacity: stickyOpacity.interpolate({
-              inputRange: [0, 1],
-              outputRange: [1, 0],
-            }),
-          },
-        ]}
+  // ── Floating back button over the cover ──
+  const renderFloatingBackButton = () => (
+    <Animated.View
+      style={[
+        styles.floatingBackButton,
+        {
+          top: insets.top + 8,
+          opacity: stickyOpacity.interpolate({
+            inputRange: [0, 1],
+            outputRange: [1, 0],
+          }),
+        },
+      ]}
+    >
+      <TouchableOpacity
+        onPress={handleBack}
+        style={styles.floatingBackInner}
+        activeOpacity={0.7}
       >
-        <TouchableOpacity
-          onPress={handleBack}
-          style={[
-            styles.floatingBackInner,
-            { backgroundColor: `rgba(0,0,0,0.5)` },
-          ]}
-          activeOpacity={0.7}
-        >
-          <Feather name="arrow-left" size={22} color="#fff" />
-        </TouchableOpacity>
-      </Animated.View>
-    );
-  };
+        <Feather name="arrow-left" size={22} color="#fff" />
+      </TouchableOpacity>
+    </Animated.View>
+  );
 
   const renderHeader = () => (
     <>
@@ -640,7 +621,6 @@ const styles = StyleSheet.create({
   tabText: { fontSize: 16, fontWeight: '600' },
   tabTextActive: { color: '#6C63FF' },
 
-  // ── Floating back button (over the cover) ──
   floatingBackButton: {
     position: 'absolute',
     left: 16,
@@ -652,9 +632,9 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
   },
 
-  // ── Sticky top bar ──
   stickyHeader: {
     position: 'absolute',
     top: 0,
