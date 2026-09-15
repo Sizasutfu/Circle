@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,8 @@ import {
   StyleSheet,
   Alert,
   ActivityIndicator,
+  Animated,
+  Platform,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -40,6 +42,9 @@ interface ProfileData {
   isCurrentUser: boolean;
 }
 
+const STICKY_HEADER_HEIGHT = 56;
+const SCROLL_THRESHOLD = 120; // px of scroll before the bar is fully opaque
+
 export default function ProfileScreen() {
   const navigation = useNavigation();
   const route = useRoute();
@@ -53,7 +58,6 @@ export default function ProfileScreen() {
   const params = route.params as { userId?: string; username?: string } | undefined;
   const targetIdentifier = params?.userId || params?.username || user?.id || '';
 
-  // ✅ Show back button only when navigated to with a specific user param
   const showBackButton = !!(params?.userId || params?.username);
 
   const isNumeric = !isNaN(Number(targetIdentifier)) && targetIdentifier !== '';
@@ -73,14 +77,8 @@ export default function ProfileScreen() {
     queryKey: ['profile', targetIdentifier],
     queryFn: async () => {
       if (!targetIdentifier && !user) throw new Error('No user identifier provided');
-      console.log('👤 Fetching profile for:', targetIdentifier);
-
       const endpoint = getProfileEndpoint();
-      console.log('📤 Endpoint:', endpoint);
-
       const response = await api.get(endpoint);
-      console.log('📦 Profile response:', JSON.stringify(response.data, null, 2));
-
       const data = response.data;
       const profileData = data.data || data;
 
@@ -159,14 +157,11 @@ export default function ProfileScreen() {
     initialPageParam: 1,
     queryFn: async ({ pageParam }) => {
       if (!effectiveUserId) return { posts: [], hasMore: false, page: pageParam };
-      console.log('📰 Fetching posts for user:', effectiveUserId, 'page', pageParam);
 
       try {
         const response = await api.get(`/posts`, {
           params: { userId: effectiveUserId, page: pageParam, limit: 30 },
         });
-
-        console.log('📦 Posts response:', JSON.stringify(response.data, null, 2));
 
         const body = response.data?.data ?? response.data ?? {};
         const rawPosts = body.posts ?? (Array.isArray(body) ? body : []);
@@ -224,7 +219,6 @@ export default function ProfileScreen() {
         text: 'Logout',
         style: 'destructive',
         onPress: async () => {
-          // ✅ Just clear auth state — root navigator swaps to Auth automatically
           await logout();
         },
       },
@@ -239,7 +233,6 @@ export default function ProfileScreen() {
     if (navigation.canGoBack()) {
       navigation.goBack();
     } else {
-      // Fallback: navigate to the Feed tab
       (navigation.navigate as any)('Feed');
     }
   };
@@ -248,6 +241,36 @@ export default function ProfileScreen() {
     <PostCard post={item} />
   );
 
+  // ── Animated scroll value driving the sticky bar ──
+  const scrollY = useRef(new Animated.Value(0)).current;
+
+  // Fade the sticky bar in as the user scrolls past the avatar area
+  const stickyOpacity = scrollY.interpolate({
+    inputRange: [SCROLL_THRESHOLD - 40, SCROLL_THRESHOLD],
+    outputRange: [0, 1],
+    extrapolate: 'clamp',
+  });
+
+  // Translate the title up a bit to give a subtle entrance
+  const stickyTranslateY = scrollY.interpolate({
+    inputRange: [SCROLL_THRESHOLD - 40, SCROLL_THRESHOLD],
+    outputRange: [8, 0],
+    extrapolate: 'clamp',
+  });
+
+  // The floating back button's solid background appears as we scroll
+  const backButtonBg = scrollY.interpolate({
+    inputRange: [0, SCROLL_THRESHOLD],
+    outputRange: [0.5, 0],
+    extrapolate: 'clamp',
+  });
+
+  const onScroll = Animated.event(
+    [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+    { useNativeDriver: true }
+  );
+
+  // ── Loading / error states (before profile loaded) ──
   if (!user) {
     return (
       <SafeAreaView style={[styles.placeholderContainer, { backgroundColor: colors.background }]} edges={['top']}>
@@ -286,6 +309,86 @@ export default function ProfileScreen() {
       </SafeAreaView>
     );
   }
+
+  // ── Sticky top bar — fades in as you scroll, always has the back button ──
+  const renderStickyHeader = () => {
+    const headerTop = insets.top;
+
+    return (
+      <Animated.View
+        style={[
+          styles.stickyHeader,
+          {
+            height: headerTop + STICKY_HEADER_HEIGHT,
+            paddingTop: headerTop,
+            backgroundColor: colors.background,
+            borderBottomColor: colors.border,
+            opacity: stickyOpacity,
+            transform: [{ translateY: stickyTranslateY }],
+          },
+        ]}
+        pointerEvents="box-none"
+      >
+        <View style={styles.stickyHeaderInner}>
+          {showBackButton && (
+            <TouchableOpacity
+              onPress={handleBack}
+              style={styles.stickyBackButton}
+              activeOpacity={0.7}
+            >
+              <Feather name="arrow-left" size={22} color={colors.text} />
+            </TouchableOpacity>
+          )}
+          <View style={styles.stickyTitleWrap}>
+            <Text
+              style={[styles.stickyName, { color: colors.text }]}
+              numberOfLines={1}
+            >
+              {safeString(profile.name)}
+            </Text>
+            <Text
+              style={[styles.stickyPostCount, { color: colors.textSecondary }]}
+              numberOfLines={1}
+            >
+              {formatNumber(profile.postsCount)} posts
+            </Text>
+          </View>
+        </View>
+      </Animated.View>
+    );
+  };
+
+  // ── Floating back button over the cover — visible while at the top ──
+  const renderFloatingBackButton = () => {
+    if (!showBackButton) return null;
+
+    return (
+      <Animated.View
+        style={[
+          styles.floatingBackButton,
+          {
+            top: insets.top + 8,
+            // Fade OUT as the sticky header fades IN — avoids two arrows
+            opacity: stickyOpacity.interpolate({
+              inputRange: [0, 1],
+              outputRange: [1, 0],
+            }),
+          },
+        ]}
+      >
+        <TouchableOpacity
+          onPress={handleBack}
+          style={[
+            styles.floatingBackInner,
+            { backgroundColor: `rgba(0,0,0,0.5)` },
+          ]}
+          activeOpacity={0.7}
+        >
+          <Feather name="arrow-left" size={22} color="#fff" />
+        </TouchableOpacity>
+      </Animated.View>
+    );
+  };
 
   const renderHeader = () => (
     <>
@@ -381,30 +484,11 @@ export default function ProfileScreen() {
     </>
   );
 
-  // ✅ Floating back button — only shown when arriving from another screen
-  const renderBackButton = () => {
-    if (!showBackButton) return null;
-    return (
-      <TouchableOpacity
-        style={[
-          styles.backButton,
-          {
-            top: insets.top + 8,
-            backgroundColor: isDark ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.5)',
-          },
-        ]}
-        onPress={handleBack}
-        activeOpacity={0.7}
-      >
-        <Feather name="arrow-left" size={22} color="#fff" />
-      </TouchableOpacity>
-    );
-  };
-
+  // ── Posts tab ──
   if (activeTab === 'posts') {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <FlatList
+        <Animated.FlatList
           data={posts}
           keyExtractor={(item) => item.id}
           renderItem={renderPostItem}
@@ -414,6 +498,8 @@ export default function ProfileScreen() {
           style={styles.content}
           onEndReached={handleLoadMore}
           onEndReachedThreshold={0.5}
+          onScroll={onScroll}
+          scrollEventThrottle={16}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} />
           }
@@ -434,19 +520,23 @@ export default function ProfileScreen() {
             )
           }
         />
-        {renderBackButton()}
+        {renderFloatingBackButton()}
+        {renderStickyHeader()}
       </View>
     );
   }
 
+  // ── Replies / Media tabs ──
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView
+      <Animated.ScrollView
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} />
         }
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: contentBottomPadding }}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
       >
         {renderHeader()}
 
@@ -470,8 +560,9 @@ export default function ProfileScreen() {
             </View>
           )}
         </View>
-      </ScrollView>
-      {renderBackButton()}
+      </Animated.ScrollView>
+      {renderFloatingBackButton()}
+      {renderStickyHeader()}
     </View>
   );
 }
@@ -499,10 +590,12 @@ const styles = StyleSheet.create({
   errorSubtitle: { fontSize: 14, textAlign: 'center', marginTop: 4 },
   retryButton: { marginTop: 20, paddingHorizontal: 32, paddingVertical: 10, borderRadius: 8 },
   retryButtonText: { color: 'white', fontWeight: '600', fontSize: 16 },
+
   coverContainer: { height: 160, width: '100%', position: 'relative' },
   coverPlaceholder: { height: 60, width: '100%' },
   coverImage: { width: '100%', height: '100%' },
   coverOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
+
   header: { paddingHorizontal: 16, paddingTop: 0, paddingBottom: 8 },
   avatarRow: {
     flexDirection: 'row',
@@ -547,16 +640,53 @@ const styles = StyleSheet.create({
   tabText: { fontSize: 16, fontWeight: '600' },
   tabTextActive: { color: '#6C63FF' },
 
-  // ✅ Floating back button styles
-  backButton: {
+  // ── Floating back button (over the cover) ──
+  floatingBackButton: {
     position: 'absolute',
     left: 16,
+    zIndex: 20,
+  },
+  floatingBackInner: {
     width: 40,
     height: 40,
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+
+  // ── Sticky top bar ──
+  stickyHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    borderBottomWidth: 1,
     zIndex: 10,
+    justifyContent: 'flex-end',
+  },
+  stickyHeaderInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    height: STICKY_HEADER_HEIGHT,
+  },
+  stickyBackButton: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stickyTitleWrap: {
+    flex: 1,
+    marginLeft: 4,
+  },
+  stickyName: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  stickyPostCount: {
+    fontSize: 12,
+    marginTop: 1,
   },
 
   content: { paddingHorizontal: 4 },
