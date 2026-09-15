@@ -34,24 +34,20 @@ export default function SidebarContent(props: DrawerContentComponentProps) {
     { icon: 'message-circle', label: 'Messages', route: 'Messages' },
     { icon: 'hash', label: 'Topics', route: 'Topics' },
     { icon: 'message-square', label: 'Whisper', route: 'WhisperInbox' },
+    { icon: 'bar-chart-2', label: 'Dashboard', route: 'Dashboard' },
     { icon: 'user', label: 'Profile', route: 'Profile' },
     { icon: 'settings', label: 'Settings', route: 'Settings' },
   ];
 
   const handleNavigate = (route: string) => {
-    // Close the drawer
     props.navigation.closeDrawer();
 
-    // Navigate to the screen
-    // For tab screens, navigate to MainTabs with screen param
     const tabScreens = ['Feed', 'Explore', 'Messages', 'Profile', 'Settings'];
     if (tabScreens.includes(route)) {
-      // @ts-ignore - Navigate to MainTabs with nested navigation
-      props.navigation.navigate('MainTabs', {
-        screen: route,
-      });
+      // @ts-ignore
+      props.navigation.navigate('MainTabs', { screen: route });
     } else {
-      // @ts-ignore - Navigate to stack screens directly
+      // @ts-ignore
       props.navigation.navigate(route);
     }
   };
@@ -61,7 +57,6 @@ export default function SidebarContent(props: DrawerContentComponentProps) {
     await logout();
   };
 
-  // Get current route name
   const currentRoute = props.state?.routes?.[props.state.index]?.name || '';
 
   return (
@@ -82,15 +77,16 @@ export default function SidebarContent(props: DrawerContentComponentProps) {
         {/* ─── Menu Items ─── */}
         <View style={styles.menuSection}>
           {menuItems.map((item) => {
-            // Check if the current route matches this item
-            const isActive = currentRoute === item.route ||
+            const isActive =
+              currentRoute === item.route ||
               (item.route === 'Feed' && currentRoute === 'MainTabs') ||
               (item.route === 'Feed' && currentRoute === 'Main') ||
               (item.route === 'Explore' && currentRoute === 'Explore') ||
               (item.route === 'Messages' && currentRoute === 'Messages') ||
               (item.route === 'Profile' && currentRoute === 'Profile') ||
               (item.route === 'Settings' && currentRoute === 'Settings') ||
-              (item.route === 'WhisperInbox' && currentRoute === 'WhisperInbox');
+              (item.route === 'WhisperInbox' && currentRoute === 'WhisperInbox') ||
+              (item.route === 'Dashboard' && currentRoute === 'Dashboard');
 
             return (
               <TouchableOpacity
