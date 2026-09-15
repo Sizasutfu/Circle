@@ -28,11 +28,6 @@ import api from '../api/client';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // ─── Robust helpers ──────────────────────────────────────────
-function normalizeId(value: any): string | null {
-  if (value == null) return null;
-  return String(value);
-}
-
 function isUserInList(list: any, currentUserId: any): boolean {
   if (!currentUserId) return false;
   if (!Array.isArray(list)) return false;
@@ -96,6 +91,62 @@ function getRepostCount(post: any): number {
   if (typeof post.repost_count === 'number') return post.repost_count;
   if (Array.isArray(post.reposts)) return post.reposts.length;
   return 0;
+}
+
+function getCommentCount(post: any, fallbackComments?: any[]): number {
+  if (!post) return fallbackComments?.length || 0;
+  if (typeof post.commentCount === 'number') return post.commentCount;
+  if (typeof post.comment_count === 'number') return post.comment_count;
+  if (Array.isArray(post.comments)) return post.comments.length;
+  if (Array.isArray(fallbackComments)) return fallbackComments.length;
+  return 0;
+}
+
+// Normalize a repost's embedded original so the recursive PostCard
+// always has real counts, regardless of backend shape.
+function normalizeOriginalPost(original: any, outer: any): any {
+  if (!original) return original;
+
+  const outerLikes = Array.isArray(outer?.likes) ? outer.likes : [];
+  const outerReposts = Array.isArray(outer?.reposts) ? outer.reposts : [];
+  const outerComments = Array.isArray(outer?.comments) ? outer.comments : [];
+
+  // Preserve whatever count fields the backend already sent
+  const likeCount =
+    typeof original.likesCount === 'number' ? original.likesCount :
+    typeof original.likeCount === 'number' ? original.likeCount :
+    typeof original.like_count === 'number' ? original.like_count :
+    Array.isArray(original.likes) ? original.likes.length :
+    typeof outer?.likeCount === 'number' ? outer.likeCount :
+    outerLikes.length;
+
+  const repostCount =
+    typeof original.repostsCount === 'number' ? original.repostsCount :
+    typeof original.repostCount === 'number' ? original.repostCount :
+    typeof original.repost_count === 'number' ? original.repost_count :
+    Array.isArray(original.reposts) ? original.reposts.length :
+    typeof outer?.repostCount === 'number' ? outer.repostCount :
+    outerReposts.length;
+
+  const commentCount =
+    typeof original.commentCount === 'number' ? original.commentCount :
+    typeof original.comment_count === 'number' ? original.comment_count :
+    Array.isArray(original.comments) ? original.comments.length :
+    typeof outer?.commentCount === 'number' ? outer.commentCount :
+    outerComments.length;
+
+  return {
+    ...original,
+    likes: Array.isArray(original.likes) ? original.likes : outerLikes,
+    reposts: Array.isArray(original.reposts) ? original.reposts : outerReposts,
+    comments: Array.isArray(original.comments) ? original.comments : outerComments,
+    likeCount,
+    repostCount,
+    commentCount,
+    shares: original.shares ?? outer?.shares ?? 0,
+    viewCount: original.viewCount ?? outer?.viewCount ?? 0,
+    videoViews: original.videoViews ?? outer?.videoViews ?? 0,
+  };
 }
 
 function throttle(fn: Function, limit: number) {
@@ -194,6 +245,7 @@ function PostCard({
   const propLikeCount = getLikeCount(post);
   const propReposted = isRepostedByMe(post, currentUser?.id);
   const propRepostCount = getRepostCount(post);
+  const propCommentCount = getCommentCount(post, safeComments);
 
   const [localLiked, setLocalLiked] = useState(propLiked);
   const [localLikeCount, setLocalLikeCount] = useState(propLikeCount);
@@ -206,8 +258,6 @@ function PostCard({
         postId: post?.id,
         currentUserId: currentUser.id,
         likesRaw: post?.likes,
-        likesType: Array.isArray(post?.likes) ? 'array' : typeof post?.likes,
-        firstLike: Array.isArray(post?.likes) ? post?.likes?.[0] : undefined,
         propLiked,
         propLikeCount,
         repostsRaw: post?.reposts,
@@ -217,21 +267,10 @@ function PostCard({
     }
   }, [post?.id, currentUser?.id, propLiked, propReposted]);
 
-  useEffect(() => {
-    setLocalLiked(propLiked);
-  }, [propLiked]);
-
-  useEffect(() => {
-    setLocalLikeCount(propLikeCount);
-  }, [propLikeCount]);
-
-  useEffect(() => {
-    setLocalReposted(propReposted);
-  }, [propReposted]);
-
-  useEffect(() => {
-    setLocalRepostCount(propRepostCount);
-  }, [propRepostCount]);
+  useEffect(() => { setLocalLiked(propLiked); }, [propLiked]);
+  useEffect(() => { setLocalLikeCount(propLikeCount); }, [propLikeCount]);
+  useEffect(() => { setLocalReposted(propReposted); }, [propReposted]);
+  useEffect(() => { setLocalRepostCount(propRepostCount); }, [propRepostCount]);
 
   const displayName = user?.name || 'Anonymous';
   const username = user?.username || '';
@@ -533,7 +572,10 @@ function PostCard({
 
   if (!post) return null;
 
+  // ── Plain repost (no quote text) ──
+  // Normalize the embedded original so the inner card always shows counts.
   if (isRepost && (!text || text.trim() === '') && originalPost) {
+    const normalizedOriginal = normalizeOriginalPost(originalPost, post);
     return (
       <View style={[styles.repostWrapper, { borderBottomColor: colors.border }]}>
         <View style={styles.repostBanner}>
@@ -541,7 +583,14 @@ function PostCard({
           <Text style={[styles.repostBannerText, { color: colors.textSecondary }]}>{displayName} reposted</Text>
           <Text style={[styles.repostBannerTime, { color: colors.textMuted }]}>{relativeTime}</Text>
         </View>
-        <PostCard post={originalPost} groupMap={groupMap} onComment={onComment} onQuote={onQuote} isMentioned={isMentioned} isVisible={isVisible} />
+        <PostCard
+          post={normalizedOriginal}
+          groupMap={groupMap}
+          onComment={onComment}
+          onQuote={onQuote}
+          isMentioned={isMentioned}
+          isVisible={isVisible}
+        />
       </View>
     );
   }
@@ -635,7 +684,7 @@ function PostCard({
             <TouchableOpacity style={styles.engagementButton} onPress={handleComment}>
               <Feather name="message-circle" size={22} color={colors.textMuted} />
               <Text style={[styles.engagementText, { color: colors.textSecondary }]}>
-                {commentCount ?? safeComments.length}
+                {propCommentCount}
               </Text>
             </TouchableOpacity>
 
@@ -776,7 +825,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingTop: 12,
-    // ✅ Removed borderTopWidth and borderTopColor
   },
   engagementButton: { flexDirection: 'row', alignItems: 'center' },
   engagementText: { fontSize: 14, marginLeft: 6 },
