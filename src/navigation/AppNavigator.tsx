@@ -1,58 +1,56 @@
-import React, { useState, useEffect } from "react";
-import { NavigationContainer } from "@react-navigation/native";
-import { createDrawerNavigator } from "@react-navigation/drawer";
-import {
-  createStackNavigator,
-  TransitionPresets,
-} from "@react-navigation/stack";
-import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import { Feather } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useAuth } from "../contexts/AuthContext";
-import { useTheme } from "../contexts/ThemeContext";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Platform, View, StyleSheet, Dimensions, Text } from "react-native";
+import React, { useState, useEffect } from 'react';
+import { NavigationContainer } from '@react-navigation/native';
+import { createDrawerNavigator } from '@react-navigation/drawer';
+import { createStackNavigator, TransitionPresets } from '@react-navigation/stack';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { Feather } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Platform, View, StyleSheet, Dimensions, Text } from 'react-native';
 
 // ----- Screens -----
-import WelcomeScreen from "../screens/WelcomeScreen";
-import LoginScreen from "../screens/LoginScreen";
-import SignUpScreen from "../screens/SignUpScreen";
-import ForgotPasswordScreen from "../screens/ForgotPasswordScreen";
-import FeedScreen from "../screens/FeedScreen";
-import ExploreScreen from "../screens/ExploreScreen";
-import TopicsScreen from "../screens/TopicsScreen";
-import TopicDetailScreen from "../screens/TopicDetailScreen";
-import MessagesScreen from "../screens/MessagesScreen";
-import ChatDetailScreen from "../screens/ChatDetailScreen";
-import CreatePostScreen from "../screens/CreatePostScreen";
-import NotificationsScreen from "../screens/NotificationsScreen";
-import ProfileScreen from "../screens/ProfileScreen";
-import SettingsScreen from "../screens/SettingsScreen";
-import EditProfileScreen from "../screens/EditProfileScreen";
-import ChangePasswordScreen from "../screens/ChangePasswordScreen";
-import BlockedUsersScreen from "../screens/BlockedUsersScreen";
-import PostDetailScreen from "../screens/PostDetailScreen";
-import CommentDetailScreen from "../screens/CommentDetailScreen";
-import EditPostScreen from "../screens/EditPostScreen";
-import NewMessageScreen from "../screens/NewMessageScreen";
-import WhisperInboxScreen from "../screens/WhisperInboxScreen";
-import EditProfileFieldScreen from "../screens/EditProfileFieldScreen";
+import WelcomeScreen from '../screens/WelcomeScreen';
+import LoginScreen from '../screens/LoginScreen';
+import SignUpScreen from '../screens/SignUpScreen';
+import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
+import FeedScreen from '../screens/FeedScreen';
+import ExploreScreen from '../screens/ExploreScreen';
+import TopicsScreen from '../screens/TopicsScreen';
+import TopicDetailScreen from '../screens/TopicDetailScreen';
+import MessagesScreen from '../screens/MessagesScreen';
+import ChatDetailScreen from '../screens/ChatDetailScreen';
+import CreatePostScreen from '../screens/CreatePostScreen';
+import NotificationsScreen from '../screens/NotificationsScreen';
+import ProfileScreen from '../screens/ProfileScreen';
+import SettingsScreen from '../screens/SettingsScreen';
+import EditProfileScreen from '../screens/EditProfileScreen';
+import EditProfileFieldScreen from '../screens/EditProfileFieldScreen';
+import ChangePasswordScreen from '../screens/ChangePasswordScreen';
+import BlockedUsersScreen from '../screens/BlockedUsersScreen';
+import PostDetailScreen from '../screens/PostDetailScreen';
+import CommentDetailScreen from '../screens/CommentDetailScreen';
+import EditPostScreen from '../screens/EditPostScreen';
+import NewMessageScreen from '../screens/NewMessageScreen';
+import WhisperInboxScreen from '../screens/WhisperInboxScreen';
+import DashboardScreen from '../screens/DashboardScreen';
 
 // ----- Components -----
-import SidebarContent from "../components/SidebarContent";
+import SidebarContent from '../components/SidebarContent';
 
 // ----- Hooks -----
-import { useUnreadCount } from "../hooks/useNotifications";
+import { useUnreadCount } from '../hooks/useNotifications';
 
 // ----- Shared layout -----
-import { TAB_BAR_CONTENT_HEIGHT } from "../constants/layout";
+import { TAB_BAR_CONTENT_HEIGHT } from '../constants/layout';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 const Drawer = createDrawerNavigator();
 
-const isWeb = Platform.OS === "web";
-const { width: screenWidth } = Dimensions.get("window");
+const isWeb = Platform.OS === 'web';
+const { width: screenWidth } = Dimensions.get('window');
 const maxContentWidth = 600;
 
 // ============================================================
@@ -72,32 +70,26 @@ function MainTabs() {
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarIcon: ({ focused, color, size }) => {
-          let iconName: keyof typeof Feather.glyphMap = "home";
-          if (route.name === "Feed") iconName = focused ? "home" : "home";
-          else if (route.name === "Explore")
-            iconName = focused ? "search" : "search";
-          else if (route.name === "Messages")
-            iconName = focused ? "message-circle" : "message-circle";
-          else if (route.name === "Profile")
-            iconName = focused ? "user" : "user";
-          else if (route.name === "Settings")
-            iconName = focused ? "settings" : "settings";
+          let iconName: keyof typeof Feather.glyphMap = 'home';
+          if (route.name === 'Feed') iconName = focused ? 'home' : 'home';
+          else if (route.name === 'Explore') iconName = focused ? 'search' : 'search';
+          else if (route.name === 'Messages') iconName = focused ? 'message-circle' : 'message-circle';
+          else if (route.name === 'Profile') iconName = focused ? 'user' : 'user';
+          else if (route.name === 'Settings') iconName = focused ? 'settings' : 'settings';
           return <Feather name={iconName} size={size} color={color} />;
         },
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textSecondary,
         tabBarStyle: {
-          position: "absolute",
-          bottom: 0,
-          left: 0,
-          right: 0,
+          position: 'absolute',
+          bottom: 0, left: 0, right: 0,
           height: tabBarHeight,
           paddingTop: 8,
-          paddingBottom: Platform.OS === "ios" ? bottomInset : 8,
+          paddingBottom: Platform.OS === 'ios' ? bottomInset : 8,
           backgroundColor: colors.background,
           borderTopWidth: 1,
           borderTopColor: colors.border,
-          shadowColor: isDark ? "transparent" : "#000",
+          shadowColor: isDark ? 'transparent' : '#000',
           shadowOffset: { width: 0, height: -2 },
           shadowOpacity: isDark ? 0 : 0.05,
           shadowRadius: 4,
@@ -105,8 +97,8 @@ function MainTabs() {
         },
         tabBarLabelStyle: {
           fontSize: 10,
-          fontWeight: "600",
-          paddingBottom: Platform.OS === "ios" ? 0 : 4,
+          fontWeight: '600',
+          paddingBottom: Platform.OS === 'ios' ? 0 : 4,
         },
       })}
     >
@@ -143,9 +135,11 @@ function WebNavigator() {
       <Stack.Screen name="PostDetail" component={PostDetailScreen} />
       <Stack.Screen name="CommentDetail" component={CommentDetailScreen} />
       <Stack.Screen name="EditProfile" component={EditProfileScreen} />
+      <Stack.Screen name="EditProfileField" component={EditProfileFieldScreen} />
       <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
       <Stack.Screen name="BlockedUsers" component={BlockedUsersScreen} />
       <Stack.Screen name="WhisperInbox" component={WhisperInboxScreen} />
+      <Stack.Screen name="Dashboard" component={DashboardScreen} />
     </Stack.Navigator>
   );
 }
@@ -156,19 +150,19 @@ function WebNavigator() {
 function DrawerNavigator() {
   const { colors } = useTheme();
   const { user } = useAuth();
-  const { data: unreadCount = 0 } = useUnreadCount(user?.id || "");
+  const { data: unreadCount = 0 } = useUnreadCount(user?.id || '');
 
   return (
     <Drawer.Navigator
       screenOptions={{
         headerShown: false,
         drawerStyle: { width: 280, backgroundColor: colors.background },
-        drawerType: isWeb ? "permanent" : "slide",
-        overlayColor: "rgba(0,0,0,0.5)",
+        drawerType: isWeb ? 'permanent' : 'slide',
+        overlayColor: 'rgba(0,0,0,0.5)',
         swipeEnabled: !isWeb,
         drawerActiveTintColor: colors.primary,
         drawerInactiveTintColor: colors.textSecondary,
-        drawerActiveBackgroundColor: "transparent",
+        drawerActiveBackgroundColor: 'transparent',
         drawerItemStyle: { borderRadius: 12, marginHorizontal: 8 },
       }}
       drawerContent={(props) => <SidebarContent {...props} />}
@@ -177,10 +171,8 @@ function DrawerNavigator() {
         name="MainTabs"
         component={isWeb ? WebNavigator : MainTabs}
         options={{
-          drawerLabel: "Home",
-          drawerIcon: ({ color, size }) => (
-            <Feather name="home" size={size} color={color} />
-          ),
+          drawerLabel: 'Home',
+          drawerIcon: ({ color, size }) => <Feather name="home" size={size} color={color} />,
         }}
       />
       <Drawer.Screen
@@ -188,29 +180,21 @@ function DrawerNavigator() {
         component={NotificationsScreen}
         options={{
           drawerIcon: ({ color, size }) => (
-            <View style={{ position: "relative" }}>
+            <View style={{ position: 'relative' }}>
               <Feather name="bell" size={size} color={color} />
               {unreadCount > 0 && (
-                <View
-                  style={[styles.badge, { backgroundColor: colors.primary }]}
-                >
-                  <Text style={styles.badgeText}>
-                    {unreadCount > 99 ? "99+" : unreadCount}
-                  </Text>
+                <View style={[styles.badge, { backgroundColor: colors.primary }]}>
+                  <Text style={styles.badgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
                 </View>
               )}
             </View>
           ),
           drawerLabel: () => (
-            <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <Text style={{ color: colors.text }}>Notifications</Text>
               {unreadCount > 0 && (
-                <View
-                  style={[styles.badge, { backgroundColor: colors.primary }]}
-                >
-                  <Text style={styles.badgeText}>
-                    {unreadCount > 99 ? "99+" : unreadCount}
-                  </Text>
+                <View style={[styles.badge, { backgroundColor: colors.primary }]}>
+                  <Text style={styles.badgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
                 </View>
               )}
             </View>
@@ -221,46 +205,20 @@ function DrawerNavigator() {
         name="Topics"
         component={TopicsScreen}
         options={{
-          drawerIcon: ({ color, size }) => (
-            <Feather name="hash" size={size} color={color} />
-          ),
+          drawerIcon: ({ color, size }) => <Feather name="hash" size={size} color={color} />,
         }}
       />
-      <Drawer.Screen
-        name="TopicDetail"
-        component={TopicDetailScreen}
-        options={{ drawerItemStyle: { display: "none" } }}
-      />
-      <Drawer.Screen
-        name="PostDetail"
-        component={PostDetailScreen}
-        options={{ drawerItemStyle: { display: "none" } }}
-      />
-      <Drawer.Screen
-        name="CommentDetail"
-        component={CommentDetailScreen}
-        options={{ drawerItemStyle: { display: "none" } }}
-      />
-      <Drawer.Screen
-        name="EditProfile"
-        component={EditProfileScreen}
-        options={{ drawerItemStyle: { display: "none" } }}
-      />
-      <Drawer.Screen
-        name="ChangePassword"
-        component={ChangePasswordScreen}
-        options={{ drawerItemStyle: { display: "none" } }}
-      />
-      <Drawer.Screen
-        name="BlockedUsers"
-        component={BlockedUsersScreen}
-        options={{ drawerItemStyle: { display: "none" } }}
-      />
-      <Drawer.Screen
-        name="WhisperInbox"
-        component={WhisperInboxScreen}
-        options={{ drawerItemStyle: { display: "none" } }}
-      />
+
+      {/* Hidden screens — reachable via navigation.navigate */}
+      <Drawer.Screen name="TopicDetail"       component={TopicDetailScreen}       options={{ drawerItemStyle: { display: 'none' } }} />
+      <Drawer.Screen name="PostDetail"        component={PostDetailScreen}        options={{ drawerItemStyle: { display: 'none' } }} />
+      <Drawer.Screen name="CommentDetail"     component={CommentDetailScreen}     options={{ drawerItemStyle: { display: 'none' } }} />
+      <Drawer.Screen name="EditProfile"       component={EditProfileScreen}       options={{ drawerItemStyle: { display: 'none' } }} />
+      <Drawer.Screen name="EditProfileField"  component={EditProfileFieldScreen}  options={{ drawerItemStyle: { display: 'none' } }} />
+      <Drawer.Screen name="ChangePassword"    component={ChangePasswordScreen}    options={{ drawerItemStyle: { display: 'none' } }} />
+      <Drawer.Screen name="BlockedUsers"      component={BlockedUsersScreen}      options={{ drawerItemStyle: { display: 'none' } }} />
+      <Drawer.Screen name="WhisperInbox"      component={WhisperInboxScreen}      options={{ drawerItemStyle: { display: 'none' } }} />
+      <Drawer.Screen name="Dashboard"         component={DashboardScreen}         options={{ drawerItemStyle: { display: 'none' } }} />
     </Drawer.Navigator>
   );
 }
@@ -272,10 +230,7 @@ function AuthStack() {
   const { colors } = useTheme();
   return (
     <Stack.Navigator
-      screenOptions={{
-        headerShown: false,
-        cardStyle: { backgroundColor: colors.background },
-      }}
+      screenOptions={{ headerShown: false, cardStyle: { backgroundColor: colors.background } }}
     >
       <Stack.Screen name="Login" component={LoginScreen} />
       <Stack.Screen name="SignUp" component={SignUpScreen} />
@@ -291,10 +246,7 @@ function MainStack() {
   const { colors } = useTheme();
   return (
     <Stack.Navigator
-      screenOptions={{
-        headerShown: false,
-        cardStyle: { backgroundColor: colors.background },
-      }}
+      screenOptions={{ headerShown: false, cardStyle: { backgroundColor: colors.background } }}
     >
       <Stack.Screen name="Drawer" component={DrawerNavigator} />
       <Stack.Screen
@@ -302,7 +254,7 @@ function MainStack() {
         component={CreatePostScreen}
         options={{
           headerShown: false,
-          presentation: "modal",
+          presentation: 'modal',
           cardOverlayEnabled: true,
           cardStyle: { backgroundColor: colors.background },
           ...TransitionPresets.ModalSlideFromBottomIOS,
@@ -311,51 +263,27 @@ function MainStack() {
       <Stack.Screen
         name="EditPost"
         component={EditPostScreen}
-        options={{
-          title: "Edit Post",
-          presentation: "modal",
-          cardStyle: { backgroundColor: colors.background },
-        }}
-      />
-      <Stack.Screen
-        name="EditProfileField"
-        component={EditProfileFieldScreen}
-        options={{
-          headerShown: false,
-          cardStyle: { backgroundColor: colors.background },
-        }}
+        options={{ title: 'Edit Post', presentation: 'modal', cardStyle: { backgroundColor: colors.background } }}
       />
       <Stack.Screen
         name="NewMessage"
         component={NewMessageScreen}
-        options={{
-          headerShown: false,
-          cardStyle: { backgroundColor: colors.background },
-        }}
+        options={{ headerShown: false, cardStyle: { backgroundColor: colors.background } }}
       />
       <Stack.Screen
         name="ChatDetail"
         component={ChatDetailScreen}
-        options={{
-          title: "Chat",
-          cardStyle: { backgroundColor: colors.background },
-        }}
+        options={{ title: 'Chat', cardStyle: { backgroundColor: colors.background } }}
       />
       <Stack.Screen
         name="WhisperInbox"
         component={WhisperInboxScreen}
-        options={{
-          headerShown: false,
-          cardStyle: { backgroundColor: colors.background },
-        }}
+        options={{ headerShown: false, cardStyle: { backgroundColor: colors.background } }}
       />
       <Stack.Screen
-        name="CommentDetail"
-        component={CommentDetailScreen}
-        options={{
-          headerShown: false,
-          cardStyle: { backgroundColor: colors.background },
-        }}
+        name="Dashboard"
+        component={DashboardScreen}
+        options={{ headerShown: false, cardStyle: { backgroundColor: colors.background } }}
       />
     </Stack.Navigator>
   );
@@ -374,7 +302,7 @@ export default function AppNavigator() {
     const checkWelcome = async () => {
       try {
         if (user) {
-          const hasSeen = await AsyncStorage.getItem("hasSeenWelcome");
+          const hasSeen = await AsyncStorage.getItem('hasSeenWelcome');
           setShowWelcome(!hasSeen);
           setIsNewUser(!hasSeen);
         } else {
@@ -402,23 +330,18 @@ export default function AppNavigator() {
       notification: colors.primary,
     },
     fonts: {
-      regular: { fontFamily: "System", fontWeight: "400" as const },
-      medium: { fontFamily: "System", fontWeight: "500" as const },
-      bold: { fontFamily: "System", fontWeight: "700" as const },
-      heavy: { fontFamily: "System", fontWeight: "800" as const },
+      regular: { fontFamily: 'System', fontWeight: '400' as const },
+      medium: { fontFamily: 'System', fontWeight: '500' as const },
+      bold: { fontFamily: 'System', fontWeight: '700' as const },
+      heavy: { fontFamily: 'System', fontWeight: '800' as const },
     },
   };
 
   return (
-    <View
-      style={[styles.rootContainer, { backgroundColor: colors.background }]}
-    >
+    <View style={[styles.rootContainer, { backgroundColor: colors.background }]}>
       <NavigationContainer theme={customTheme}>
         <Stack.Navigator
-          screenOptions={{
-            headerShown: false,
-            cardStyle: { backgroundColor: colors.background },
-          }}
+          screenOptions={{ headerShown: false, cardStyle: { backgroundColor: colors.background } }}
         >
           {!user ? (
             <Stack.Screen name="Auth" component={AuthStack} />
@@ -447,25 +370,25 @@ const styles = StyleSheet.create({
     flex: 1,
     ...(isWeb && {
       maxWidth: maxContentWidth,
-      alignSelf: "center",
-      width: "100%",
-      minHeight: "100%",
+      alignSelf: 'center',
+      width: '100%',
+      minHeight: '100%',
       borderLeftWidth: 1,
       borderRightWidth: 1,
-      borderLeftColor: "rgba(0,0,0,0.08)",
-      borderRightColor: "rgba(0,0,0,0.08)",
+      borderLeftColor: 'rgba(0,0,0,0.08)',
+      borderRightColor: 'rgba(0,0,0,0.08)',
     }),
   },
   badge: {
-    position: "absolute",
+    position: 'absolute',
     top: -4,
     right: -10,
     minWidth: 18,
     height: 18,
     borderRadius: 9,
-    alignItems: "center",
-    justifyContent: "center",
+    alignItems: 'center',
+    justifyContent: 'center',
     paddingHorizontal: 4,
   },
-  badgeText: { color: "white", fontSize: 10, fontWeight: "700" },
+  badgeText: { color: 'white', fontSize: 10, fontWeight: '700' },
 });
