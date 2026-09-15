@@ -82,6 +82,16 @@ function getCommentCount(post: any, fallbackComments?: any[]): number {
   return 0;
 }
 
+// ✅ Video view count resolver — handles every field name
+function getVideoViewCount(post: any): number {
+  if (!post) return 0;
+  if (typeof post.videoViews === 'number') return post.videoViews;
+  if (typeof post.video_views === 'number') return post.video_views;
+  if (typeof post.videoViewCount === 'number') return post.videoViewCount;
+  if (typeof post.video_view_count === 'number') return post.video_view_count;
+  return 0;
+}
+
 function throttle(fn: Function, limit: number) {
   let lastCall = 0;
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -178,26 +188,20 @@ function PostCard({
   const propReposted = isRepostedByMe(post, currentUser?.id);
   const propRepostCount = getRepostCount(post);
   const propCommentCount = getCommentCount(post, safeComments);
+  const propVideoViews = getVideoViewCount(post);
 
   const [localLiked, setLocalLiked] = useState(propLiked);
   const [localLikeCount, setLocalLikeCount] = useState(propLikeCount);
   const [localReposted, setLocalReposted] = useState(propReposted);
   const [localRepostCount, setLocalRepostCount] = useState(propRepostCount);
-
-  useEffect(() => {
-    if (__DEV__ && currentUser) {
-      console.log('🔍 PostCard like/repost state', {
-        postId: post?.id,
-        currentUserId: currentUser.id,
-        propLiked, propLikeCount, propReposted, propRepostCount,
-      });
-    }
-  }, [post?.id, currentUser?.id, propLiked, propReposted]);
+  // ✅ Local video view count — increments live as plays are recorded
+  const [localVideoViews, setLocalVideoViews] = useState(propVideoViews);
 
   useEffect(() => { setLocalLiked(propLiked); }, [propLiked]);
   useEffect(() => { setLocalLikeCount(propLikeCount); }, [propLikeCount]);
   useEffect(() => { setLocalReposted(propReposted); }, [propReposted]);
   useEffect(() => { setLocalRepostCount(propRepostCount); }, [propRepostCount]);
+  useEffect(() => { setLocalVideoViews(propVideoViews); }, [propVideoViews]);
 
   const displayName = user?.name || 'Anonymous';
   const username = user?.username || '';
@@ -283,11 +287,25 @@ function PostCard({
     if (!isVisible) videoRef.current?.pauseAsync?.().catch(() => {});
   }, [isVisible]);
 
+  // ✅ Fires a video-view record when a user watches > 30% of the video
   const handleVideoPlaybackStatus = (status: any) => {
     if (!status.isLoaded || videoViewRecorded.current) return;
     if (status.durationMillis && status.positionMillis / status.durationMillis > 0.3) {
       videoViewRecorded.current = true;
-      api.post(`/posts/${id}/video-view`).catch(() => {});
+
+      const watchedSeconds = Math.round(status.positionMillis / 1000);
+      const duration = Math.round(status.durationMillis / 1000);
+
+      api.post(`/posts/${id}/video-view`, {
+        watchedSeconds,
+        duration,
+      }).then((res) => {
+        // Server returns { counted, views } — update local count if it counted
+        const body = res.data?.data ?? res.data ?? {};
+        if (body?.counted && typeof body.views === 'number') {
+          setLocalVideoViews(body.views);
+        }
+      }).catch(() => {});
     }
   };
 
@@ -369,8 +387,8 @@ function PostCard({
   };
 
   // ── Media ──
-  // Image: tap opens the lightbox (full screen preview)
-  // Video: tap toggles play/pause via native controls
+  // Image → lightbox
+  // Video → native controls + video views overlay (bottom-left)
   const renderMedia = () => {
     if (video) {
       return (
@@ -381,17 +399,29 @@ function PostCard({
               <Text style={[styles.videoErrorText, { color: colors.textSecondary }]}>Video failed to load</Text>
             </View>
           ) : isVisible ? (
-            <Video
-              ref={videoRef}
-              source={{ uri: video }}
-              style={styles.mediaPlayer}
-              resizeMode={ResizeMode.CONTAIN}
-              shouldPlay={false}
-              isLooping={false}
-              useNativeControls
-              onError={() => setVideoError(true)}
-              onPlaybackStatusUpdate={handleVideoPlaybackStatus}
-            />
+            <>
+              <Video
+                ref={videoRef}
+                source={{ uri: video }}
+                style={styles.mediaPlayer}
+                resizeMode={ResizeMode.CONTAIN}
+                shouldPlay={false}
+                isLooping={false}
+                useNativeControls
+                onError={() => setVideoError(true)}
+                onPlaybackStatusUpdate={handleVideoPlaybackStatus}
+              />
+
+              {/* ✅ Video views overlay — bottom-left corner */}
+              {localVideoViews > 0 && (
+                <View style={styles.videoViewsOverlay} pointerEvents="none">
+                  <Feather name="eye" size={12} color="#ffffff" />
+                  <Text style={styles.videoViewsText}>
+                    {formatNumber(localVideoViews)}
+                  </Text>
+                </View>
+              )}
+            </>
           ) : (
             <View style={[styles.videoPlaceholder, { backgroundColor: isDark ? '#374151' : '#1f2937' }]}>
               <Feather name="play-circle" size={40} color={colors.textMuted} />
@@ -425,7 +455,7 @@ function PostCard({
   };
 
   const renderViewCounts = () => {
-    const count = (viewCount || 0) + (videoViews || 0);
+    const count = (viewCount || 0) + (localVideoViews || 0);
     if (count === 0) return null;
     return (
       <View style={styles.viewCountRow}>
@@ -588,7 +618,6 @@ function PostCard({
         </View>
       </View>
 
-      {/* ✅ Media no longer navigates — image opens lightbox, video uses native controls */}
       {hasMedia && (
         <View style={styles.fullBleedWrapper}>
           {renderMedia()}
@@ -746,7 +775,7 @@ const styles = StyleSheet.create({
   postText: { fontSize: 15, lineHeight: 22, marginTop: 6 },
   showMore: { fontSize: 14, marginTop: 4 },
   fullBleedWrapper: { width: '100%', marginTop: 12 },
-  mediaContainer: { width: '100%', overflow: 'hidden' },
+  mediaContainer: { width: '100%', overflow: 'hidden', position: 'relative' },
   mediaPlayer: { width: '100%', height: SCREEN_WIDTH * 0.5625 },
   mediaImage: { width: '100%', height: SCREEN_WIDTH },
   videoPlaceholder: {
@@ -755,6 +784,26 @@ const styles = StyleSheet.create({
   },
   videoErrorContainer: { padding: 24, alignItems: 'center' },
   videoErrorText: { fontSize: 14, marginTop: 8 },
+
+  // ✅ Video views overlay
+  videoViewsOverlay: {
+    position: 'absolute',
+    bottom: 10,
+    left: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+  },
+  videoViewsText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+
   engagementBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
