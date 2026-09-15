@@ -34,12 +34,18 @@ interface Comment {
   id: string;
   text: string;
   createdAt: string;
+  parentId?: string | null;
+  replies?: Comment[];
   user: {
     id: string;
     name: string;
     username: string;
-    avatar?: string;
+    avatar?: string | null;
   };
+}
+
+interface FlatComment extends Comment {
+  _depth: number;
 }
 
 // ===== COMPONENT =====
@@ -55,6 +61,7 @@ export default function PostDetailScreen() {
   const [commentText, setCommentText] = useState('');
   const [isSendingComment, setIsSendingComment] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [replyingTo, setReplyingTo] = useState<Comment | null>(null);
   const inputRef = useRef<TextInput>(null);
 
   // Track keyboard visibility for dynamic padding
@@ -90,6 +97,37 @@ export default function PostDetailScreen() {
     enabled: !!postId,
   });
 
+  // ---- Normalize comment (recursive for replies) ----
+  const normalizeComment = (c: any): Comment => {
+    const commentUser = c.user || {};
+    const rawReplies = Array.isArray(c.replies) ? c.replies : [];
+
+    return {
+      id: String(c.id || c._id || Math.random()),
+      text: c.text || c.content || '',
+      createdAt: c.createdAt || c.created_at || new Date().toISOString(),
+      parentId: c.parentId || c.parent_id || null,
+      replies: rawReplies.map(normalizeComment),
+      user: {
+        id: String(commentUser.id || c.userId || c.authorId || ''),
+        name:
+          commentUser.name ||
+          c.author ||
+          commentUser.username ||
+          c.user?.username ||
+          'Anonymous',
+        username: commentUser.username || c.authorUsername || c.user?.username || '',
+        avatar: resolveMediaUrl(
+          commentUser.avatar ||
+            commentUser.picture ||
+            c.authorPicture ||
+            c.user?.avatar ||
+            null
+        ),
+      },
+    };
+  };
+
   // ---- Normalize post function ----
   const normalizePost = (raw: any): Post => {
     const rawUser = raw.user || raw.author || {};
@@ -99,21 +137,7 @@ export default function PostDetailScreen() {
       commentsData = [];
     }
 
-    const mappedComments = commentsData.map((c: any) => {
-      const commentUser = c.user || {};
-
-      return {
-        id: String(c.id || c._id || Math.random()),
-        text: c.text || c.content || '',
-        createdAt: c.createdAt || c.created_at || new Date().toISOString(),
-        user: {
-          id: String(commentUser.id || c.userId || c.authorId || ''),
-          name: commentUser.name || c.author || c.user?.name || c.user?.username || 'Anonymous',
-          username: commentUser.username || c.authorUsername || c.user?.username || '',
-          avatar: resolveMediaUrl(commentUser.avatar || commentUser.picture || c.authorPicture || c.user?.avatar || null),
-        },
-      };
-    });
+    const mappedComments = commentsData.map(normalizeComment);
 
     return {
       id: String(raw.id || ''),
@@ -140,9 +164,25 @@ export default function PostDetailScreen() {
         name: rawUser.name || raw.author || 'Anonymous',
         username: rawUser.username || raw.authorUsername || '',
         avatar: resolveMediaUrl(rawUser.avatar || rawUser.picture || raw.authorPicture || null),
-        verified: !!rawUser.verified || !!raw.authorVerified,
+        verified: !!rawUser.verified || !!rawAuthorVerified(raw),
       },
     };
+  };
+
+  // Small helper to keep normalizePost readable
+  const rawAuthorVerified = (raw: any) =>
+    raw.user?.verified || raw.authorVerified || false;
+
+  // ---- Flatten the comment tree for FlatList ----
+  const flattenComments = (comments: Comment[], depth = 0): FlatComment[] => {
+    const result: FlatComment[] = [];
+    for (const c of comments) {
+      result.push({ ...c, _depth: depth });
+      if (c.replies && c.replies.length) {
+        result.push(...flattenComments(c.replies, depth + 1));
+      }
+    }
+    return result;
   };
 
   // ---- Share post ----
@@ -159,30 +199,39 @@ export default function PostDetailScreen() {
     }
   };
 
-  // ---- Add comment mutation ----
+  // ---- Add comment mutation (supports replies via parentId) ----
   const addCommentMutation = useMutation({
-    mutationFn: async (text: string) => {
-      const response = await api.post(`/posts/${postId}/comment`, { text });
+    mutationFn: async ({ text, parentId }: { text: string; parentId?: string | null }) => {
+      const body: any = { text };
+      if (parentId) body.parentId = parentId;
+      const response = await api.post(`/posts/${postId}/comment`, body);
       return response.data;
     },
     onSuccess: () => {
       refetchPost();
       setCommentText('');
+      setReplyingTo(null);
       Keyboard.dismiss();
     },
     onError: (error: any) => {
-      Alert.alert('Error', error.response?.data?.message || 'Failed to add comment. Please try again.');
+      Alert.alert(
+        'Error',
+        error.response?.data?.message || 'Failed to add comment. Please try again.'
+      );
     },
   });
 
-  // ---- Submit comment ----
+  // ---- Submit comment / reply ----
   const handleSendComment = async () => {
     const trimmed = commentText.trim();
     if (!trimmed) return;
 
     setIsSendingComment(true);
     try {
-      await addCommentMutation.mutateAsync(trimmed);
+      await addCommentMutation.mutateAsync({
+        text: trimmed,
+        parentId: replyingTo?.id ?? null,
+      });
       inputRef.current?.blur();
     } catch (error) {
       console.warn('Comment failed:', error);
@@ -191,9 +240,29 @@ export default function PostDetailScreen() {
     }
   };
 
-  // ---- Render comment item ----
-  const renderComment = ({ item }: { item: Comment }) => {
+  // ---- Begin reply ----
+  const handleReplyPress = (comment: Comment) => {
+    if (!currentUser) {
+      Alert.alert('Sign In Required', 'Please log in to reply.', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Log In', onPress: () => (navigation.navigate as any)('Login') },
+      ]);
+      return;
+    }
+    setReplyingTo(comment);
+    setTimeout(() => inputRef.current?.focus(), 80);
+  };
+
+  const cancelReply = () => {
+    setReplyingTo(null);
+  };
+
+  // ---- Render comment item (recursive depth rendered via _depth) ----
+  const renderComment = ({ item }: { item: FlatComment }) => {
     const user = item.user || { id: '', name: 'Unknown', username: '', avatar: null };
+    const isReply = item._depth > 0;
+    const indent = Math.min(item._depth, 3) * 24; // cap visual depth
+
     return (
       <View
         style={[
@@ -201,17 +270,38 @@ export default function PostDetailScreen() {
           {
             backgroundColor: colors.background,
             borderBottomColor: colors.border,
+            paddingLeft: 16 + indent,
           },
         ]}
       >
-        <Avatar source={user.avatar} size={36} fallback={user.name} />
+        <Avatar source={user.avatar} size={isReply ? 30 : 36} fallback={user.name} />
         <View style={styles.commentContent}>
           <View style={styles.commentHeader}>
-            <Text style={[styles.commentName, { color: colors.text }]}>{user.name}</Text>
-            <Text style={[styles.commentUsername, { color: colors.textSecondary }]}>@{user.username}</Text>
-            <Text style={[styles.commentTime, { color: colors.textMuted }]}>· {timeAgo(item.createdAt)}</Text>
+            <Text style={[styles.commentName, { color: colors.text }]}>
+              {user.name}
+            </Text>
+            {!!user.username && (
+              <Text style={[styles.commentUsername, { color: colors.textSecondary }]}>
+                @{user.username}
+              </Text>
+            )}
+            <Text style={[styles.commentTime, { color: colors.textMuted }]}>
+              · {timeAgo(item.createdAt)}
+            </Text>
           </View>
           <Text style={[styles.commentText, { color: colors.text }]}>{item.text}</Text>
+
+          {/* Reply button */}
+          <TouchableOpacity
+            style={styles.replyButton}
+            onPress={() => handleReplyPress(item)}
+            activeOpacity={0.6}
+          >
+            <Feather name="corner-down-right" size={14} color={colors.textMuted} />
+            <Text style={[styles.replyButtonText, { color: colors.textMuted }]}>
+              Reply
+            </Text>
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -222,14 +312,19 @@ export default function PostDetailScreen() {
     <View style={[styles.emptyComments, { backgroundColor: colors.background }]}>
       <Feather name="message-circle" size={48} color={colors.textMuted} />
       <Text style={[styles.emptyTitle, { color: colors.text }]}>No comments yet</Text>
-      <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>Be the first to start the conversation</Text>
+      <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
+        Be the first to start the conversation
+      </Text>
     </View>
   );
 
   // ---- Loading state ----
   if (postLoading) {
     return (
-      <SafeAreaView style={[styles.loadingContainer, { backgroundColor: colors.background }]} edges={['top']}>
+      <SafeAreaView
+        style={[styles.loadingContainer, { backgroundColor: colors.background }]}
+        edges={['top']}
+      >
         <ActivityIndicator size="large" color={colors.primary} />
       </SafeAreaView>
     );
@@ -238,10 +333,17 @@ export default function PostDetailScreen() {
   // ---- Error state ----
   if (postError || !post) {
     return (
-      <SafeAreaView style={[styles.errorContainer, { backgroundColor: colors.background }]} edges={['top']}>
+      <SafeAreaView
+        style={[styles.errorContainer, { backgroundColor: colors.background }]}
+        edges={['top']}
+      >
         <Feather name="alert-circle" size={48} color="#ef4444" />
-        <Text style={[styles.errorTitle, { color: colors.text }]}>Post not found</Text>
-        <Text style={[styles.errorSubtitle, { color: colors.textSecondary }]}>The post you're looking for doesn't exist.</Text>
+        <Text style={[styles.errorTitle, { color: colors.text }]}>
+          Post not found
+        </Text>
+        <Text style={[styles.errorSubtitle, { color: colors.textSecondary }]}>
+          The post you're looking for doesn't exist.
+        </Text>
         <TouchableOpacity
           style={[styles.goBackButton, { backgroundColor: colors.primary }]}
           onPress={() => navigation.goBack()}
@@ -253,10 +355,17 @@ export default function PostDetailScreen() {
   }
 
   const postComments = post?.comments || [];
+  const flatComments = flattenComments(postComments);
+
+  // Total comment count (including replies)
+  const totalComments = flatComments.length;
 
   // ---- Main render ----
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: colors.background }]}
+      edges={['top']}
+    >
       <KeyboardAvoidingView
         style={styles.keyboardView}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -284,7 +393,7 @@ export default function PostDetailScreen() {
         {/* ─── Main content ─── */}
         <View style={styles.flexContainer}>
           <FlatList
-            data={postComments}
+            data={flatComments}
             keyExtractor={(item) => item.id || String(Math.random())}
             renderItem={renderComment}
             ListHeaderComponent={
@@ -300,7 +409,7 @@ export default function PostDetailScreen() {
                   ]}
                 >
                   <Text style={[styles.commentsCount, { color: colors.text }]}>
-                    {postComments.length} {postComments.length === 1 ? 'Comment' : 'Comments'}
+                    {totalComments} {totalComments === 1 ? 'Comment' : 'Comments'}
                   </Text>
                 </View>
               </View>
@@ -309,7 +418,35 @@ export default function PostDetailScreen() {
             contentContainerStyle={[styles.listContent, { backgroundColor: colors.background }]}
             showsVerticalScrollIndicator={false}
             style={styles.flexContainer}
+            keyboardShouldPersistTaps="handled"
           />
+
+          {/* ---- Replying-to banner ---- */}
+          {replyingTo && (
+            <View
+              style={[
+                styles.replyBanner,
+                {
+                  backgroundColor: isDark ? '#1f2937' : '#f3f4f6',
+                  borderTopColor: colors.border,
+                },
+              ]}
+            >
+              <Feather name="corner-down-right" size={16} color={colors.primary} />
+              <Text
+                style={[styles.replyBannerText, { color: colors.text }]}
+                numberOfLines={1}
+              >
+                Replying to{' '}
+                <Text style={{ color: colors.primary, fontWeight: '600' }}>
+                  @{replyingTo.user.username || replyingTo.user.name}
+                </Text>
+              </Text>
+              <TouchableOpacity onPress={cancelReply} style={styles.replyBannerClose}>
+                <Feather name="x" size={18} color={colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+          )}
 
           {/* ---- Comment Input Bar ---- */}
           <View
@@ -331,7 +468,11 @@ export default function PostDetailScreen() {
                   color: colors.text,
                 },
               ]}
-              placeholder="Add a comment..."
+              placeholder={
+                replyingTo
+                  ? `Reply to @${replyingTo.user.username || replyingTo.user.name}...`
+                  : 'Add a comment...'
+              }
               placeholderTextColor={colors.placeholder}
               value={commentText}
               onChangeText={setCommentText}
@@ -362,46 +503,25 @@ export default function PostDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  keyboardView: {
-    flex: 1,
-  },
-  flexContainer: {
-    flex: 1,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
+  container: { flex: 1 },
+  keyboardView: { flex: 1 },
+  flexContainer: { flex: 1 },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 32,
   },
-  errorTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginTop: 16,
-  },
-  errorSubtitle: {
-    fontSize: 14,
-    textAlign: 'center',
-    marginTop: 8,
-  },
+  errorTitle: { fontSize: 18, fontWeight: '600', marginTop: 16 },
+  errorSubtitle: { fontSize: 14, textAlign: 'center', marginTop: 8 },
   goBackButton: {
     marginTop: 24,
     paddingHorizontal: 24,
     paddingVertical: 10,
     borderRadius: 8,
   },
-  goBackText: {
-    color: 'white',
-    fontWeight: '600',
-  },
+  goBackText: { color: 'white', fontWeight: '600' },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -410,80 +530,58 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
   },
-  backButton: {
-    padding: 4,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  shareButton: {
-    padding: 6,
-  },
-  listContent: {
-    paddingBottom: 20,
-  },
-  postContainer: {
-    marginBottom: 8,
-  },
+  backButton: { padding: 4 },
+  headerTitle: { fontSize: 18, fontWeight: '700' },
+  shareButton: { padding: 6 },
+  listContent: { paddingBottom: 20 },
+  postContainer: { marginBottom: 8 },
   commentsHeader: {
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
   },
-  commentsCount: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
+  commentsCount: { fontSize: 16, fontWeight: '600' },
   commentItem: {
     flexDirection: 'row',
-    paddingHorizontal: 16,
+    paddingRight: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
   },
-  commentContent: {
-    flex: 1,
-    marginLeft: 12,
-  },
+  commentContent: { flex: 1, marginLeft: 12 },
   commentHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     flexWrap: 'wrap',
   },
-  commentName: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  commentUsername: {
-    fontSize: 13,
-    marginLeft: 4,
-  },
-  commentTime: {
-    fontSize: 12,
-    marginLeft: 6,
-  },
-  commentText: {
-    fontSize: 14,
-    marginTop: 2,
-    lineHeight: 20,
-  },
-  emptyComments: {
-    paddingVertical: 60,
+  commentName: { fontSize: 14, fontWeight: '600' },
+  commentUsername: { fontSize: 13, marginLeft: 4 },
+  commentTime: { fontSize: 12, marginLeft: 6 },
+  commentText: { fontSize: 14, marginTop: 2, lineHeight: 20 },
+  replyButton: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 4,
+    marginTop: 6,
+    alignSelf: 'flex-start',
+    paddingVertical: 2,
   },
-  emptyTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginTop: 12,
-  },
-  emptySubtitle: {
-    fontSize: 14,
-    marginTop: 4,
-  },
-  loadingMore: {
-    paddingVertical: 16,
+  replyButtonText: { fontSize: 12, fontWeight: '600' },
+  emptyComments: { paddingVertical: 60, alignItems: 'center' },
+  emptyTitle: { fontSize: 16, fontWeight: '600', marginTop: 12 },
+  emptySubtitle: { fontSize: 14, marginTop: 4 },
+
+  replyBanner: {
+    flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    gap: 8,
   },
+  replyBannerText: { flex: 1, fontSize: 13 },
+  replyBannerClose: { padding: 4 },
+
+  loadingMore: { paddingVertical: 16, alignItems: 'center' },
   inputBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -508,7 +606,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginLeft: 8,
   },
-  sendButtonDisabled: {
-    opacity: 0.5,
-  },
+  sendButtonDisabled: { opacity: 0.5 },
 });
