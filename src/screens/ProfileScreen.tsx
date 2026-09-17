@@ -287,7 +287,6 @@ export default function ProfileScreen() {
   const scrollY = useRef(new Animated.Value(0)).current;
   const headerHeight = insets.top + STICKY_HEADER_HEIGHT;
 
-  // Header reveal (background + name fade in past threshold)
   const headerReveal = scrollY.interpolate({
     inputRange: [SCROLL_THRESHOLD - 40, SCROLL_THRESHOLD],
     outputRange: [0, 1],
@@ -346,9 +345,6 @@ export default function ProfileScreen() {
   }
 
   // ── Always-visible header ──
-  // Positioned absolutely over the screen. Its top padding is set explicitly
-  // to insets.top so it clears the status bar — absolute children escape
-  // SafeAreaView's padding, so we push it down ourselves.
   const renderStickyHeader = () => (
     <Animated.View
       style={[
@@ -360,9 +356,6 @@ export default function ProfileScreen() {
       ]}
       pointerEvents="box-none"
     >
-      {/* Solid background that fades in over the content as you scroll.
-          Its absolute-fill covers the full header height including the
-          status-bar strip, so the theme background seals the top. */}
       <Animated.View
         pointerEvents="none"
         style={[
@@ -438,20 +431,12 @@ export default function ProfileScreen() {
           </View>
           <View style={styles.headerActions}>
             {profile.isCurrentUser ? (
-              <>
-                <TouchableOpacity
-                  style={[styles.editButton, { backgroundColor: isDark ? '#374151' : '#f3f4f6' }]}
-                  onPress={handleEditProfile}
-                >
-                  <Text style={[styles.editButtonText, { color: colors.text }]}>Edit Profile</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.settingsButton, { backgroundColor: isDark ? '#374151' : '#f3f4f6' }]}
-                  onPress={() => (navigation.navigate as any)('Settings')}
-                >
-                  <Feather name="settings" size={22} color={colors.text} />
-                </TouchableOpacity>
-              </>
+              <TouchableOpacity
+                style={[styles.editButton, { backgroundColor: isDark ? '#374151' : '#f3f4f6' }]}
+                onPress={handleEditProfile}
+              >
+                <Text style={[styles.editButtonText, { color: colors.text }]}>Edit Profile</Text>
+              </TouchableOpacity>
             ) : (
               <TouchableOpacity
                 style={[
@@ -540,8 +525,6 @@ export default function ProfileScreen() {
           renderItem={renderPostItem}
           ListHeaderComponent={
             <>
-              {/* Spacer so content starts below the safe area —
-                  the header itself is absolutely positioned above. */}
               <View style={{ height: headerHeight }} />
               {renderHeader()}
             </>
@@ -590,7 +573,6 @@ export default function ProfileScreen() {
         onScroll={onScroll}
         scrollEventThrottle={16}
       >
-        {/* Spacer so content starts below the safe area */}
         <View style={{ height: headerHeight }} />
         {renderHeader()}
 
@@ -660,7 +642,6 @@ const styles = StyleSheet.create({
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   editButton: { paddingHorizontal: 16, paddingVertical: 6, borderRadius: 100 },
   editButtonText: { fontWeight: '600', fontSize: 14 },
-  settingsButton: { padding: 8, borderRadius: 100 },
   followButton: {
     paddingHorizontal: 20,
     paddingVertical: 8,
@@ -700,7 +681,6 @@ const styles = StyleSheet.create({
   tabText: { fontSize: 16, fontWeight: '600' },
   tabTextActive: { color: '#6C63FF' },
 
-  // ── Always-visible header (pushed down by insets.top so it clears the status bar) ──
   stickyHeader: {
     position: 'absolute',
     top: 0,
