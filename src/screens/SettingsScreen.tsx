@@ -44,9 +44,6 @@ export default function SettingsScreen() {
           text: 'Logout',
           style: 'destructive',
           onPress: async () => {
-            // ✅ Just clear auth state.
-            // The root navigator swaps to the Auth stack automatically
-            // as soon as `user` becomes null — no manual reset needed.
             await logout();
           },
         },
@@ -84,7 +81,7 @@ export default function SettingsScreen() {
     destructive?: boolean;
   }) => (
     <TouchableOpacity
-      style={[styles.menuItem, { borderBottomColor: colors.border }]}
+      style={styles.menuItem}
       onPress={onPress}
       disabled={!onPress}
       activeOpacity={0.7}
@@ -124,7 +121,7 @@ export default function SettingsScreen() {
     value: boolean;
     onValueChange: (value: boolean) => void;
   }) => (
-    <View style={[styles.menuItem, { borderBottomColor: colors.border }]}>
+    <View style={styles.menuItem}>
       <View style={styles.menuItemLeft}>
         <View style={[styles.menuIconContainer, { backgroundColor: isDark ? '#374151' : '#f0f4ff' }]}>
           <Feather name={icon} size={20} color={colors.primary} />
@@ -153,7 +150,7 @@ export default function SettingsScreen() {
       ]}
       edges={['top']}
     >
-      <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+      <View style={[styles.header, { backgroundColor: colors.background }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Feather name="arrow-left" size={24} color={colors.text} />
         </TouchableOpacity>
@@ -170,11 +167,11 @@ export default function SettingsScreen() {
       >
         {/* ─── Profile Section ─── */}
         <TouchableOpacity
-          style={[styles.profileSection, { backgroundColor: colors.background, borderBottomColor: colors.border }]}
+          style={[styles.profileSection, { backgroundColor: colors.background }]}
           onPress={() => (navigation.navigate as any)('Profile')}
           activeOpacity={0.7}
         >
-          <Avatar source={user?.avatar} size={56} fallback={user?.name || 'U'} />
+          <Avatar source={user?.avatar} size={56} />
           <View style={styles.profileInfo}>
             <Text style={[styles.profileName, { color: colors.text }]}>{user?.name || 'User'}</Text>
             <Text style={[styles.profileUsername, { color: colors.textSecondary }]}>
@@ -186,7 +183,7 @@ export default function SettingsScreen() {
 
         {/* ─── Account Settings ─── */}
         <SectionHeader title="Account" />
-        <View style={[styles.section, { backgroundColor: colors.background, borderColor: colors.border }]}>
+        <View style={[styles.section, { backgroundColor: colors.background }]}>
           <MenuItem
             icon="user"
             title="Edit Profile"
@@ -207,7 +204,7 @@ export default function SettingsScreen() {
 
         {/* ─── Features ─── */}
         <SectionHeader title="Features" />
-        <View style={[styles.section, { backgroundColor: colors.background, borderColor: colors.border }]}>
+        <View style={[styles.section, { backgroundColor: colors.background }]}>
           <MenuItem
             icon="bar-chart-2"
             title="Dashboard"
@@ -224,7 +221,7 @@ export default function SettingsScreen() {
 
         {/* ─── Privacy ─── */}
         <SectionHeader title="Privacy" />
-        <View style={[styles.section, { backgroundColor: colors.background, borderColor: colors.border }]}>
+        <View style={[styles.section, { backgroundColor: colors.background }]}>
           <ToggleItem
             icon="eye"
             title="Private Account"
@@ -251,7 +248,7 @@ export default function SettingsScreen() {
 
         {/* ─── Notifications ─── */}
         <SectionHeader title="Notifications" />
-        <View style={[styles.section, { backgroundColor: colors.background, borderColor: colors.border }]}>
+        <View style={[styles.section, { backgroundColor: colors.background }]}>
           <ToggleItem
             icon="bell"
             title="Push Notifications"
@@ -268,8 +265,8 @@ export default function SettingsScreen() {
 
         {/* ─── Appearance ─── */}
         <SectionHeader title="Appearance" />
-        <View style={[styles.section, { backgroundColor: colors.background, borderColor: colors.border }]}>
-          <View style={[styles.menuItem, { borderBottomColor: colors.border }]}>
+        <View style={[styles.section, { backgroundColor: colors.background }]}>
+          <View style={styles.menuItem}>
             <View style={styles.menuItemLeft}>
               <View style={[styles.menuIconContainer, { backgroundColor: isDark ? '#374151' : '#f0f4ff' }]}>
                 <Feather name="moon" size={20} color={colors.primary} />
@@ -287,7 +284,7 @@ export default function SettingsScreen() {
 
         {/* ─── Support ─── */}
         <SectionHeader title="Support" />
-        <View style={[styles.section, { backgroundColor: colors.background, borderColor: colors.border }]}>
+        <View style={[styles.section, { backgroundColor: colors.background }]}>
           <MenuItem
             icon="help-circle"
             title="Help Center"
@@ -338,7 +335,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderBottomWidth: 1,
   },
   backButton: { padding: 4 },
   headerTitle: { fontSize: 20, fontWeight: '700' },
@@ -350,7 +346,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 16,
     marginTop: 12,
-    borderBottomWidth: 1,
   },
   profileInfo: { flex: 1, marginLeft: 12 },
   profileName: { fontSize: 16, fontWeight: '600' },
@@ -364,14 +359,13 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 8,
   },
-  section: { borderTopWidth: 1, borderBottomWidth: 1 },
+  section: {},
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderBottomWidth: 1,
   },
   menuItemLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   menuIconContainer: {
