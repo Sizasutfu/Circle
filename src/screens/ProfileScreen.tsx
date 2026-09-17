@@ -47,6 +47,14 @@ interface ProfileData {
 const STICKY_HEADER_HEIGHT = 56;
 const SCROLL_THRESHOLD = 120;
 
+// The sticky action button only reveals after the big button in the profile
+// header has scrolled fully off-screen. The big button sits around
+// y≈246–280 in the scroll content (cover 160 + headerHeight offset + avatar
+// row -40 margin + ~34 button height), so we delay its sticky copy to
+// ~220-280 to avoid a window where both are visible at once.
+const ACTION_REVEAL_START = SCROLL_THRESHOLD + 100; // 220
+const ACTION_REVEAL_END = SCROLL_THRESHOLD + 160;   // 280
+
 export default function ProfileScreen() {
   const navigation = useNavigation();
   const route = useRoute();
@@ -299,9 +307,16 @@ export default function ProfileScreen() {
     extrapolate: 'clamp',
   });
 
-  // Action button slides in from the right when the header reveals
+  // The sticky action button uses its own, later window — so the big button
+  // in the profile header is guaranteed to be off-screen by the time the
+  // sticky copy starts appearing. No overlap, no duplicate.
+  const actionOpacity = scrollY.interpolate({
+    inputRange: [ACTION_REVEAL_START, ACTION_REVEAL_END],
+    outputRange: [0, 1],
+    extrapolate: 'clamp',
+  });
   const actionTranslateX = scrollY.interpolate({
-    inputRange: [SCROLL_THRESHOLD - 40, SCROLL_THRESHOLD],
+    inputRange: [ACTION_REVEAL_START, ACTION_REVEAL_END],
     outputRange: [40, 0],
     extrapolate: 'clamp',
   });
@@ -311,7 +326,7 @@ export default function ProfileScreen() {
     { useNativeDriver: true }
   );
 
-  // ── Shared action button (used in both header and sticky header) ──
+  // ── Shared action button ──
   const renderActionButton = (compact: boolean) => {
     if (!profile) return null;
 
@@ -476,12 +491,13 @@ export default function ProfileScreen() {
           </Text>
         </Animated.View>
 
-        {/* Action button that slides in with the header */}
+        {/* Action button uses its own later reveal window so it never
+            duplicates the big button in the profile header. */}
         <Animated.View
           style={[
             styles.stickyActionWrap,
             {
-              opacity: headerReveal,
+              opacity: actionOpacity,
               transform: [{ translateX: actionTranslateX }],
             },
           ]}
@@ -683,7 +699,6 @@ const styles = StyleSheet.create({
   avatarBorder: { borderWidth: 4, borderRadius: 100 },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
 
-  // ── Big action buttons (in the profile header) ──
   editButton: {
     paddingHorizontal: 16,
     paddingVertical: 7,
@@ -703,7 +718,6 @@ const styles = StyleSheet.create({
   },
   followButtonText: { fontWeight: '600', fontSize: 14 },
 
-  // ── Compact action buttons (in the sticky header) ──
   editButtonCompact: {
     paddingHorizontal: 14,
     paddingVertical: 5,
