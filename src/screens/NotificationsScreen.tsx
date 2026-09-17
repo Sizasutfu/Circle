@@ -67,7 +67,7 @@ export default function NotificationsScreen() {
 
       const notification: Notification = {
         id: data.id || data.notificationId || '',
-        type: data.type || 'like',
+        type: (data.notificationType || data.type || 'like') as Notification['type'],
         userId: data.actorId || data.userId || '',
         user: {
           id: data.actorId || data.userId || '',
@@ -79,6 +79,7 @@ export default function NotificationsScreen() {
         postId: data.postId || null,
         postText: data.postSnippet || data.postText || null,
         commentId: data.commentId || null,
+        parentCommentId: data.parentCommentId ?? data.parent_comment_id ?? null,
         commentText: data.commentText || null,
         text: data.text || '',
         createdAt: data.createdAt || new Date().toISOString(),
@@ -95,6 +96,9 @@ export default function NotificationsScreen() {
           break;
         case 'comment':
           actionText = 'commented on your post';
+          break;
+        case 'reply':
+          actionText = 'replied to your comment';
           break;
         case 'repost':
           actionText = 'reposted your post';
@@ -116,7 +120,12 @@ export default function NotificationsScreen() {
           {
             text: 'View',
             onPress: () => {
-              if (notification.postId) {
+              if (notification.type === 'reply' && notification.parentCommentId) {
+                (navigation.navigate as any)('CommentDetail', {
+                  commentId: String(notification.parentCommentId),
+                  postId: notification.postId ? String(notification.postId) : undefined,
+                });
+              } else if (notification.postId) {
                 (navigation.navigate as any)('PostDetail', { postId: notification.postId });
               } else if (notification.userId) {
                 (navigation.navigate as any)('Profile', { userId: notification.userId });
@@ -172,7 +181,27 @@ export default function NotificationsScreen() {
     if (!notification.read) {
       markRead(notification.id);
     }
+
     const type = notification.type;
+
+    // Replies open the parent comment's thread so the user sees their
+    // original comment plus the reply. Falls back to the post if we
+    // don't have a parent id.
+    if (type === 'reply') {
+      if (notification.parentCommentId) {
+        (navigation.navigate as any)('CommentDetail', {
+          commentId: String(notification.parentCommentId),
+          postId: notification.postId ? String(notification.postId) : undefined,
+        });
+        return;
+      }
+      if (notification.postId) {
+        (navigation.navigate as any)('PostDetail', { postId: String(notification.postId) });
+        return;
+      }
+      return;
+    }
+
     if (['like', 'comment', 'repost'].includes(type) && notification.postId) {
       (navigation.navigate as any)('PostDetail', { postId: notification.postId });
     } else if (type === 'follow' && notification.userId) {
@@ -229,6 +258,11 @@ export default function NotificationsScreen() {
         iconName = 'message-circle';
         iconColor = '#3b82f6';
         break;
+      case 'reply':
+        actionText = text || 'replied to your comment';
+        iconName = 'corner-down-right';
+        iconColor = '#8b5cf6';
+        break;
       case 'repost':
         actionText = text || 'reposted your post';
         iconName = 'repeat';
@@ -280,12 +314,12 @@ export default function NotificationsScreen() {
             </Text>
           </Text>
 
-          {postText && type !== 'follow' && (
+          {postText && type !== 'follow' && type !== 'reply' && (
             <Text style={[styles.postPreview, { color: colors.textSecondary }]} numberOfLines={2}>
               "{safeString(postText)}"
             </Text>
           )}
-          {commentText && type === 'comment' && (
+          {commentText && (type === 'comment' || type === 'reply') && (
             <Text style={[styles.commentText, {
               color: colors.text,
               backgroundColor: isDark ? '#374151' : '#f3f4f6',

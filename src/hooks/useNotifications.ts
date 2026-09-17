@@ -4,7 +4,7 @@ import { resolveMediaUrl } from '../lib/media';
 
 export interface Notification {
   id: string;
-  type: 'like' | 'comment' | 'repost' | 'follow' | 'mention';
+  type: 'like' | 'comment' | 'repost' | 'follow' | 'mention' | 'reply';
   userId: string;
   user: {
     id: string;
@@ -16,6 +16,7 @@ export interface Notification {
   postId?: string | null;
   postText?: string | null;
   commentId?: string | null;
+  parentCommentId?: string | null;
   commentText?: string | null;
   text?: string;
   createdAt: string;
@@ -32,7 +33,7 @@ function mapNotification(raw: any): Notification {
   // Use resolveMediaUrl to get the full URL for avatar
   const avatarUrl = resolveMediaUrl(raw.actorPicture || raw.avatar || raw.user?.avatar || raw.actor?.avatar);
 
-  // Verified flag — accept either shape from the API
+  // Verified flag — accept every shape the API might send
   const verified = !!(
     raw.actorVerified ??
     raw.userVerified ??
@@ -63,7 +64,7 @@ function mapNotification(raw: any): Notification {
 
   return {
     id: raw.id || raw._id || '',
-    type: raw.type || raw.notificationType || 'like',
+    type: raw.notificationType || raw.type || 'like',
     userId: userId,
     user: {
       id: userId,
@@ -75,6 +76,11 @@ function mapNotification(raw: any): Notification {
     postId: raw.postId || raw.post?.id || raw.post_id || null,
     postText: raw.postSnippet || raw.postText || raw.post?.text || raw.post_text || null,
     commentId: raw.commentId || raw.comment?.id || raw.comment_id || null,
+    parentCommentId:
+      raw.parentCommentId ??
+      raw.parent_comment_id ??
+      raw.parent?.id ??
+      null,
     commentText: raw.commentText || raw.comment?.text || raw.comment_text || null,
     text: raw.customMessage || raw.text || raw.message || raw.content || '',
     createdAt: raw.createdAt || raw.created_at || raw.timestamp || new Date().toISOString(),
