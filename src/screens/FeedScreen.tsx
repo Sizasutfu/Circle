@@ -359,10 +359,7 @@ export default function FeedScreen() {
       <View
         style={[
           styles.tabsContainer,
-          {
-            backgroundColor: 'transparent',
-            borderBottomColor: colors.border,
-          },
+          { backgroundColor: 'transparent' },
         ]}
       >
         <TouchableOpacity
@@ -503,7 +500,6 @@ const styles = StyleSheet.create({
   },
   tabsContainer: {
     flexDirection: 'row',
-    borderBottomWidth: 1,
     paddingHorizontal: 16,
     backgroundColor: 'transparent',
   },
