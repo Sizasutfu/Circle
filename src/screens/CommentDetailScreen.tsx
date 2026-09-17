@@ -19,6 +19,7 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { Avatar } from '../components/Avatar';
+import VerificationBadge from '../components/VerificationBadge';
 import api from '../api/client';
 import { timeAgo } from '../utils/helpers';
 import { resolveMediaUrl } from '../lib/media';
@@ -207,22 +208,28 @@ export default function CommentDetailScreen() {
     const u = rootComment.user;
 
     return (
-      <View style={[styles.rootCard, { borderBottomColor: colors.border }]}>
+      <View style={styles.rootCard}>
         <View style={styles.rootHeader}>
           <TouchableOpacity
             onPress={() => (navigation.navigate as any)('Profile', { userId: u.id })}
             style={styles.rootAvatar}
           >
-            <Avatar source={u.avatar} size={48} fallback={u.name} />
+            <Avatar source={u.avatar} size={48} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <TouchableOpacity
               onPress={() => (navigation.navigate as any)('Profile', { userId: u.id })}
               style={styles.nameRow}
             >
-              <Text style={[styles.rootName, { color: colors.text }]}>{u.name}</Text>
+              <Text style={[styles.rootName, { color: colors.text }]} numberOfLines={1}>
+                {u.name}
+              </Text>
               {u.verified && (
-                <Feather name="check-circle" size={14} color="#3b82f6" style={{ marginLeft: 4 }} />
+                <VerificationBadge
+                  size={14}
+                  color={colors.primary}
+                  style={styles.verifiedBadge}
+                />
               )}
             </TouchableOpacity>
             {!!u.username && (
@@ -239,7 +246,7 @@ export default function CommentDetailScreen() {
           {timeAgo(rootComment.createdAt)}
         </Text>
 
-        <View style={[styles.rootActions, { borderTopColor: colors.border }]}>
+        <View style={styles.rootActions}>
           <TouchableOpacity
             style={styles.rootAction}
             onPress={() => handleReplyPress(rootComment)}
@@ -279,19 +286,25 @@ export default function CommentDetailScreen() {
       <View
         style={[
           styles.replyItem,
-          { borderBottomColor: colors.border, paddingLeft: 16 + indent },
+          { paddingLeft: 16 + indent },
         ]}
       >
         <TouchableOpacity
           onPress={() => (navigation.navigate as any)('Profile', { userId: u.id })}
         >
-          <Avatar source={u.avatar} size={32} fallback={u.name} />
+          <Avatar source={u.avatar} size={32} />
         </TouchableOpacity>
         <View style={styles.replyContent}>
           <View style={styles.replyHeader}>
-            <Text style={[styles.replyName, { color: colors.text }]}>{u.name}</Text>
+            <Text style={[styles.replyName, { color: colors.text }]} numberOfLines={1}>
+              {u.name}
+            </Text>
             {u.verified && (
-              <Feather name="check-circle" size={12} color="#3b82f6" style={{ marginLeft: 3 }} />
+              <VerificationBadge
+                size={12}
+                color={colors.primary}
+                style={styles.verifiedBadgeSmall}
+              />
             )}
             {!!u.username && (
               <Text style={[styles.replyUsername, { color: colors.textSecondary }]}>
@@ -345,7 +358,7 @@ export default function CommentDetailScreen() {
         style={[styles.container, { backgroundColor: colors.background }]}
         edges={['top']}
       >
-        <View style={[styles.header, { borderBottomColor: colors.border }]}>
+        <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
             <Feather name="arrow-left" size={24} color={colors.text} />
           </TouchableOpacity>
@@ -364,7 +377,7 @@ export default function CommentDetailScreen() {
         style={[styles.container, { backgroundColor: colors.background }]}
         edges={['top']}
       >
-        <View style={[styles.header, { borderBottomColor: colors.border }]}>
+        <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
             <Feather name="arrow-left" size={24} color={colors.text} />
           </TouchableOpacity>
@@ -397,15 +410,7 @@ export default function CommentDetailScreen() {
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
       >
         {/* Header */}
-        <View
-          style={[
-            styles.header,
-            {
-              borderBottomColor: colors.border,
-              backgroundColor: colors.background,
-            },
-          ]}
-        >
+        <View style={[styles.header, { backgroundColor: colors.background }]}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
             <Feather name="arrow-left" size={24} color={colors.text} />
           </TouchableOpacity>
@@ -429,10 +434,7 @@ export default function CommentDetailScreen() {
           <View
             style={[
               styles.replyBanner,
-              {
-                borderTopColor: colors.border,
-                backgroundColor: isDark ? '#1f2937' : '#f3f4f6',
-              },
+              { backgroundColor: isDark ? '#1f2937' : '#f3f4f6' },
             ]}
           >
             <Feather name="corner-down-right" size={16} color={colors.primary} />
@@ -456,7 +458,6 @@ export default function CommentDetailScreen() {
           style={[
             styles.inputBar,
             {
-              borderTopColor: colors.border,
               backgroundColor: colors.background,
               paddingBottom: keyboardVisible ? 0 : Math.max(insets.bottom, 8),
             },
@@ -511,7 +512,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderBottomWidth: 1,
   },
   backButton: { padding: 4 },
   headerTitle: { fontSize: 18, fontWeight: '700' },
@@ -523,12 +523,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 16,
     paddingBottom: 12,
-    borderBottomWidth: 1,
   },
   rootHeader: { flexDirection: 'row', alignItems: 'center' },
   rootAvatar: { marginRight: 12 },
   nameRow: { flexDirection: 'row', alignItems: 'center' },
-  rootName: { fontSize: 16, fontWeight: '700' },
+  rootName: { fontSize: 16, fontWeight: '700', flexShrink: 1 },
+  verifiedBadge: { marginLeft: 4 },
+  verifiedBadgeSmall: { marginLeft: 3 },
   rootUsername: { fontSize: 13, marginTop: 1 },
   rootText: { fontSize: 17, lineHeight: 24, marginTop: 12 },
   rootTime: { fontSize: 12, marginTop: 8 },
@@ -537,7 +538,6 @@ const styles = StyleSheet.create({
     gap: 20,
     marginTop: 14,
     paddingTop: 12,
-    borderTopWidth: 1,
   },
   rootAction: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   rootActionText: { fontSize: 13, fontWeight: '600' },
@@ -555,7 +555,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     paddingRight: 16,
     paddingVertical: 12,
-    borderBottomWidth: 1,
   },
   replyContent: { flex: 1, marginLeft: 10 },
   replyHeader: {
@@ -563,7 +562,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexWrap: 'wrap',
   },
-  replyName: { fontSize: 13, fontWeight: '600' },
+  replyName: { fontSize: 13, fontWeight: '600', flexShrink: 1 },
   replyUsername: { fontSize: 12, marginLeft: 4 },
   replyTime: { fontSize: 11, marginLeft: 6 },
   replyingToLine: { fontSize: 11, marginTop: 2 },
@@ -589,7 +588,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderTopWidth: 1,
     gap: 8,
   },
   replyBannerText: { flex: 1, fontSize: 13 },
@@ -601,7 +599,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderTopWidth: 1,
     minHeight: 56,
   },
   input: {
