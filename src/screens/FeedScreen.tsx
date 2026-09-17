@@ -1,3 +1,4 @@
+// src/screens/FeedScreen.tsx
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import {
   View,
@@ -19,6 +20,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useFeed } from '../hooks/useFeed';
 import { useTabBarHeight } from '../hooks/useTabBarHeight';
 import PostCard, { Post } from '../components/PostCard';
+import PostCardSkeleton, { PostCardSkeletonList } from '../components/PostCardSkeleton';
 import { useWs } from '../contexts/WsContext';
 import { useQueryClient } from '@tanstack/react-query';
 import AppHeader from '../components/AppHeader';
@@ -242,11 +244,12 @@ export default function FeedScreen() {
     }
   );
 
+  // ✅ Footer: skeleton card while fetching the next page
   const ListFooterComponent = useMemo(() => {
     if (!isFetchingNextPage) return null;
     return (
-      <View style={[styles.footerLoader, { backgroundColor: 'transparent' }]}>
-        <ActivityIndicator size="small" color={colors.primary} />
+      <View style={styles.footerLoader}>
+        <PostCardSkeleton withMedia={false} />
       </View>
     );
   }, [isFetchingNextPage]);
@@ -272,11 +275,22 @@ export default function FeedScreen() {
     },
   ]);
 
+  // ── Full skeleton screen for the initial load ──
   if (isLoading) {
     return (
-      <SafeAreaView style={[styles.loadingContainer, { backgroundColor: colors.background }]} edges={['top']}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </SafeAreaView>
+      <View style={containerStyle}>
+        <AppHeader
+          title="Circle"
+          showMenu={true}
+          rightActions={[
+            { icon: 'radio', onPress: handleGoLive },
+            { icon: 'bell', onPress: handleNotifications, badge: 0 },
+          ]}
+        />
+        <View style={{ flex: 1, paddingTop: 8 }}>
+          <PostCardSkeletonList count={4} />
+        </View>
+      </View>
     );
   }
 
@@ -524,8 +538,7 @@ const styles = StyleSheet.create({
     paddingTop: 8,
   },
   footerLoader: {
-    paddingVertical: 16,
-    alignItems: 'center',
+    paddingTop: 8,
     backgroundColor: 'transparent',
   },
   fabContainer: {
