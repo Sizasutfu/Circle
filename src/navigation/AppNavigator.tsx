@@ -7,6 +7,7 @@ import { Feather } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { TabBarProvider } from '../contexts/TabBarContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Platform, View, StyleSheet, Dimensions, Text } from 'react-native';
 
@@ -39,6 +40,7 @@ import DashboardScreen from '../screens/DashboardScreen';
 
 // ----- Components -----
 import SidebarContent from '../components/SidebarContent';
+import AnimatedTabBar from '../components/AnimatedTabBar';
 
 // ----- Hooks -----
 import { useUnreadCount } from '../hooks/useNotifications';
@@ -68,6 +70,7 @@ function MainTabs() {
   return (
     <Tab.Navigator
       initialRouteName="Feed"
+      tabBar={(props) => <AnimatedTabBar {...props} />}
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarIcon: ({ focused, color, size }) => {
@@ -256,7 +259,6 @@ function MainStack() {
     >
       <Stack.Screen name="Drawer" component={DrawerNavigator} />
 
-      {/* ── Pushed profile view ── */}
       <Stack.Screen
         name="Profile"
         component={ProfileScreen}
@@ -359,26 +361,28 @@ export default function AppNavigator() {
   return (
     <View style={[styles.rootContainer, { backgroundColor: colors.background }]}>
       <NavigationContainer theme={customTheme}>
-        <Stack.Navigator
-          screenOptions={{ headerShown: false, cardStyle: { backgroundColor: colors.background } }}
-        >
-          {!user ? (
-            <Stack.Screen name="Auth" component={AuthStack} />
-          ) : showWelcome ? (
-            <Stack.Screen name="Welcome" options={{ headerShown: false }}>
-              {() => (
-                <WelcomeScreen
-                  onFinish={() => {
-                    setShowWelcome(false);
-                    setIsNewUser(false);
-                  }}
-                />
-              )}
-            </Stack.Screen>
-          ) : (
-            <Stack.Screen name="Main" component={MainStack} />
-          )}
-        </Stack.Navigator>
+        <TabBarProvider>
+          <Stack.Navigator
+            screenOptions={{ headerShown: false, cardStyle: { backgroundColor: colors.background } }}
+          >
+            {!user ? (
+              <Stack.Screen name="Auth" component={AuthStack} />
+            ) : showWelcome ? (
+              <Stack.Screen name="Welcome" options={{ headerShown: false }}>
+                {() => (
+                  <WelcomeScreen
+                    onFinish={() => {
+                      setShowWelcome(false);
+                      setIsNewUser(false);
+                    }}
+                  />
+                )}
+              </Stack.Screen>
+            ) : (
+              <Stack.Screen name="Main" component={MainStack} />
+            )}
+          </Stack.Navigator>
+        </TabBarProvider>
       </NavigationContainer>
     </View>
   );

@@ -1,4 +1,3 @@
-// src/screens/FeedScreen.tsx
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import {
   View,
@@ -19,6 +18,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useFeed } from '../hooks/useFeed';
 import { useTabBarHeight } from '../hooks/useTabBarHeight';
+import { useTabBarHideOnScroll } from '../hooks/useTabBarHideOnScroll';
 import PostCard, { Post } from '../components/PostCard';
 import PostCardSkeleton, { PostCardSkeletonList } from '../components/PostCardSkeleton';
 import { useWs } from '../contexts/WsContext';
@@ -55,6 +55,9 @@ export default function FeedScreen() {
 
   // ✅ Live context
   const { openSetup } = useLive();
+
+  // ✅ Hide tab bar on scroll down / show on scroll up
+  const handleTabBarScroll = useTabBarHideOnScroll();
 
   const scrollY = useRef(new Animated.Value(0)).current;
   const fabTranslateY = useRef(new Animated.Value(0)).current;
@@ -204,8 +207,8 @@ export default function FeedScreen() {
     [{ nativeEvent: { contentOffset: { y: scrollY } } }],
     {
       useNativeDriver: true,
-      listener: ({ nativeEvent }: { nativeEvent: { contentOffset: { y: number } } }) => {
-        const currentScrollY = nativeEvent.contentOffset.y;
+      listener: (event: any) => {
+        const currentScrollY = event.nativeEvent.contentOffset.y;
         const scrollDelta = currentScrollY - lastScrollY.current;
 
         if (Math.abs(scrollDelta) > 5) {
@@ -240,11 +243,13 @@ export default function FeedScreen() {
           }
           lastScrollY.current = currentScrollY;
         }
+
+        // ✅ Hide / show tab bar based on scroll direction
+        handleTabBarScroll(event);
       },
     }
   );
 
-  // ✅ Footer: skeleton card while fetching the next page
   const ListFooterComponent = useMemo(() => {
     if (!isFetchingNextPage) return null;
     return (
@@ -254,7 +259,6 @@ export default function FeedScreen() {
     );
   }, [isFetchingNextPage]);
 
-  // ✅ List header shows the live strip
   const ListHeaderComponent = useMemo(
     () => (
       <View>
@@ -264,7 +268,6 @@ export default function FeedScreen() {
     []
   );
 
-  // ── Responsive container style ──
   const containerStyle = StyleSheet.flatten([
     styles.container,
     { backgroundColor: colors.background },
@@ -275,7 +278,6 @@ export default function FeedScreen() {
     },
   ]);
 
-  // ── Full skeleton screen for the initial load ──
   if (isLoading) {
     return (
       <View style={containerStyle}>
@@ -308,7 +310,6 @@ export default function FeedScreen() {
     );
   }
 
-  // ── Empty state (still shows live strip + overlays) ──
   if (posts.length === 0) {
     return (
       <View style={containerStyle}>
@@ -350,7 +351,6 @@ export default function FeedScreen() {
           </Animated.View>
         </View>
 
-        {/* Live overlays */}
         <LiveOverlay />
         <LiveSetupModal />
       </View>
@@ -359,7 +359,6 @@ export default function FeedScreen() {
 
   return (
     <View style={containerStyle}>
-      {/* ─── AppHeader ─── */}
       <AppHeader
         title="Circle"
         showMenu={true}
@@ -369,13 +368,7 @@ export default function FeedScreen() {
         ]}
       />
 
-      {/* ─── Tabs ─── */}
-      <View
-        style={[
-          styles.tabsContainer,
-          { backgroundColor: 'transparent' },
-        ]}
-      >
+      <View style={[styles.tabsContainer, { backgroundColor: 'transparent' }]}>
         <TouchableOpacity
           style={[styles.tab, activeTab === 'global' && styles.tabActive]}
           onPress={() => setActiveTab('global')}
@@ -394,7 +387,6 @@ export default function FeedScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* ─── Feed ─── */}
       <AnimatedFlatList
         ref={flatListRef}
         data={posts}
@@ -426,7 +418,6 @@ export default function FeedScreen() {
         scrollEventThrottle={16}
       />
 
-      {/* ─── FAB ─── */}
       <Animated.View
         style={[
           styles.fabContainer,
@@ -442,7 +433,6 @@ export default function FeedScreen() {
         </TouchableOpacity>
       </Animated.View>
 
-      {/* ─── Live overlays ─── */}
       <LiveOverlay />
       <LiveSetupModal />
     </View>
@@ -453,65 +443,26 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 32,
   },
-  errorTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    marginTop: 12,
-  },
-  errorSubtitle: {
-    fontSize: 14,
-    textAlign: 'center',
-    marginTop: 4,
-  },
-  retryButton: {
-    paddingHorizontal: 32,
-    paddingVertical: 10,
-    borderRadius: 8,
-    marginTop: 20,
-  },
-  retryButtonText: {
-    color: 'white',
-    fontWeight: '600',
-    fontSize: 16,
-  },
+  errorTitle: { fontSize: 20, fontWeight: '600', marginTop: 12 },
+  errorSubtitle: { fontSize: 14, textAlign: 'center', marginTop: 4 },
+  retryButton: { paddingHorizontal: 32, paddingVertical: 10, borderRadius: 8, marginTop: 20 },
+  retryButtonText: { color: 'white', fontWeight: '600', fontSize: 16 },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 32,
   },
-  emptyTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    marginTop: 12,
-  },
-  emptySubtitle: {
-    fontSize: 14,
-    textAlign: 'center',
-    marginTop: 4,
-  },
-  emptyButton: {
-    paddingHorizontal: 24,
-    paddingVertical: 10,
-    borderRadius: 8,
-    marginTop: 20,
-  },
-  emptyButtonText: {
-    color: 'white',
-    fontWeight: '600',
-    fontSize: 14,
-  },
+  emptyTitle: { fontSize: 20, fontWeight: '600', marginTop: 12 },
+  emptySubtitle: { fontSize: 14, textAlign: 'center', marginTop: 4 },
+  emptyButton: { paddingHorizontal: 24, paddingVertical: 10, borderRadius: 8, marginTop: 20 },
+  emptyButtonText: { color: 'white', fontWeight: '600', fontSize: 14 },
   tabsContainer: {
     flexDirection: 'row',
     paddingHorizontal: 16,
@@ -523,29 +474,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: 2,
     borderBottomColor: 'transparent',
   },
-  tabActive: {
-    borderBottomColor: '#6C63FF',
-  },
-  tabText: {
-    fontSize: 15,
-    fontWeight: '500',
-  },
-  tabTextActive: {
-    color: '#6C63FF',
-    fontWeight: '600',
-  },
-  feedContent: {
-    paddingTop: 8,
-  },
-  footerLoader: {
-    paddingTop: 8,
-    backgroundColor: 'transparent',
-  },
-  fabContainer: {
-    position: 'absolute',
-    right: 20,
-    zIndex: 999,
-  },
+  tabActive: { borderBottomColor: '#6C63FF' },
+  tabText: { fontSize: 15, fontWeight: '500' },
+  tabTextActive: { color: '#6C63FF', fontWeight: '600' },
+  feedContent: { paddingTop: 8 },
+  footerLoader: { paddingTop: 8 },
+  fabContainer: { position: 'absolute', right: 20, zIndex: 999 },
   fab: {
     width: 56,
     height: 56,
