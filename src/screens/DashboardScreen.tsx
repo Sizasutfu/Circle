@@ -110,7 +110,7 @@ export default function DashboardScreen() {
     <View
       style={[
         styles.statCard,
-        { backgroundColor: isDark ? '#1f2937' : '#f8f9fb', borderColor: colors.border },
+        { backgroundColor: isDark ? '#1f2937' : '#f8f9fb' },
       ]}
     >
       <View style={[styles.statIcon, { backgroundColor: color + '20' }]}>
@@ -131,7 +131,7 @@ export default function DashboardScreen() {
       <View
         style={[
           styles.chartCard,
-          { backgroundColor: isDark ? '#1f2937' : '#f8f9fb', borderColor: colors.border },
+          { backgroundColor: isDark ? '#1f2937' : '#f8f9fb' },
         ]}
       >
         <View style={styles.chartHeader}>
@@ -250,7 +250,7 @@ export default function DashboardScreen() {
             key={p.id}
             style={[
               styles.recentPost,
-              { backgroundColor: isDark ? '#1f2937' : '#f8f9fb', borderColor: colors.border },
+              { backgroundColor: isDark ? '#1f2937' : '#f8f9fb' },
             ]}
             onPress={() => (navigation.navigate as any)('PostDetail', { postId: String(p.id) })}
             activeOpacity={0.7}
@@ -305,7 +305,7 @@ export default function DashboardScreen() {
   if (isError || !stats) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
-        <View style={[styles.header, { borderBottomColor: colors.border }]}>
+        <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Feather name="arrow-left" size={24} color={colors.text} />
           </TouchableOpacity>
@@ -333,7 +333,7 @@ export default function DashboardScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
       {/* Header */}
-      <View style={[styles.header, { borderBottomColor: colors.border, backgroundColor: colors.background }]}>
+      <View style={[styles.header, { backgroundColor: colors.background }]}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Feather name="arrow-left" size={24} color={colors.text} />
         </TouchableOpacity>
@@ -380,12 +380,7 @@ export default function DashboardScreen() {
         {renderChart()}
 
         {/* Total engagement highlight */}
-        <View
-          style={[
-            styles.highlight,
-            { backgroundColor: colors.primary },
-          ]}
-        >
+        <View style={[styles.highlight, { backgroundColor: colors.primary }]}>
           <Feather name="trending-up" size={24} color="white" />
           <View style={styles.highlightText}>
             <Text style={styles.highlightValue}>{formatNumber(totalEngagement)}</Text>
@@ -405,7 +400,7 @@ export default function DashboardScreen() {
             <TouchableOpacity
               style={[
                 styles.topPost,
-                { backgroundColor: isDark ? '#1f2937' : '#f8f9fb', borderColor: colors.border },
+                { backgroundColor: isDark ? '#1f2937' : '#f8f9fb' },
               ]}
               onPress={() =>
                 (navigation.navigate as any)('PostDetail', { postId: String(stats.topPost!.id) })
@@ -437,7 +432,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderBottomWidth: 1,
   },
   headerTitle: { fontSize: 18, fontWeight: '700' },
   scrollContent: { padding: 16, paddingBottom: 40 },
@@ -458,7 +452,6 @@ const styles = StyleSheet.create({
     width: (SCREEN_WIDTH - 32 - 10) / 2 - 5,
     padding: 14,
     borderRadius: 14,
-    borderWidth: 1,
   },
   statIcon: {
     width: 36,
@@ -475,7 +468,6 @@ const styles = StyleSheet.create({
   chartCard: {
     padding: 16,
     borderRadius: 14,
-    borderWidth: 1,
     marginBottom: 20,
   },
   chartHeader: { marginBottom: 14 },
@@ -526,7 +518,6 @@ const styles = StyleSheet.create({
   recentPost: {
     padding: 14,
     borderRadius: 12,
-    borderWidth: 1,
     marginBottom: 8,
   },
   recentPostText: { fontSize: 14, lineHeight: 20 },
@@ -542,7 +533,6 @@ const styles = StyleSheet.create({
   topPost: {
     padding: 16,
     borderRadius: 12,
-    borderWidth: 1,
   },
   topPostText: { fontSize: 14, lineHeight: 20 },
   topPostScore: {
