@@ -21,6 +21,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import PostCard, { Post } from '../components/PostCard';
 import { Avatar } from '../components/Avatar';
+import VerificationBadge from '../components/VerificationBadge';
 import api from '../api/client';
 import { timeAgo } from '../utils/helpers';
 import { resolveMediaUrl } from '../lib/media';
@@ -41,6 +42,7 @@ interface Comment {
     name: string;
     username: string;
     avatar?: string | null;
+    verified?: boolean;
   };
 }
 
@@ -124,6 +126,7 @@ export default function PostDetailScreen() {
             c.user?.avatar ||
             null
         ),
+        verified: !!commentUser.verified || !!c.authorVerified,
       },
     };
   };
@@ -277,17 +280,25 @@ export default function PostDetailScreen() {
           styles.commentItem,
           {
             backgroundColor: colors.background,
-            borderBottomColor: colors.border,
             paddingLeft: 16 + indent,
           },
         ]}
       >
-        <Avatar source={user.avatar} size={isReply ? 30 : 36} fallback={user.name} />
+        <Avatar source={user.avatar} size={isReply ? 30 : 36} />
         <View style={styles.commentContent}>
           <View style={styles.commentHeader}>
-            <Text style={[styles.commentName, { color: colors.text }]}>
-              {user.name}
-            </Text>
+            <View style={styles.nameRow}>
+              <Text style={[styles.commentName, { color: colors.text }]} numberOfLines={1}>
+                {user.name}
+              </Text>
+              {user.verified && (
+                <VerificationBadge
+                  size={13}
+                  color={colors.primary}
+                  style={styles.verifiedBadge}
+                />
+              )}
+            </View>
             {!!user.username && (
               <Text style={[styles.commentUsername, { color: colors.textSecondary }]}>
                 @{user.username}
@@ -384,15 +395,7 @@ export default function PostDetailScreen() {
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
       >
         {/* ─── Custom Header ─── */}
-        <View
-          style={[
-            styles.header,
-            {
-              backgroundColor: colors.background,
-              borderBottomColor: colors.border,
-            },
-          ]}
-        >
+        <View style={[styles.header, { backgroundColor: colors.background }]}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
             <Feather name="arrow-left" size={24} color={colors.text} />
           </TouchableOpacity>
@@ -406,20 +409,12 @@ export default function PostDetailScreen() {
         <View style={styles.flexContainer}>
           <FlatList
             data={flatComments}
-            keyExtractor={(item) => item.id || String(Math.random())}
+            keyExtractor={(item, index) => item.id || `comment-${index}`}
             renderItem={renderComment}
             ListHeaderComponent={
               <View style={styles.postContainer}>
                 {post && <PostCard post={post} />}
-                <View
-                  style={[
-                    styles.commentsHeader,
-                    {
-                      backgroundColor: colors.background,
-                      borderBottomColor: colors.border,
-                    },
-                  ]}
-                >
+                <View style={[styles.commentsHeader, { backgroundColor: colors.background }]}>
                   <Text style={[styles.commentsCount, { color: colors.text }]}>
                     {totalComments} {totalComments === 1 ? 'Comment' : 'Comments'}
                   </Text>
@@ -438,10 +433,7 @@ export default function PostDetailScreen() {
             <View
               style={[
                 styles.replyBanner,
-                {
-                  backgroundColor: isDark ? '#1f2937' : '#f3f4f6',
-                  borderTopColor: colors.border,
-                },
+                { backgroundColor: isDark ? '#1f2937' : '#f3f4f6' },
               ]}
             >
               <Feather name="corner-down-right" size={16} color={colors.primary} />
@@ -466,7 +458,6 @@ export default function PostDetailScreen() {
               styles.inputBar,
               {
                 backgroundColor: colors.background,
-                borderTopColor: colors.border,
                 paddingBottom: keyboardVisible ? 0 : Math.max(insets.bottom, 8),
               },
             ]}
@@ -540,7 +531,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderBottomWidth: 1,
   },
   backButton: { padding: 4 },
   headerTitle: { fontSize: 18, fontWeight: '700' },
@@ -550,14 +540,12 @@ const styles = StyleSheet.create({
   commentsHeader: {
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderBottomWidth: 1,
   },
   commentsCount: { fontSize: 16, fontWeight: '600' },
   commentItem: {
     flexDirection: 'row',
     paddingRight: 16,
     paddingVertical: 12,
-    borderBottomWidth: 1,
   },
   commentContent: { flex: 1, marginLeft: 12 },
   commentHeader: {
@@ -565,7 +553,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexWrap: 'wrap',
   },
-  commentName: { fontSize: 14, fontWeight: '600' },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  commentName: { fontSize: 14, fontWeight: '600', flexShrink: 1 },
+  verifiedBadge: { marginLeft: 4 },
   commentUsername: { fontSize: 13, marginLeft: 4 },
   commentTime: { fontSize: 12, marginLeft: 6 },
   commentText: { fontSize: 14, marginTop: 2, lineHeight: 20 },
@@ -587,7 +580,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderTopWidth: 1,
     gap: 8,
   },
   replyBannerText: { flex: 1, fontSize: 13 },
@@ -599,7 +591,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderTopWidth: 1,
     minHeight: 56,
   },
   input: {
