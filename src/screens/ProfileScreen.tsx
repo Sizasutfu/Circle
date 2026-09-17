@@ -227,14 +227,19 @@ export default function ProfileScreen() {
     (navigation.navigate as any)('EditProfile');
   };
 
-  // ✅ Always show the back button. When there's no history
-  //    (e.g. user opened the Profile tab first), fall back to Feed.
   const handleBack = () => {
     if (navigation.canGoBack()) {
       navigation.goBack();
     } else {
       (navigation.navigate as any)('Feed');
     }
+  };
+
+  const openFollowList = (mode: 'followers' | 'following') => {
+    (navigation.navigate as any)('FollowList', {
+      userId: effectiveUserId,
+      mode,
+    });
   };
 
   const renderPostItem = ({ item }: { item: Post }) => (
@@ -434,15 +439,25 @@ export default function ProfileScreen() {
         {profile.bio && <Text style={[styles.bio, { color: colors.text }]}>{safeString(profile.bio)}</Text>}
 
         <View style={[styles.statsRow, { borderTopColor: colors.border }]}>
-          <TouchableOpacity style={styles.statItem}>
+          <View style={styles.statItem}>
             <Text style={[styles.statNumber, { color: colors.text }]}>{formatNumber(profile.postsCount)}</Text>
             <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Posts</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.statItem}>
+          </View>
+
+          <TouchableOpacity
+            style={styles.statItem}
+            onPress={() => openFollowList('followers')}
+            activeOpacity={0.7}
+          >
             <Text style={[styles.statNumber, { color: colors.text }]}>{formatNumber(profile.followersCount)}</Text>
             <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Followers</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.statItem}>
+
+          <TouchableOpacity
+            style={styles.statItem}
+            onPress={() => openFollowList('following')}
+            activeOpacity={0.7}
+          >
             <Text style={[styles.statNumber, { color: colors.text }]}>{formatNumber(profile.followingCount)}</Text>
             <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Following</Text>
           </TouchableOpacity>

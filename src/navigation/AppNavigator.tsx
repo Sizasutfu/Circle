@@ -24,6 +24,7 @@ import ChatDetailScreen from '../screens/ChatDetailScreen';
 import CreatePostScreen from '../screens/CreatePostScreen';
 import NotificationsScreen from '../screens/NotificationsScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import FollowListScreen from '../screens/FollowListScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import EditProfileScreen from '../screens/EditProfileScreen';
 import EditProfileFieldScreen from '../screens/EditProfileFieldScreen';
@@ -128,6 +129,7 @@ function WebNavigator() {
       <Stack.Screen name="Explore" component={ExploreScreen} />
       <Stack.Screen name="Messages" component={MessagesScreen} />
       <Stack.Screen name="Profile" component={ProfileScreen} />
+      <Stack.Screen name="FollowList" component={FollowListScreen} />
       <Stack.Screen name="Settings" component={SettingsScreen} />
       <Stack.Screen name="Notifications" component={NotificationsScreen} />
       <Stack.Screen name="Topics" component={TopicsScreen} />
@@ -213,6 +215,7 @@ function DrawerNavigator() {
       <Drawer.Screen name="TopicDetail"       component={TopicDetailScreen}       options={{ drawerItemStyle: { display: 'none' } }} />
       <Drawer.Screen name="PostDetail"        component={PostDetailScreen}        options={{ drawerItemStyle: { display: 'none' } }} />
       <Drawer.Screen name="CommentDetail"     component={CommentDetailScreen}     options={{ drawerItemStyle: { display: 'none' } }} />
+      <Drawer.Screen name="FollowList"        component={FollowListScreen}        options={{ drawerItemStyle: { display: 'none' } }} />
       <Drawer.Screen name="EditProfile"       component={EditProfileScreen}       options={{ drawerItemStyle: { display: 'none' } }} />
       <Drawer.Screen name="EditProfileField"  component={EditProfileFieldScreen}  options={{ drawerItemStyle: { display: 'none' } }} />
       <Drawer.Screen name="ChangePassword"    component={ChangePasswordScreen}    options={{ drawerItemStyle: { display: 'none' } }} />
@@ -283,6 +286,11 @@ function MainStack() {
       <Stack.Screen
         name="Dashboard"
         component={DashboardScreen}
+        options={{ headerShown: false, cardStyle: { backgroundColor: colors.background } }}
+      />
+      <Stack.Screen
+        name="FollowList"
+        component={FollowListScreen}
         options={{ headerShown: false, cardStyle: { backgroundColor: colors.background } }}
       />
     </Stack.Navigator>
