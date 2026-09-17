@@ -40,13 +40,10 @@ export default function LiveFeedStrip() {
             <TouchableOpacity
               style={[
                 styles.card,
-                {
-                  backgroundColor: isDark ? '#1f2937' : '#fff',
-                  borderColor: colors.border,
-                },
+                { backgroundColor: isDark ? '#1f2937' : '#f3f4f6' },
               ]}
               onPress={() => watchSession(item.sessionId)}
-              activeOpacity={0.8}
+              activeOpacity={0.85}
             >
               {/* Preview tile */}
               <View
@@ -112,7 +109,6 @@ const styles = StyleSheet.create({
   card: {
     width: 150,
     borderRadius: 12,
-    borderWidth: 1,
     overflow: 'hidden',
   },
   preview: {
