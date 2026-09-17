@@ -44,6 +44,7 @@ import AnimatedTabBar from '../components/AnimatedTabBar';
 
 // ----- Hooks -----
 import { useUnreadCount } from '../hooks/useNotifications';
+import { useUnreadMessages } from '../hooks/useUnreadMessages';
 
 // ----- Shared layout -----
 import { TAB_BAR_CONTENT_HEIGHT } from '../constants/layout';
@@ -56,16 +57,46 @@ const isWeb = Platform.OS === 'web';
 const { width: screenWidth } = Dimensions.get('window');
 const maxContentWidth = 600;
 
+// ── Small helper: coerce a possibly-object count to a number ──
+function toCount(v: any): number {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
+  if (v && typeof v === 'object' && 'count' in v) return Number((v as any).count) || 0;
+  return Number(v) || 0;
+}
+
+function badgeLabel(n: number): string | undefined {
+  if (n <= 0) return undefined;
+  return n > 99 ? '99+' : String(n);
+}
+
 // ============================================================
 //  Bottom Tab Navigator
 // ============================================================
 function MainTabs() {
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
+  const { user } = useAuth();
+  const { data: rawUnreadNotifications } = useUnreadCount(user?.id || '');
+  const { data: rawUnreadMessages } = useUnreadMessages(user?.id || '');
+
+  const unreadNotifications = toCount(rawUnreadNotifications);
+  const unreadMessages = toCount(rawUnreadMessages);
+
   const bottomInset = Math.max(insets.bottom, 0);
   const tabBarHeight = TAB_BAR_CONTENT_HEIGHT + bottomInset;
 
   if (isWeb) return null;
+
+  const badgeStyle = {
+    backgroundColor: colors.primary,
+    color: 'white',
+    fontSize: 10,
+    fontWeight: '700' as const,
+    minWidth: 18,
+    height: 18,
+    lineHeight: 16,
+    paddingHorizontal: 4,
+  };
 
   return (
     <Tab.Navigator
@@ -78,8 +109,8 @@ function MainTabs() {
           if (route.name === 'Feed') iconName = 'home';
           else if (route.name === 'Explore') iconName = 'search';
           else if (route.name === 'Messages') iconName = 'message-circle';
+          else if (route.name === 'Notifications') iconName = 'bell';
           else if (route.name === 'MyProfile') iconName = 'user';
-          else if (route.name === 'Settings') iconName = 'settings';
           return <Feather name={iconName} size={size} color={color} />;
         },
         tabBarActiveTintColor: colors.primary,
@@ -106,13 +137,27 @@ function MainTabs() {
     >
       <Tab.Screen name="Feed" component={FeedScreen} />
       <Tab.Screen name="Explore" component={ExploreScreen} />
-      <Tab.Screen name="Messages" component={MessagesScreen} />
+      <Tab.Screen
+        name="Messages"
+        component={MessagesScreen}
+        options={{
+          tabBarBadge: badgeLabel(unreadMessages),
+          tabBarBadgeStyle: badgeStyle,
+        }}
+      />
+      <Tab.Screen
+        name="Notifications"
+        component={NotificationsScreen}
+        options={{
+          tabBarBadge: badgeLabel(unreadNotifications),
+          tabBarBadgeStyle: badgeStyle,
+        }}
+      />
       <Tab.Screen
         name="MyProfile"
         component={ProfileScreen}
         options={{ tabBarLabel: 'Profile' }}
       />
-      <Tab.Screen name="Settings" component={SettingsScreen} />
     </Tab.Navigator>
   );
 }
@@ -133,11 +178,11 @@ function WebNavigator() {
       <Stack.Screen name="Feed" component={FeedScreen} />
       <Stack.Screen name="Explore" component={ExploreScreen} />
       <Stack.Screen name="Messages" component={MessagesScreen} />
+      <Stack.Screen name="Notifications" component={NotificationsScreen} />
       <Stack.Screen name="MyProfile" component={ProfileScreen} options={{ title: 'Profile' }} />
       <Stack.Screen name="Profile" component={ProfileScreen} />
       <Stack.Screen name="FollowList" component={FollowListScreen} />
       <Stack.Screen name="Settings" component={SettingsScreen} />
-      <Stack.Screen name="Notifications" component={NotificationsScreen} />
       <Stack.Screen name="Topics" component={TopicsScreen} />
       <Stack.Screen name="TopicDetail" component={TopicDetailScreen} />
       <Stack.Screen name="PostDetail" component={PostDetailScreen} />
@@ -157,8 +202,6 @@ function WebNavigator() {
 // ============================================================
 function DrawerNavigator() {
   const { colors } = useTheme();
-  const { user } = useAuth();
-  const { data: unreadCount = 0 } = useUnreadCount(user?.id || '');
 
   return (
     <Drawer.Navigator
@@ -184,32 +227,6 @@ function DrawerNavigator() {
         }}
       />
       <Drawer.Screen
-        name="Notifications"
-        component={NotificationsScreen}
-        options={{
-          drawerIcon: ({ color, size }) => (
-            <View style={{ position: 'relative' }}>
-              <Feather name="bell" size={size} color={color} />
-              {unreadCount > 0 && (
-                <View style={[styles.badge, { backgroundColor: colors.primary }]}>
-                  <Text style={styles.badgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
-                </View>
-              )}
-            </View>
-          ),
-          drawerLabel: () => (
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Text style={{ color: colors.text }}>Notifications</Text>
-              {unreadCount > 0 && (
-                <View style={[styles.badge, { backgroundColor: colors.primary }]}>
-                  <Text style={styles.badgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
-                </View>
-              )}
-            </View>
-          ),
-        }}
-      />
-      <Drawer.Screen
         name="Topics"
         component={TopicsScreen}
         options={{
@@ -218,6 +235,7 @@ function DrawerNavigator() {
       />
 
       {/* Hidden screens — reachable via navigation.navigate */}
+      <Drawer.Screen name="Settings"         component={SettingsScreen}          options={{ drawerItemStyle: { display: 'none' } }} />
       <Drawer.Screen name="TopicDetail"       component={TopicDetailScreen}       options={{ drawerItemStyle: { display: 'none' } }} />
       <Drawer.Screen name="PostDetail"        component={PostDetailScreen}        options={{ drawerItemStyle: { display: 'none' } }} />
       <Drawer.Screen name="CommentDetail"     component={CommentDetailScreen}     options={{ drawerItemStyle: { display: 'none' } }} />
@@ -398,16 +416,4 @@ const styles = StyleSheet.create({
       minHeight: '100%',
     }),
   },
-  badge: {
-    position: 'absolute',
-    top: -4,
-    right: -10,
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 4,
-  },
-  badgeText: { color: 'white', fontSize: 10, fontWeight: '700' },
 });
