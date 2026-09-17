@@ -321,7 +321,6 @@ export default function ProfileScreen() {
             height: headerTop + STICKY_HEADER_HEIGHT,
             paddingTop: headerTop,
             backgroundColor: colors.background,
-            borderBottomColor: colors.border,
             opacity: stickyOpacity,
             transform: [{ translateY: stickyTranslateY }],
           },
@@ -404,10 +403,7 @@ export default function ProfileScreen() {
           <View
             style={[
               styles.avatarBorder,
-              {
-                borderColor: colors.background,
-                backgroundColor: colors.background,
-              },
+              { backgroundColor: colors.background },
             ]}
           >
             <Avatar source={profile.avatar} size={80} />
@@ -416,7 +412,7 @@ export default function ProfileScreen() {
             {profile.isCurrentUser ? (
               <>
                 <TouchableOpacity
-                  style={[styles.editButton, { borderColor: colors.border }]}
+                  style={[styles.editButton, { backgroundColor: isDark ? '#374151' : '#f3f4f6' }]}
                   onPress={handleEditProfile}
                 >
                   <Text style={[styles.editButtonText, { color: colors.text }]}>Edit Profile</Text>
@@ -461,7 +457,7 @@ export default function ProfileScreen() {
 
         {profile.bio && <Text style={[styles.bio, { color: colors.text }]}>{safeString(profile.bio)}</Text>}
 
-        <View style={[styles.statsRow, { borderTopColor: colors.border }]}>
+        <View style={styles.statsRow}>
           <View style={styles.statItem}>
             <Text style={[styles.statNumber, { color: colors.text }]}>{formatNumber(profile.postsCount)}</Text>
             <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Posts</Text>
@@ -487,7 +483,7 @@ export default function ProfileScreen() {
         </View>
       </View>
 
-      <View style={[styles.tabsRow, { borderBottomColor: colors.border }]}>
+      <View style={styles.tabsRow}>
         {(['posts', 'replies', 'media'] as ProfileTab[]).map((tab) => (
           <TouchableOpacity
             key={tab}
@@ -624,7 +620,7 @@ const styles = StyleSheet.create({
   },
   avatarBorder: { borderWidth: 4, borderRadius: 100 },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  editButton: { paddingHorizontal: 16, paddingVertical: 6, borderRadius: 100, borderWidth: 1 },
+  editButton: { paddingHorizontal: 16, paddingVertical: 6, borderRadius: 100 },
   editButtonText: { fontWeight: '600', fontSize: 14 },
   settingsButton: { padding: 8, borderRadius: 100 },
   followButton: {
@@ -655,12 +651,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-around',
     marginTop: 12,
     paddingTop: 12,
-    borderTopWidth: 1,
   },
   statItem: { alignItems: 'center' },
   statNumber: { fontSize: 20, fontWeight: 'bold' },
   statLabel: { fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.5 },
-  tabsRow: { flexDirection: 'row', borderBottomWidth: 1, marginTop: 12 },
+  tabsRow: { flexDirection: 'row', marginTop: 12 },
   tab: { flex: 1, paddingVertical: 12, alignItems: 'center' },
   tabActive: { borderBottomWidth: 2, borderBottomColor: '#6C63FF' },
   tabText: { fontSize: 16, fontWeight: '600' },
@@ -685,7 +680,6 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    borderBottomWidth: 1,
     zIndex: 10,
     justifyContent: 'flex-end',
   },
