@@ -84,7 +84,6 @@ export default function ProfileScreen() {
       const data = response.data;
       const profileData = data.data || data;
 
-      // ── isFollowed: accept every shape the API might send ──
       const isFollowed = !!(
         profileData.isFollowed ??
         profileData.isFollowing ??
@@ -115,7 +114,7 @@ export default function ProfileScreen() {
     },
     enabled: !!targetIdentifier || !!user,
     retry: 2,
-    staleTime: 0, // always refetch on focus so follow state stays fresh
+    staleTime: 0,
   });
 
   const normalizePost = (p: any): Post => ({
@@ -223,16 +222,13 @@ export default function ProfileScreen() {
     const wasFollowing = !!profile.isFollowed;
     const prevFollowers = profile.followersCount;
 
-    // ── Optimistic update: flip the button + count immediately ──
     setFollowPending(true);
     queryClient.setQueryData(['profile', targetIdentifier], (old: ProfileData | undefined) => {
       if (!old) return old;
       return {
         ...old,
         isFollowed: !wasFollowing,
-        followersCount: wasFollowing
-          ? Math.max(0, prevFollowers - 1)
-          : prevFollowers + 1,
+        followersCount: wasFollowing ? Math.max(0, prevFollowers - 1) : prevFollowers + 1,
       };
     });
 
@@ -242,21 +238,13 @@ export default function ProfileScreen() {
       } else {
         await api.post(`/follow/${effectiveUserId}`);
       }
-      // Refetch to reconcile with the server (in case counts differ)
       refetchProfile();
-
-      // Invalidate related queries so PostCard / Explore reflect the change
       queryClient.invalidateQueries({ queryKey: ['explore', 'trending'] });
       queryClient.invalidateQueries({ queryKey: ['user-posts'] });
     } catch (error) {
-      // Roll back on failure
       queryClient.setQueryData(['profile', targetIdentifier], (old: ProfileData | undefined) => {
         if (!old) return old;
-        return {
-          ...old,
-          isFollowed: wasFollowing,
-          followersCount: prevFollowers,
-        };
+        return { ...old, isFollowed: wasFollowing, followersCount: prevFollowers };
       });
       Alert.alert('Error', 'Failed to update follow status.');
     } finally {
@@ -290,26 +278,36 @@ export default function ProfileScreen() {
   };
 
   const openFollowList = (mode: 'followers' | 'following') => {
-    (navigation.navigate as any)('FollowList', {
-      userId: effectiveUserId,
-      mode,
-    });
+    (navigation.navigate as any)('FollowList', { userId: effectiveUserId, mode });
   };
 
-  const renderPostItem = ({ item }: { item: Post }) => (
-    <PostCard post={item} />
-  );
+  const renderPostItem = ({ item }: { item: Post }) => <PostCard post={item} />;
 
-  // ── Animated scroll value driving the sticky bar ──
+  // ── Animated scroll value ──
   const scrollY = useRef(new Animated.Value(0)).current;
+  const headerHeight = insets.top + STICKY_HEADER_HEIGHT;
 
-  const stickyOpacity = scrollY.interpolate({
+  // Header background + name fade in as you scroll past the threshold
+  const headerReveal = scrollY.interpolate({
     inputRange: [SCROLL_THRESHOLD - 40, SCROLL_THRESHOLD],
     outputRange: [0, 1],
     extrapolate: 'clamp',
   });
 
-  const stickyTranslateY = scrollY.interpolate({
+  // Back-button icon crossfades: white (over cover) → theme color (over solid header)
+  const whiteIconOpacity = scrollY.interpolate({
+    inputRange: [SCROLL_THRESHOLD - 40, SCROLL_THRESHOLD],
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
+  const themedIconOpacity = scrollY.interpolate({
+    inputRange: [SCROLL_THRESHOLD - 40, SCROLL_THRESHOLD],
+    outputRange: [0, 1],
+    extrapolate: 'clamp',
+  });
+
+  // Name block slides up slightly while fading in — subtle polish
+  const nameTranslateY = scrollY.interpolate({
     inputRange: [SCROLL_THRESHOLD - 40, SCROLL_THRESHOLD],
     outputRange: [8, 0],
     extrapolate: 'clamp',
@@ -360,81 +358,87 @@ export default function ProfileScreen() {
     );
   }
 
-  // ── Sticky top bar ──
-  const renderStickyHeader = () => {
-    const headerTop = insets.top;
-
-    return (
-      <Animated.View
-        style={[
-          styles.stickyHeader,
-          {
-            height: headerTop + STICKY_HEADER_HEIGHT,
-            paddingTop: headerTop,
-            backgroundColor: colors.background,
-            opacity: stickyOpacity,
-            transform: [{ translateY: stickyTranslateY }],
-          },
-        ]}
-        pointerEvents="box-none"
-      >
-        <View style={styles.stickyHeaderInner}>
-          <TouchableOpacity
-            onPress={handleBack}
-            style={styles.stickyBackButton}
-            activeOpacity={0.7}
-          >
-            <Feather name="arrow-left" size={22} color={colors.text} />
-          </TouchableOpacity>
-          <View style={styles.stickyTitleWrap}>
-            <View style={styles.stickyNameRow}>
-              <Text
-                style={[styles.stickyName, { color: colors.text }]}
-                numberOfLines={1}
-              >
-                {safeString(profile.name)}
-              </Text>
-              {profile.isVerified && (
-                <VerificationBadge
-                  size={14}
-                  color={colors.primary}
-                  style={styles.stickyVerifiedBadge}
-                />
-              )}
-            </View>
-            <Text
-              style={[styles.stickyPostCount, { color: colors.textSecondary }]}
-              numberOfLines={1}
-            >
-              {formatNumber(profile.postsCount)} posts
-            </Text>
-          </View>
-        </View>
-      </Animated.View>
-    );
-  };
-
-  // ── Floating back button over the cover ──
-  const renderFloatingBackButton = () => (
+  // ── Always-visible header ──
+  // Background and name fade in on scroll; the back button itself never disappears.
+  const renderStickyHeader = () => (
     <Animated.View
       style={[
-        styles.floatingBackButton,
+        styles.stickyHeader,
         {
-          top: insets.top + 8,
-          opacity: stickyOpacity.interpolate({
-            inputRange: [0, 1],
-            outputRange: [1, 0],
-          }),
+          height: headerHeight,
+          paddingTop: insets.top,
         },
       ]}
+      pointerEvents="box-none"
     >
-      <TouchableOpacity
-        onPress={handleBack}
-        style={styles.floatingBackInner}
-        activeOpacity={0.7}
-      >
-        <Feather name="arrow-left" size={22} color="#fff" />
-      </TouchableOpacity>
+      {/* Solid background that fades in over the cover as you scroll */}
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          StyleSheet.absoluteFillObject,
+          {
+            backgroundColor: colors.background,
+            opacity: headerReveal,
+          },
+        ]}
+      />
+
+      <View style={styles.stickyHeaderInner}>
+        <TouchableOpacity
+          onPress={handleBack}
+          style={styles.stickyBackButton}
+          activeOpacity={0.7}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          {/* White icon — readable over the cover photo */}
+          <Animated.View
+            pointerEvents="none"
+            style={[styles.backIconLayer, { opacity: whiteIconOpacity }]}
+          >
+            <Feather name="arrow-left" size={22} color="#ffffff" />
+          </Animated.View>
+          {/* Themed icon — readable on the solid header */}
+          <Animated.View
+            pointerEvents="none"
+            style={[styles.backIconLayer, { opacity: themedIconOpacity }]}
+          >
+            <Feather name="arrow-left" size={22} color={colors.text} />
+          </Animated.View>
+        </TouchableOpacity>
+
+        <Animated.View
+          style={[
+            styles.stickyTitleWrap,
+            {
+              opacity: headerReveal,
+              transform: [{ translateY: nameTranslateY }],
+            },
+          ]}
+          pointerEvents="none"
+        >
+          <View style={styles.stickyNameRow}>
+            <Text
+              style={[styles.stickyName, { color: colors.text }]}
+              numberOfLines={1}
+            >
+              {safeString(profile.name)}
+            </Text>
+            {profile.isVerified && (
+              <VerificationBadge
+                size={14}
+                color={colors.primary}
+                style={styles.stickyVerifiedBadge}
+              />
+            )}
+          </View>
+          <Text
+            style={[styles.stickyPostCount, { color: colors.textSecondary }]}
+            numberOfLines={1}
+          >
+            {formatNumber(profile.postsCount)} posts
+          </Text>
+        </Animated.View>
+      </View>
     </Animated.View>
   );
 
@@ -451,12 +455,7 @@ export default function ProfileScreen() {
 
       <View style={styles.header}>
         <View style={styles.avatarRow}>
-          <View
-            style={[
-              styles.avatarBorder,
-              { backgroundColor: colors.background },
-            ]}
-          >
+          <View style={[styles.avatarBorder, { backgroundColor: colors.background }]}>
             <Avatar source={profile.avatar} size={80} />
           </View>
           <View style={styles.headerActions}>
@@ -514,11 +513,7 @@ export default function ProfileScreen() {
             {safeString(profile.name)}
           </Text>
           {profile.isVerified && (
-            <VerificationBadge
-              size={18}
-              color={colors.primary}
-              style={styles.verifiedBadge}
-            />
+            <VerificationBadge size={18} color={colors.primary} style={styles.verifiedBadge} />
           )}
         </View>
         <Text style={[styles.username, { color: colors.textSecondary }]}>@{safeString(profile.username)}</Text>
@@ -530,21 +525,11 @@ export default function ProfileScreen() {
             <Text style={[styles.statNumber, { color: colors.text }]}>{formatNumber(profile.postsCount)}</Text>
             <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Posts</Text>
           </View>
-
-          <TouchableOpacity
-            style={styles.statItem}
-            onPress={() => openFollowList('followers')}
-            activeOpacity={0.7}
-          >
+          <TouchableOpacity style={styles.statItem} onPress={() => openFollowList('followers')} activeOpacity={0.7}>
             <Text style={[styles.statNumber, { color: colors.text }]}>{formatNumber(profile.followersCount)}</Text>
             <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Followers</Text>
           </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.statItem}
-            onPress={() => openFollowList('following')}
-            activeOpacity={0.7}
-          >
+          <TouchableOpacity style={styles.statItem} onPress={() => openFollowList('following')} activeOpacity={0.7}>
             <Text style={[styles.statNumber, { color: colors.text }]}>{formatNumber(profile.followingCount)}</Text>
             <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Following</Text>
           </TouchableOpacity>
@@ -603,7 +588,6 @@ export default function ProfileScreen() {
             )
           }
         />
-        {renderFloatingBackButton()}
         {renderStickyHeader()}
       </View>
     );
@@ -622,7 +606,6 @@ export default function ProfileScreen() {
         scrollEventThrottle={16}
       >
         {renderHeader()}
-
         <View style={styles.content}>
           {activeTab === 'replies' && (
             <View style={styles.emptyState}>
@@ -644,7 +627,6 @@ export default function ProfileScreen() {
           )}
         </View>
       </Animated.ScrollView>
-      {renderFloatingBackButton()}
       {renderStickyHeader()}
     </View>
   );
@@ -730,20 +712,7 @@ const styles = StyleSheet.create({
   tabText: { fontSize: 16, fontWeight: '600' },
   tabTextActive: { color: '#6C63FF' },
 
-  floatingBackButton: {
-    position: 'absolute',
-    left: 16,
-    zIndex: 20,
-  },
-  floatingBackInner: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)',
-  },
-
+  // ── Always-visible header ──
   stickyHeader: {
     position: 'absolute',
     top: 0,
@@ -755,18 +724,28 @@ const styles = StyleSheet.create({
   stickyHeaderInner: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
+    paddingHorizontal: 12,
     height: STICKY_HEADER_HEIGHT,
   },
   stickyBackButton: {
-    width: 40,
-    height: 40,
+    width: 34,
+    height: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  backIconLayer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },
   stickyTitleWrap: {
     flex: 1,
-    marginLeft: 4,
+    marginLeft: 8,
   },
   stickyNameRow: {
     flexDirection: 'row',
