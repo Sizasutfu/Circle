@@ -68,6 +68,7 @@ export default function SidebarContent(props: DrawerContentComponentProps) {
 
   const handleGoLive = () => {
     props.navigation.closeDrawer();
+    // Small delay so the drawer finishes closing before the modal opens
     setTimeout(() => {
       openSetup();
     }, 200);
@@ -88,6 +89,7 @@ export default function SidebarContent(props: DrawerContentComponentProps) {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
+        {/* ─── Logo ─── */}
         <View style={styles.logoContainer}>
           <Image
             source={require('../../assets/icon.png')}
@@ -96,6 +98,7 @@ export default function SidebarContent(props: DrawerContentComponentProps) {
           />
         </View>
 
+        {/* ─── Menu Items ─── */}
         <View style={styles.menuSection}>
           {menuItems.map((item) => {
             const isActive =
@@ -109,6 +112,8 @@ export default function SidebarContent(props: DrawerContentComponentProps) {
               (item.route === 'Settings' && currentRoute === 'Settings') ||
               (item.route === 'WhisperInbox' && currentRoute === 'WhisperInbox') ||
               (item.route === 'Dashboard' && currentRoute === 'Dashboard');
+
+            const badgeCount = Number(item.badge) || 0;
 
             return (
               <TouchableOpacity
@@ -135,10 +140,10 @@ export default function SidebarContent(props: DrawerContentComponentProps) {
                 ]}>
                   {item.label}
                 </Text>
-                {item.badge && item.badge > 0 && (
+                {!!badgeCount && badgeCount > 0 && (
                   <View style={[styles.badge, { backgroundColor: colors.primary }]}>
                     <Text style={styles.badgeText}>
-                      {item.badge > 99 ? '99+' : item.badge}
+                      {badgeCount > 99 ? '99+' : badgeCount}
                     </Text>
                   </View>
                 )}
@@ -147,6 +152,7 @@ export default function SidebarContent(props: DrawerContentComponentProps) {
           })}
         </View>
 
+        {/* ─── Post Button ─── */}
         <TouchableOpacity
           style={[styles.postButton, { backgroundColor: colors.primary }]}
           onPress={() => {
@@ -158,6 +164,7 @@ export default function SidebarContent(props: DrawerContentComponentProps) {
           <Text style={styles.postButtonText}>Post</Text>
         </TouchableOpacity>
 
+        {/* ─── Go Live Button ─── */}
         <TouchableOpacity
           style={[styles.goLiveButton, { borderColor: '#ef4444' }]}
           onPress={handleGoLive}
@@ -170,6 +177,7 @@ export default function SidebarContent(props: DrawerContentComponentProps) {
           <Text style={styles.goLiveText}>Go Live</Text>
         </TouchableOpacity>
 
+        {/* ─── User Profile Section ─── */}
         {user && (
           <View style={[styles.userSection, { borderTopColor: colors.border }]}>
             <TouchableOpacity
@@ -199,6 +207,7 @@ export default function SidebarContent(props: DrawerContentComponentProps) {
           </View>
         )}
 
+        {/* ─── Logout Button ─── */}
         {user && (
           <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
             <Feather name="log-out" size={20} color="#ef4444" />
@@ -211,7 +220,9 @@ export default function SidebarContent(props: DrawerContentComponentProps) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: {
+    flex: 1,
+  },
   scrollContent: {
     paddingHorizontal: 16,
     paddingTop: Platform.OS === 'ios' ? 20 : 16,
@@ -223,8 +234,14 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     marginBottom: 4,
   },
-  logoImage: { width: 32, height: 32, borderRadius: 8 },
-  menuSection: { marginTop: 8 },
+  logoImage: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+  },
+  menuSection: {
+    marginTop: 8,
+  },
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -233,8 +250,15 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginVertical: 2,
   },
-  menuIcon: { marginRight: 16, width: 24, textAlign: 'center' },
-  menuLabel: { fontSize: 18, flex: 1 },
+  menuIcon: {
+    marginRight: 16,
+    width: 24,
+    textAlign: 'center',
+  },
+  menuLabel: {
+    fontSize: 18,
+    flex: 1,
+  },
   badge: {
     paddingHorizontal: 8,
     paddingVertical: 2,
@@ -243,7 +267,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  badgeText: { color: 'white', fontSize: 11, fontWeight: '600' },
+  badgeText: {
+    color: 'white',
+    fontSize: 11,
+    fontWeight: '600',
+  },
   postButton: {
     paddingVertical: 14,
     borderRadius: 30,
@@ -252,8 +280,13 @@ const styles = StyleSheet.create({
     marginTop: 16,
     marginBottom: 8,
   },
-  postButtonText: { color: 'white', fontSize: 16, fontWeight: '700' },
+  postButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '700',
+  },
 
+  // ── Go Live button ──
   goLiveButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -278,7 +311,11 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     backgroundColor: '#ef4444',
   },
-  goLiveText: { color: '#ef4444', fontSize: 15, fontWeight: '700' },
+  goLiveText: {
+    color: '#ef4444',
+    fontSize: 15,
+    fontWeight: '700',
+  },
 
   userSection: {
     borderTopWidth: 1,
@@ -291,11 +328,25 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 4,
   },
-  userInfo: { flex: 1, marginLeft: 12 },
-  userNameRow: { flexDirection: 'row', alignItems: 'center' },
-  userName: { fontSize: 15, fontWeight: '700', flexShrink: 1 },
-  verifiedBadge: { marginLeft: 4 },
-  userHandle: { fontSize: 14 },
+  userInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  userNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  userName: {
+    fontSize: 15,
+    fontWeight: '700',
+    flexShrink: 1,
+  },
+  verifiedBadge: {
+    marginLeft: 4,
+  },
+  userHandle: {
+    fontSize: 14,
+  },
   logoutButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -304,5 +355,9 @@ const styles = StyleSheet.create({
     marginTop: 8,
     borderRadius: 12,
   },
-  logoutText: { fontSize: 16, fontWeight: '500', marginLeft: 12 },
+  logoutText: {
+    fontSize: 16,
+    fontWeight: '500',
+    marginLeft: 12,
+  },
 });
