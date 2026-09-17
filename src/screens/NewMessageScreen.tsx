@@ -14,6 +14,7 @@ import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../contexts/ThemeContext';
 import { Avatar } from '../components/Avatar';
+import VerificationBadge from '../components/VerificationBadge';
 import api from '../api/client';
 import { resolveMediaUrl } from '../lib/media';
 
@@ -23,6 +24,8 @@ interface SearchUser {
   username?: string;
   avatar?: string | null;
   picture?: string | null;
+  isVerified?: boolean;
+  verified?: boolean;
 }
 
 const SEARCH_DEBOUNCE_MS = 350;
@@ -115,6 +118,7 @@ export default function NewMessageScreen() {
 
   const renderUser = ({ item }: { item: SearchUser }) => {
     const isOpening = openingId === item.id;
+    const isVerified = !!(item.isVerified ?? item.verified);
     return (
       <TouchableOpacity
         style={styles.userRow}
@@ -122,15 +126,20 @@ export default function NewMessageScreen() {
         disabled={openingId != null}
         activeOpacity={0.7}
       >
-        <Avatar
-          source={resolveMediaUrl(item.avatar || item.picture || null)}
-          size={44}
-          fallback={item.name || item.username || 'User'}
-        />
+        <Avatar source={resolveMediaUrl(item.avatar || item.picture || null)} size={44} />
         <View style={styles.userInfo}>
-          <Text style={[styles.userName, { color: colors.text }]} numberOfLines={1}>
-            {item.name || item.username || 'User'}
-          </Text>
+          <View style={styles.nameRow}>
+            <Text style={[styles.userName, { color: colors.text }]} numberOfLines={1}>
+              {item.name || item.username || 'User'}
+            </Text>
+            {isVerified && (
+              <VerificationBadge
+                size={14}
+                color={colors.primary}
+                style={styles.verifiedBadge}
+              />
+            )}
+          </View>
           {!!item.username && (
             <Text style={[styles.userHandle, { color: colors.textSecondary }]} numberOfLines={1}>
               @{item.username}
@@ -171,15 +180,7 @@ export default function NewMessageScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
       {/* ─── Header ─── */}
-      <View
-        style={[
-          styles.header,
-          {
-            backgroundColor: colors.background,
-            borderBottomColor: colors.border,
-          },
-        ]}
-      >
+      <View style={[styles.header, { backgroundColor: colors.background }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Feather name="arrow-left" size={24} color={colors.text} />
         </TouchableOpacity>
@@ -230,7 +231,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 12,
     paddingVertical: 10,
-    borderBottomWidth: 1,
   },
   backButton: {
     padding: 4,
@@ -277,9 +277,17 @@ const styles = StyleSheet.create({
   userInfo: {
     flex: 1,
   },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   userName: {
     fontSize: 15,
     fontWeight: '600',
+    flexShrink: 1,
+  },
+  verifiedBadge: {
+    marginLeft: 4,
   },
   userHandle: {
     fontSize: 13,
