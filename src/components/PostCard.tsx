@@ -11,8 +11,6 @@ import {
   Alert,
   StyleSheet,
   Dimensions,
-  useWindowDimensions,
-  StatusBar,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -22,6 +20,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
 import { usePostActions } from '../hooks/useFeed';
 import { useTheme } from '../contexts/ThemeContext';
+import { useLive } from '../contexts/LiveContext';
 import { Avatar } from './Avatar';
 import VerificationBadge from './VerificationBadge';
 import { timeAgo, formatNumber, safeString } from '../utils/helpers';
@@ -123,10 +122,6 @@ function throttle(fn: Function, limit: number) {
   };
 }
 
-function SafeText({ children, style, numberOfLines }: any) {
-  return <Text style={style} numberOfLines={numberOfLines}>{safeString(children)}</Text>;
-}
-
 export interface Post {
   id: string;
   text: string;
@@ -185,7 +180,7 @@ function PostCard({
   const { user: currentUser } = useAuth();
   const { colors, isDark } = useTheme();
   const { likePost, unlikePost, repost: repostPost } = usePostActions(currentUser);
-  const windowDims = useWindowDimensions();
+  const { watchSession } = useLive();
 
   const {
     id = '', text = '', image = null, video = null, createdAt = '',
@@ -224,6 +219,9 @@ function PostCard({
   const groupTopic = groupId ? (groupMap.get(groupId)?.displayName || groupMap.get(groupId)?.topic) : null;
   const relativeTime = timeAgo(createdAt);
 
+  // ✅ Live post detection
+  const isLivePost = !!isLive && !!liveSessionId;
+
   const [isExpanded, setIsExpanded] = useState(false);
   const [videoError, setVideoError] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -237,21 +235,11 @@ function PostCard({
   const videoViewRecorded = useRef(false);
   const [lightboxVisible, setLightboxVisible] = useState(false);
 
-  // ── Inline video playback state ──
   const [isPlaying, setIsPlaying] = useState(false);
   const [showVideoOverlay, setShowVideoOverlay] = useState(true);
   const [positionMs, setPositionMs] = useState(0);
   const [durationMs, setDurationMs] = useState(0);
   const [progressBarWidth, setProgressBarWidth] = useState(0);
-
-  // ── Fullscreen video state ──
-  const [fullscreen, setFullscreen] = useState(false);
-  const [fsIsPlaying, setFsIsPlaying] = useState(false);
-  const [fsShowOverlay, setFsShowOverlay] = useState(false);
-  const [fsPositionMs, setFsPositionMs] = useState(0);
-  const [fsDurationMs, setFsDurationMs] = useState(0);
-  const [fsProgressBarWidth, setFsProgressBarWidth] = useState(0);
-  const fullscreenVideoRef = useRef<Video>(null);
 
   const isMentionedInText = useMemo(() => {
     if (!currentUser || !text) return false;
@@ -267,6 +255,11 @@ function PostCard({
   const handleEditPost = () => {
     setIsDropdownOpen(false);
     (navigation.navigate as any)('EditPost', { postId: id });
+  };
+
+  const handleOpenLive = () => {
+    if (!liveSessionId) return;
+    watchSession(liveSessionId);
   };
 
   const previewFetchedRef = useRef(false);
@@ -311,21 +304,16 @@ function PostCard({
     };
   }, [id, text, image, video, isVisible]);
 
-  // Pause + reset when scrolling out of view (and close fullscreen if open)
   useEffect(() => {
     if (!isVisible) {
       videoRef.current?.pauseAsync?.().catch(() => {});
-      fullscreenVideoRef.current?.pauseAsync?.().catch(() => {});
       setIsPlaying(false);
       setShowVideoOverlay(true);
-      setFullscreen(false);
     }
   }, [isVisible]);
 
-  // ── Inline video handlers ──
   const handleVideoPlaybackStatus = (status: AVPlaybackStatus) => {
     if (!status.isLoaded) return;
-
     setIsPlaying(!!status.isPlaying);
     setPositionMs(status.positionMillis ?? 0);
     setDurationMs(status.durationMillis ?? 0);
@@ -341,10 +329,8 @@ function PostCard({
     if (videoViewRecorded.current) return;
     if (status.durationMillis && status.positionMillis / status.durationMillis > 0.3) {
       videoViewRecorded.current = true;
-
       const watchedSeconds = Math.round(status.positionMillis / 1000);
       const duration = Math.round(status.durationMillis / 1000);
-
       api.post(`/posts/${id}/video-view`, { watchedSeconds, duration })
         .then((res) => {
           const body = res.data?.data ?? res.data ?? {};
@@ -404,82 +390,6 @@ function PostCard({
       setPositionMs(targetMs);
     } catch (err) {
       console.warn('Seek failed:', err);
-    }
-  };
-
-  // ── Fullscreen open / close ──
-  const openFullscreen = async () => {
-    try {
-      const status = await videoRef.current?.getStatusAsync();
-      if (status?.isLoaded) {
-        setFsPositionMs(status.positionMillis || 0);
-        setFsDurationMs(status.durationMillis || 0);
-        if (status.isPlaying) {
-          await videoRef.current?.pauseAsync();
-        }
-      }
-      setFsIsPlaying(false);
-      setFsShowOverlay(false);
-      setFullscreen(true);
-    } catch (err) {
-      console.warn('Open fullscreen failed:', err);
-    }
-  };
-
-  const closeFullscreen = async () => {
-    try {
-      await fullscreenVideoRef.current?.pauseAsync();
-    } catch {}
-    setFullscreen(false);
-    setFsIsPlaying(false);
-    setFsShowOverlay(false);
-  };
-
-  // ── Fullscreen video handlers ──
-  const handleFsPlaybackStatus = (status: AVPlaybackStatus) => {
-    if (!status.isLoaded) return;
-    setFsIsPlaying(!!status.isPlaying);
-    setFsPositionMs(status.positionMillis ?? 0);
-    setFsDurationMs(status.durationMillis ?? 0);
-
-    if (status.didJustFinish) {
-      fullscreenVideoRef.current?.setPositionAsync(0).catch(() => {});
-      fullscreenVideoRef.current?.pauseAsync().catch(() => {});
-      setFsIsPlaying(false);
-      setFsShowOverlay(true);
-      setFsPositionMs(0);
-    }
-  };
-
-  const handleFsToggle = async () => {
-    if (!fullscreenVideoRef.current) return;
-    try {
-      const status = await fullscreenVideoRef.current.getStatusAsync();
-      if (!status.isLoaded) return;
-      if (status.isPlaying) {
-        await fullscreenVideoRef.current.pauseAsync();
-        setFsShowOverlay(true);
-      } else {
-        if (status.durationMillis && status.positionMillis >= status.durationMillis - 100) {
-          await fullscreenVideoRef.current.setPositionAsync(0);
-        }
-        await fullscreenVideoRef.current.playAsync();
-        setFsShowOverlay(false);
-      }
-    } catch (err) {
-      console.warn('Fullscreen toggle failed:', err);
-    }
-  };
-
-  const handleFsSeek = async (locationX: number) => {
-    if (!fullscreenVideoRef.current || !fsDurationMs || !fsProgressBarWidth) return;
-    const ratio = Math.max(0, Math.min(1, locationX / fsProgressBarWidth));
-    const targetMs = Math.round(ratio * fsDurationMs);
-    try {
-      await fullscreenVideoRef.current.setPositionAsync(targetMs);
-      setFsPositionMs(targetMs);
-    } catch (err) {
-      console.warn('Fs seek failed:', err);
     }
   };
 
@@ -560,7 +470,56 @@ function PostCard({
     );
   };
 
+  // ✅ Live preview tile — replaces media for live posts
+  const renderLivePreview = () => {
+    return (
+      <TouchableOpacity
+        activeOpacity={0.9}
+        onPress={handleOpenLive}
+        style={[styles.livePreview, { backgroundColor: '#0f172a' }]}
+      >
+        {/* Subtle radial pattern using two stacked views */}
+        <View style={styles.liveGlow} pointerEvents="none" />
+
+        {/* LIVE badge top-left */}
+        <View style={styles.liveBadge}>
+          <View style={styles.liveDot} />
+          <Text style={styles.liveBadgeText}>LIVE</Text>
+        </View>
+
+        {/* Center: avatar + name + hint */}
+        <View style={styles.liveCenter}>
+          <View style={styles.liveAvatarWrap}>
+            {avatarUrl ? (
+              <Image
+                source={{ uri: avatarUrl }}
+                style={styles.liveAvatar}
+                contentFit="cover"
+              />
+            ) : (
+              <View style={[styles.liveAvatar, styles.liveAvatarFallback]}>
+                <Feather name="user" size={28} color="#9ca3af" />
+              </View>
+            )}
+          </View>
+          <Text style={styles.liveName} numberOfLines={1}>
+            {displayName}
+          </Text>
+          <Text style={styles.liveHint}>Tap to watch live</Text>
+        </View>
+
+        {/* Bottom-right play indicator */}
+        <View style={styles.livePlayWrap}>
+          <Feather name="play" size={18} color="#fff" style={{ marginLeft: 2 }} />
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
   const renderMedia = () => {
+    // ✅ Live posts take priority — no need for image/video
+    if (isLivePost) return renderLivePreview();
+
     if (video) {
       const progressRatio = durationMs > 0 ? Math.min(1, positionMs / durationMs) : 0;
 
@@ -591,7 +550,6 @@ function PostCard({
                 onPlaybackStatusUpdate={handleVideoPlaybackStatus}
               />
 
-              {/* Center play/pause overlay */}
               {showVideoOverlay && (
                 <TouchableOpacity
                   activeOpacity={0.8}
@@ -609,7 +567,6 @@ function PostCard({
                 </TouchableOpacity>
               )}
 
-              {/* Video views — top-left */}
               {localVideoViews > 0 && (
                 <View style={styles.videoViewsOverlay} pointerEvents="none">
                   <Feather name="eye" size={12} color="#ffffff" />
@@ -619,23 +576,11 @@ function PostCard({
                 </View>
               )}
 
-              {/* ✅ Fullscreen button — top-right, always visible */}
-              <TouchableOpacity
-                style={styles.fullscreenButton}
-                onPress={openFullscreen}
-                activeOpacity={0.7}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <Feather name="maximize-2" size={16} color="#ffffff" />
-              </TouchableOpacity>
-
-              {/* Progress bar + timestamp — bottom */}
               {durationMs > 0 && (
                 <View style={styles.progressContainer}>
                   <Text style={styles.progressTime}>
                     {formatDuration(positionMs)}
                   </Text>
-
                   <TouchableOpacity
                     activeOpacity={1}
                     onLayout={(e) => setProgressBarWidth(e.nativeEvent.layout.width)}
@@ -657,7 +602,6 @@ function PostCard({
                       />
                     </View>
                   </TouchableOpacity>
-
                   <Text style={styles.progressTime}>
                     {formatDuration(durationMs)}
                   </Text>
@@ -694,131 +638,6 @@ function PostCard({
     }
 
     return null;
-  };
-
-  // ── Fullscreen modal ──
-  const renderFullscreenModal = () => {
-    if (!video) return null;
-
-    const fsProgressRatio =
-      fsDurationMs > 0 ? Math.min(1, fsPositionMs / fsDurationMs) : 0;
-
-    return (
-      <Modal
-        visible={fullscreen}
-        transparent={false}
-        animationType="fade"
-        onRequestClose={closeFullscreen}
-        statusBarTranslucent
-        supportedOrientations={[
-          'portrait',
-          'landscape',
-          'landscape-left',
-          'landscape-right',
-        ]}
-      >
-        <View style={styles.fsContainer}>
-          <StatusBar hidden />
-
-          {/* Video fills the screen */}
-          <TouchableOpacity
-            activeOpacity={1}
-            onPress={handleFsToggle}
-            style={styles.fsVideoWrap}
-          >
-            <Video
-              ref={fullscreenVideoRef}
-              source={{ uri: video }}
-              style={styles.fsVideo}
-              resizeMode={ResizeMode.CONTAIN}
-              shouldPlay
-              isLooping={false}
-              isMuted={false}
-              useNativeControls={false}
-              progressUpdateIntervalMillis={250}
-              onPlaybackStatusUpdate={handleFsPlaybackStatus}
-              onLoad={async () => {
-                // Seek to the position we came from, then keep playing
-                try {
-                  if (fsPositionMs > 0) {
-                    await fullscreenVideoRef.current?.setPositionAsync(fsPositionMs);
-                  }
-                  await fullscreenVideoRef.current?.playAsync();
-                } catch {}
-              }}
-            />
-
-            {/* Center play/pause overlay — only when paused */}
-            {fsShowOverlay && !fsIsPlaying && (
-              <View style={styles.fsCenterOverlay} pointerEvents="none">
-                <View style={styles.centerPlayButton}>
-                  <Feather name="play" size={36} color="#ffffff" style={{ marginLeft: 4 }} />
-                </View>
-              </View>
-            )}
-          </TouchableOpacity>
-
-          {/* Top bar — close + title */}
-          <SafeAreaView style={styles.fsTopBar} edges={['top']} pointerEvents="box-none">
-            <View style={styles.fsTopBarInner}>
-              <TouchableOpacity
-                onPress={closeFullscreen}
-                style={styles.fsIconButton}
-                activeOpacity={0.7}
-              >
-                <Feather name="x" size={22} color="#ffffff" />
-              </TouchableOpacity>
-
-              <View style={styles.fsTitleWrap} pointerEvents="none">
-                <Text style={styles.fsTitle} numberOfLines={1}>
-                  {displayName}
-                </Text>
-                {!!username && (
-                  <Text style={styles.fsSubtitle} numberOfLines={1}>
-                    @{username}
-                  </Text>
-                )}
-              </View>
-
-              <View style={styles.fsIconButton} />
-            </View>
-          </SafeAreaView>
-
-          {/* Bottom bar — progress + time */}
-          {fsDurationMs > 0 && (
-            <SafeAreaView style={styles.fsBottomBar} edges={['bottom']} pointerEvents="box-none">
-              <View style={styles.fsBottomBarInner}>
-                <Text style={styles.progressTime}>{formatDuration(fsPositionMs)}</Text>
-
-                <TouchableOpacity
-                  activeOpacity={1}
-                  onLayout={(e) => setFsProgressBarWidth(e.nativeEvent.layout.width)}
-                  onPress={(e) => handleFsSeek(e.nativeEvent.locationX)}
-                  style={styles.fsProgressBarTouchable}
-                >
-                  <View style={styles.fsProgressTrack}>
-                    <View
-                      style={[
-                        styles.fsProgressFill,
-                        { width: `${fsProgressRatio * 100}%` },
-                      ]}
-                    />
-                    <View
-                      style={[
-                        styles.fsProgressThumb,
-                        { left: `${fsProgressRatio * 100}%` },
-                      ]}
-                    />
-                  </View>
-                </TouchableOpacity>
-
-                <Text style={styles.progressTime}>{formatDuration(fsDurationMs)}</Text>
-              </View>
-            </SafeAreaView>
-          )}
-        </View>
-      </Modal>
-    );
   };
 
   const renderViewCounts = () => {
@@ -912,7 +731,8 @@ function PostCard({
     );
   }
 
-  const hasMedia = !!(image || video);
+  // ✅ Live posts always have media (the preview)
+  const hasMedia = !!(image || video) || isLivePost;
 
   return (
     <View style={[styles.card, { borderBottomColor: colors.border }]}>
@@ -940,6 +760,13 @@ function PostCard({
                   <VerificationBadge size={14} style={styles.verifiedBadge} />
                 )}
               </TouchableOpacity>
+
+              {isLivePost && (
+                <View style={styles.liveIndicator}>
+                  <View style={styles.liveIndicatorDot} />
+                  <Text style={styles.liveIndicatorText}>LIVE</Text>
+                </View>
+              )}
 
               {renderMentionBadge()}
 
@@ -1034,7 +861,6 @@ function PostCard({
         </View>
       </View>
 
-      {/* Image lightbox */}
       <Modal visible={lightboxVisible} transparent>
         <SafeAreaView style={styles.lightbox}>
           <TouchableOpacity style={styles.lightboxClose} onPress={closeLightbox}>
@@ -1058,9 +884,6 @@ function PostCard({
           </ScrollView>
         </SafeAreaView>
       </Modal>
-
-      {/* ✅ Fullscreen video modal */}
-      {renderFullscreenModal()}
     </View>
   );
 }
@@ -1113,6 +936,31 @@ const styles = StyleSheet.create({
   time: { fontSize: 13, marginLeft: 4 },
   groupBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12, marginLeft: 6 },
   groupBadgeText: { fontSize: 11 },
+
+  // Live indicator next to author name
+  liveIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    backgroundColor: '#ef4444',
+    marginLeft: 6,
+  },
+  liveIndicatorDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: '#fff',
+  },
+  liveIndicatorText: {
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+
   actionsRow: { flexDirection: 'row', alignItems: 'center' },
   viewCountRow: { flexDirection: 'row', alignItems: 'center', marginRight: 8 },
   viewCountText: { fontSize: 12, marginLeft: 4 },
@@ -1146,6 +994,100 @@ const styles = StyleSheet.create({
   postText: { fontSize: 15, lineHeight: 22, marginTop: 6 },
   showMore: { fontSize: 14, marginTop: 4 },
   fullBleedWrapper: { width: '100%', marginTop: 12 },
+
+  // ── Live preview tile ──
+  livePreview: {
+    width: '100%',
+    height: SCREEN_WIDTH * 0.75,
+    position: 'relative',
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  liveGlow: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    width: 260,
+    height: 260,
+    marginLeft: -130,
+    marginTop: -130,
+    borderRadius: 130,
+    backgroundColor: 'rgba(239,68,68,0.15)',
+  },
+  liveBadge: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: '#ef4444',
+    zIndex: 2,
+  },
+  liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#fff',
+  },
+  liveBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+  },
+  liveCenter: {
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  liveAvatarWrap: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    overflow: 'hidden',
+    borderWidth: 3,
+    borderColor: '#ef4444',
+    marginBottom: 12,
+  },
+  liveAvatar: {
+    width: '100%',
+    height: '100%',
+  },
+  liveAvatarFallback: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1f2937',
+  },
+  liveName: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+    textAlign: 'center',
+    maxWidth: SCREEN_WIDTH * 0.7,
+  },
+  liveHint: {
+    color: 'rgba(255,255,255,0.75)',
+    fontSize: 12,
+    marginTop: 4,
+    fontWeight: '500',
+  },
+  livePlayWrap: {
+    position: 'absolute',
+    bottom: 12,
+    right: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
+  },
 
   mediaContainer: {
     width: '100%',
@@ -1196,20 +1138,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // ✅ Fullscreen button (inline video)
-  fullscreenButton: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  // Progress bar (inline video)
   progressContainer: {
     position: 'absolute',
     bottom: 0,
@@ -1257,105 +1185,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     marginLeft: -5,
     top: -3.5,
-  },
-
-  // ── Fullscreen modal styles ──
-  fsContainer: {
-    flex: 1,
-    backgroundColor: '#000',
-  },
-  fsVideoWrap: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  fsVideo: {
-    width: '100%',
-    height: '100%',
-  },
-  fsCenterOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  fsTopBar: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-  },
-  fsTopBarInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  fsIconButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.45)',
-  },
-  fsTitleWrap: {
-    flex: 1,
-    marginHorizontal: 12,
-    alignItems: 'center',
-  },
-  fsTitle: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  fsSubtitle: {
-    color: 'rgba(255,255,255,0.7)',
-    fontSize: 12,
-    marginTop: 1,
-  },
-
-  fsBottomBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-  },
-  fsBottomBarInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 10,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-  },
-  fsProgressBarTouchable: {
-    flex: 1,
-    paddingVertical: 10,
-  },
-  fsProgressTrack: {
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.3)',
-    position: 'relative',
-    justifyContent: 'center',
-  },
-  fsProgressFill: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    backgroundColor: '#ffffff',
-    borderRadius: 2,
-  },
-  fsProgressThumb: {
-    position: 'absolute',
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#ffffff',
-    marginLeft: -6,
-    top: -4,
   },
 
   engagementBar: {

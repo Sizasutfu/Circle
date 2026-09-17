@@ -13,6 +13,7 @@ import { Feather } from '@expo/vector-icons';
 import { DrawerContentComponentProps } from '@react-navigation/drawer';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { useLive } from '../contexts/LiveContext';
 import { Avatar } from './Avatar';
 
 interface SidebarItem {
@@ -26,6 +27,7 @@ interface SidebarItem {
 export default function SidebarContent(props: DrawerContentComponentProps) {
   const { user, logout } = useAuth();
   const { colors, isDark } = useTheme();
+  const { openSetup } = useLive();
 
   const menuItems: SidebarItem[] = [
     { icon: 'home', label: 'Home', route: 'Feed' },
@@ -50,6 +52,14 @@ export default function SidebarContent(props: DrawerContentComponentProps) {
       // @ts-ignore
       props.navigation.navigate(route);
     }
+  };
+
+  const handleGoLive = () => {
+    props.navigation.closeDrawer();
+    // Small delay so the drawer finishes closing before the modal opens
+    setTimeout(() => {
+      openSetup();
+    }, 200);
   };
 
   const handleLogout = async () => {
@@ -133,6 +143,19 @@ export default function SidebarContent(props: DrawerContentComponentProps) {
           }}
         >
           <Text style={styles.postButtonText}>Post</Text>
+        </TouchableOpacity>
+
+        {/* ─── Go Live Button ─── */}
+        <TouchableOpacity
+          style={[styles.goLiveButton, { borderColor: '#ef4444' }]}
+          onPress={handleGoLive}
+          activeOpacity={0.85}
+        >
+          <View style={styles.goLiveIconWrap}>
+            <View style={styles.goLiveDot} />
+            <Feather name="radio" size={16} color="#ef4444" />
+          </View>
+          <Text style={styles.goLiveText}>Go Live</Text>
         </TouchableOpacity>
 
         {/* ─── User Profile Section ─── */}
@@ -238,6 +261,38 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
   },
+
+  // ── Go Live button ──
+  goLiveButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 30,
+    borderWidth: 1.5,
+    marginBottom: 8,
+  },
+  goLiveIconWrap: {
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  goLiveDot: {
+    position: 'absolute',
+    top: -2,
+    right: -4,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#ef4444',
+  },
+  goLiveText: {
+    color: '#ef4444',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+
   userSection: {
     borderTopWidth: 1,
     paddingTop: 16,
