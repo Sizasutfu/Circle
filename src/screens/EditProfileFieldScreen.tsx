@@ -234,7 +234,7 @@ export default function EditProfileFieldScreen() {
           style={[
             styles.imagePreview,
             isCover ? styles.coverPreview : styles.avatarPreview,
-            { backgroundColor: isDark ? '#374151' : '#f3f4f6', borderColor: colors.border },
+            { backgroundColor: isDark ? '#374151' : '#f3f4f6' },
           ]}
           onPress={pickImage}
           activeOpacity={0.8}
@@ -243,7 +243,7 @@ export default function EditProfileFieldScreen() {
             <Image
               source={{ uri: displayUri }}
               style={styles.imagePreviewContent}
-              contentFit={isCover ? 'cover' : 'cover'}
+              contentFit="cover"
             />
           ) : (
             <View style={styles.imageEmpty}>
@@ -268,7 +268,7 @@ export default function EditProfileFieldScreen() {
 
         {!!displayUri && (
           <TouchableOpacity
-            style={[styles.removeButton, { borderColor: '#ef4444' }]}
+            style={styles.removeButton}
             onPress={() => {
               setPendingImage(null);
               setValue('');
@@ -289,10 +289,7 @@ export default function EditProfileFieldScreen() {
       <View
         style={[
           styles.inputWrapper,
-          {
-            backgroundColor: colors.input,
-            borderColor: colors.inputBorder,
-          },
+          { backgroundColor: colors.input },
         ]}
       >
         <TextInput
@@ -334,12 +331,7 @@ export default function EditProfileFieldScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         {/* Header */}
-        <View
-          style={[
-            styles.header,
-            { borderBottomColor: colors.border, backgroundColor: colors.background },
-          ]}
-        >
+        <View style={[styles.header, { backgroundColor: colors.background }]}>
           <TouchableOpacity onPress={() => navigation.goBack()} disabled={isSaving}>
             <Text style={[styles.cancelText, { color: colors.textSecondary }]}>Cancel</Text>
           </TouchableOpacity>
@@ -381,7 +373,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderBottomWidth: 1,
   },
   headerTitle: { fontSize: 17, fontWeight: '700' },
   cancelText: { fontSize: 16 },
@@ -399,7 +390,6 @@ const styles = StyleSheet.create({
   // ── Text field ──
   textSection: {},
   inputWrapper: {
-    borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
@@ -429,7 +419,6 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   imagePreview: {
-    borderWidth: 1,
     borderRadius: 16,
     overflow: 'hidden',
     alignItems: 'center',
@@ -478,7 +467,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 24,
-    borderWidth: 1,
   },
   removeButtonText: {
     color: '#ef4444',
