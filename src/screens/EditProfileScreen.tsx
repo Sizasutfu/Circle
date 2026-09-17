@@ -87,7 +87,7 @@ export default function EditProfileScreen() {
     options: { multiline?: boolean } = {}
   ) => (
     <TouchableOpacity
-      style={[styles.row, { borderBottomColor: colors.border }]}
+      style={styles.row}
       onPress={() => goToField(field, value)}
       activeOpacity={0.7}
     >
@@ -110,7 +110,7 @@ export default function EditProfileScreen() {
   if (isLoading || !profile) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
-        <View style={[styles.header, { borderBottomColor: colors.border, backgroundColor: colors.background }]}>
+        <View style={[styles.header, { backgroundColor: colors.background }]}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Feather name="arrow-left" size={24} color={colors.text} />
           </TouchableOpacity>
@@ -125,7 +125,7 @@ export default function EditProfileScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
       {/* Header */}
-      <View style={[styles.header, { borderBottomColor: colors.border, backgroundColor: colors.background }]}>
+      <View style={[styles.header, { backgroundColor: colors.background }]}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Feather name="arrow-left" size={24} color={colors.text} />
         </TouchableOpacity>
@@ -169,7 +169,7 @@ export default function EditProfileScreen() {
             activeOpacity={0.8}
             style={styles.avatarContainer}
           >
-            <Avatar source={profile.avatar} size={88} fallback={profile.name || 'U'} />
+            <Avatar source={profile.avatar} size={88} />
             <View style={[styles.avatarEditBadge, { backgroundColor: colors.primary }]}>
               <Feather name="camera" size={16} color="white" />
             </View>
@@ -177,13 +177,13 @@ export default function EditProfileScreen() {
         </View>
 
         {/* ── Fields ── */}
-        <View style={[styles.section, { borderTopColor: colors.border }]}>
+        <View style={styles.section}>
           {renderRow('name', 'user', 'Name', profile.name)}
           {renderRow('username', 'at-sign', 'Username', profile.username ? `@${profile.username}` : '')}
           {renderRow('bio', 'align-left', 'Bio', profile.bio || '', { multiline: true })}
         </View>
 
-        <View style={[styles.section, { borderTopColor: colors.border }]}>
+        <View style={styles.section}>
           {renderRow('email', 'mail', 'Email', profile.email)}
           {renderRow('phone', 'phone', 'Phone', profile.phone || '')}
           {renderRow('location', 'map-pin', 'Location', profile.location || '')}
@@ -202,7 +202,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderBottomWidth: 1,
   },
   headerTitle: { fontSize: 18, fontWeight: '700' },
   scrollContent: { paddingBottom: 40 },
@@ -248,18 +247,15 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 3,
-    borderColor: '#fff',
   },
 
   // Rows
-  section: { borderTopWidth: 1 },
+  section: {},
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 14,
-    borderBottomWidth: 1,
     gap: 14,
   },
   rowIcon: {
