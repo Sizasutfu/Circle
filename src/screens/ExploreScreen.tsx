@@ -306,13 +306,10 @@ export default function ExploreScreen() {
     }
 
     return (
-      <View key={`trending-${item.id}`}>
-        <PostCard
-          key={`post-${item.id}-${item.likes?.length || 0}-${item.reposts?.length || 0}`}
-          post={item}
-        />
+      <View>
+        <PostCard post={item} />
         <View style={[styles.rankContainer, { backgroundColor: colors.background }]}>
-          <View style={[styles.rankBadge, { backgroundColor: rankBg, borderColor: colors.border }]}>
+          <View style={[styles.rankBadge, { backgroundColor: rankBg }]}>
             <Text style={[styles.rankText, { color: rankColor }]}>
               #{safeString(rank)}
             </Text>
@@ -432,7 +429,7 @@ export default function ExploreScreen() {
   );
 
   const renderSearchItem = ({ item }: { item: any }) => (
-    <View style={styles.searchItemWrapper} key={`search-${item.id || Math.random()}`}>
+    <View style={styles.searchItemWrapper}>
       <SearchResultItem
         result={item}
         isFollowing={item._type === 'user' ? followingIds.has(item.id) : false}
@@ -454,10 +451,7 @@ export default function ExploreScreen() {
     if (hasMoreSearch && !isFetchingMoreSearch && searchResults.length > 0) {
       return (
         <TouchableOpacity
-          style={[
-            styles.loadMoreButton,
-            { backgroundColor: colors.background, borderColor: colors.border },
-          ]}
+          style={[styles.loadMoreButton, { backgroundColor: colors.background }]}
           onPress={handleLoadMoreSearch}
         >
           <Text style={[styles.loadMoreText, { color: colors.primary }]}>Load More</Text>
@@ -495,15 +489,7 @@ export default function ExploreScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
       {/* Header */}
-      <View
-        style={[
-          styles.header,
-          {
-            backgroundColor: colors.background,
-            borderBottomColor: colors.border,
-          },
-        ]}
-      >
+      <View style={[styles.header, { backgroundColor: colors.background }]}>
         <Text style={[styles.headerTitle, { color: colors.text }]}>Explore</Text>
       </View>
 
@@ -511,10 +497,7 @@ export default function ExploreScreen() {
       <View
         style={[
           styles.searchContainer,
-          {
-            backgroundColor: colors.background,
-            borderColor: colors.border,
-          },
+          { backgroundColor: isDark ? '#1f2937' : '#f3f4f6' },
         ]}
       >
         <Feather name="search" size={20} color={colors.textMuted} style={styles.searchIcon} />
@@ -543,10 +526,7 @@ export default function ExploreScreen() {
         <View
           style={[
             styles.historyContainer,
-            {
-              backgroundColor: colors.background,
-              borderColor: colors.border,
-            },
+            { backgroundColor: isDark ? '#1f2937' : '#f9fafb' },
           ]}
         >
           <View style={styles.historyHeader}>
@@ -647,7 +627,6 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderBottomWidth: 1,
   },
   headerTitle: {
     fontSize: 20,
@@ -661,7 +640,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 10,
-    borderWidth: 1,
   },
   searchIcon: {
     marginRight: 8,
@@ -678,7 +656,6 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginBottom: 12,
     borderRadius: 10,
-    borderWidth: 1,
     paddingVertical: 4,
   },
   historyHeader: {
@@ -789,7 +766,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginVertical: 8,
     borderRadius: 8,
-    borderWidth: 1,
     marginHorizontal: 16,
   },
   loadMoreText: {
@@ -811,7 +787,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 2,
     borderRadius: 12,
-    borderWidth: 1,
   },
   rankText: {
     fontSize: 12,
