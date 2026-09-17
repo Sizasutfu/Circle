@@ -16,6 +16,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useWs } from '../contexts/WsContext';
 import { Avatar } from '../components/Avatar';
+import VerificationBadge from '../components/VerificationBadge';
 import {
   useNotifications,
   useMarkNotificationRead,
@@ -73,6 +74,7 @@ export default function NotificationsScreen() {
           name: data.actorName || data.userName || 'Someone',
           username: data.actorUsername || data.userUsername || '',
           avatar: data.actorPicture || data.userAvatar || undefined,
+          verified: !!(data.actorVerified ?? data.userVerified),
         },
         postId: data.postId || null,
         postText: data.postSnippet || data.postText || null,
@@ -210,6 +212,7 @@ export default function NotificationsScreen() {
 
     const displayName = getSafeDisplayName(item);
     const avatar = getSafeAvatar(item);
+    const isVerified = !!item.user?.verified;
 
     let actionText = '';
     let iconName: keyof typeof Feather.glyphMap = 'heart';
@@ -251,15 +254,13 @@ export default function NotificationsScreen() {
           styles.notificationItem,
           {
             backgroundColor: read ? colors.background : (isDark ? '#1f2937' : '#f0f4ff'),
-            borderBottomColor: colors.border,
           },
-          !read && styles.unread,
         ]}
         onPress={() => handleNotificationPress(item)}
         activeOpacity={0.7}
       >
         <View style={styles.avatarContainer}>
-          <Avatar source={avatar} size={48} fallback={displayName} />
+          <Avatar source={avatar} size={48} />
           <View style={[styles.iconBadge, { backgroundColor: iconColor }]}>
             <Feather name={iconName} size={12} color="white" />
           </View>
@@ -270,6 +271,9 @@ export default function NotificationsScreen() {
             <Text style={[styles.userName, { color: colors.text }]}>
               {safeString(displayName)}
             </Text>
+            {isVerified && (
+              <Text>{'  '}<VerificationBadge size={13} color={colors.primary} /></Text>
+            )}
             {' '}
             <Text style={[styles.actionText, { color: colors.textSecondary }]}>
               {actionText}
@@ -350,15 +354,7 @@ export default function NotificationsScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
-      <View
-        style={[
-          styles.header,
-          {
-            backgroundColor: colors.background,
-            borderBottomColor: colors.border,
-          },
-        ]}
-      >
+      <View style={[styles.header, { backgroundColor: colors.background }]}>
         <Text style={[styles.headerTitle, { color: colors.text }]}>Notifications</Text>
         <View style={styles.headerRight}>
           {isConnected && (
@@ -432,7 +428,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderBottomWidth: 1,
   },
   headerTitle: {
     fontSize: 20,
@@ -460,10 +455,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderBottomWidth: 1,
-  },
-  unread: {
-    backgroundColor: '#f0f4ff',
   },
   avatarContainer: {
     position: 'relative',

@@ -11,6 +11,7 @@ export interface Notification {
     name: string;
     username: string;
     avatar?: string;
+    verified?: boolean;
   };
   postId?: string | null;
   postText?: string | null;
@@ -27,10 +28,18 @@ function mapNotification(raw: any): Notification {
   const userId = raw.actorId || raw.userId || raw.user?.id || raw.actor?.id || '';
   const userName = raw.actorName || raw.name || raw.user?.name || raw.actor?.name || '';
   const userUsername = raw.actorUsername || raw.username || raw.user?.username || raw.actor?.username || '';
-  
+
   // Use resolveMediaUrl to get the full URL for avatar
   const avatarUrl = resolveMediaUrl(raw.actorPicture || raw.avatar || raw.user?.avatar || raw.actor?.avatar);
-  
+
+  // Verified flag — accept either shape from the API
+  const verified = !!(
+    raw.actorVerified ??
+    raw.userVerified ??
+    raw.user?.verified ??
+    raw.actor?.verified
+  );
+
   // Determine display name with proper fallbacks
   let displayName = '';
   if (raw.actorName && raw.actorName.trim() && raw.actorName !== 'null' && raw.actorName !== 'undefined') {
@@ -61,6 +70,7 @@ function mapNotification(raw: any): Notification {
       name: displayName,
       username: username,
       avatar: avatarUrl || undefined,
+      verified,
     },
     postId: raw.postId || raw.post?.id || raw.post_id || null,
     postText: raw.postSnippet || raw.postText || raw.post?.text || raw.post_text || null,
@@ -81,16 +91,16 @@ export const useNotifications = (userId: string) => {
       page: number;
     }> => {
       if (!userId) return { notifications: [], hasMore: false, page: 1 };
-      
+
       try {
         const response = await api.get(`/notifications/${userId}?page=${pageParam}&limit=10`);
         const data = response.data;
-        
+
         // Navigate to the notifications array
         let notifications: any[] = [];
         let hasMore = false;
         let currentPage = pageParam;
-        
+
         if (data?.data?.notifications && Array.isArray(data.data.notifications)) {
           notifications = data.data.notifications;
           hasMore = data.data.hasMore || false;
@@ -109,10 +119,10 @@ export const useNotifications = (userId: string) => {
           notifications = data.results;
           hasMore = data.hasMore || false;
         }
-        
+
         // Map each to our structure
         const mappedNotifications = notifications.map(mapNotification);
-        
+
         return {
           notifications: mappedNotifications,
           hasMore: hasMore,
