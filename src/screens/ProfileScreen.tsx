@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
-import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
+import { useQuery, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -54,8 +54,10 @@ export default function ProfileScreen() {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const { contentBottomPadding } = useTabBarHeight();
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<ProfileTab>('posts');
   const [refreshing, setRefreshing] = useState(false);
+  const [followPending, setFollowPending] = useState(false);
 
   const params = route.params as { userId?: string; username?: string } | undefined;
   const targetIdentifier = params?.userId || params?.username || user?.id || '';
@@ -82,6 +84,20 @@ export default function ProfileScreen() {
       const data = response.data;
       const profileData = data.data || data;
 
+      // ── isFollowed: accept every shape the API might send ──
+      const isFollowed = !!(
+        profileData.isFollowed ??
+        profileData.isFollowing ??
+        profileData.is_followed ??
+        profileData.is_following ??
+        profileData.following ??
+        profileData.followedByMe ??
+        profileData.followed_by_me ??
+        profileData.amFollowing ??
+        profileData.am_following ??
+        profileData.followed
+      );
+
       return {
         id: String(profileData.id || targetIdentifier),
         name: profileData.name || 'Anonymous',
@@ -92,13 +108,14 @@ export default function ProfileScreen() {
         postsCount: Number(profileData.postsCount || profileData.postCount || 0),
         followersCount: Number(profileData.followersCount || profileData.followerCount || 0),
         followingCount: Number(profileData.followingCount || profileData.following || 0),
-        isFollowed: !!profileData.isFollowed,
+        isFollowed,
         isVerified: !!(profileData.isVerified ?? profileData.verified),
         isCurrentUser: isCurrentUser,
       } as ProfileData;
     },
     enabled: !!targetIdentifier || !!user,
     retry: 2,
+    staleTime: 0, // always refetch on focus so follow state stays fresh
   });
 
   const normalizePost = (p: any): Post => ({
@@ -201,15 +218,49 @@ export default function ProfileScreen() {
       Alert.alert('Sign In Required', 'Please log in to follow users.');
       return;
     }
+    if (!profile || followPending) return;
+
+    const wasFollowing = !!profile.isFollowed;
+    const prevFollowers = profile.followersCount;
+
+    // ── Optimistic update: flip the button + count immediately ──
+    setFollowPending(true);
+    queryClient.setQueryData(['profile', targetIdentifier], (old: ProfileData | undefined) => {
+      if (!old) return old;
+      return {
+        ...old,
+        isFollowed: !wasFollowing,
+        followersCount: wasFollowing
+          ? Math.max(0, prevFollowers - 1)
+          : prevFollowers + 1,
+      };
+    });
+
     try {
-      if (profile?.isFollowed) {
+      if (wasFollowing) {
         await api.delete(`/follow/${effectiveUserId}`);
       } else {
         await api.post(`/follow/${effectiveUserId}`);
       }
+      // Refetch to reconcile with the server (in case counts differ)
       refetchProfile();
+
+      // Invalidate related queries so PostCard / Explore reflect the change
+      queryClient.invalidateQueries({ queryKey: ['explore', 'trending'] });
+      queryClient.invalidateQueries({ queryKey: ['user-posts'] });
     } catch (error) {
+      // Roll back on failure
+      queryClient.setQueryData(['profile', targetIdentifier], (old: ProfileData | undefined) => {
+        if (!old) return old;
+        return {
+          ...old,
+          isFollowed: wasFollowing,
+          followersCount: prevFollowers,
+        };
+      });
       Alert.alert('Error', 'Failed to update follow status.');
+    } finally {
+      setFollowPending(false);
     }
   };
 
@@ -428,14 +479,31 @@ export default function ProfileScreen() {
               <TouchableOpacity
                 style={[
                   styles.followButton,
-                  { backgroundColor: profile.isFollowed ? (isDark ? '#374151' : '#e5e7eb') : colors.primary },
-                  profile.isFollowed && styles.followButtonActive,
+                  {
+                    backgroundColor: profile.isFollowed
+                      ? (isDark ? '#374151' : '#e5e7eb')
+                      : colors.primary,
+                  },
                 ]}
                 onPress={handleFollowToggle}
+                disabled={followPending}
+                activeOpacity={0.8}
               >
-                <Text style={[styles.followButtonText, profile.isFollowed && styles.followButtonTextActive]}>
-                  {profile.isFollowed ? 'Following' : 'Follow'}
-                </Text>
+                {followPending ? (
+                  <ActivityIndicator
+                    size="small"
+                    color={profile.isFollowed ? colors.text : 'white'}
+                  />
+                ) : (
+                  <Text
+                    style={[
+                      styles.followButtonText,
+                      { color: profile.isFollowed ? colors.text : 'white' },
+                    ]}
+                  >
+                    {profile.isFollowed ? 'Following' : 'Follow'}
+                  </Text>
+                )}
               </TouchableOpacity>
             )}
           </View>
@@ -627,15 +695,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 8,
     borderRadius: 100,
+    minWidth: 96,
+    alignItems: 'center',
+    justifyContent: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 2,
   },
-  followButtonActive: { backgroundColor: '#e5e7eb' },
-  followButtonText: { color: 'white', fontWeight: '600' },
-  followButtonTextActive: { color: '#374151' },
+  followButtonText: { fontWeight: '600' },
 
   nameRow: {
     flexDirection: 'row',
