@@ -285,16 +285,15 @@ export default function ProfileScreen() {
 
   // ── Animated scroll value ──
   const scrollY = useRef(new Animated.Value(0)).current;
-  const headerHeight = insets.top + STICKY_HEADER_HEIGHT;
 
-  // Header background + name fade in as you scroll past the threshold
+  // Header reveal (background + name fade in past threshold)
   const headerReveal = scrollY.interpolate({
     inputRange: [SCROLL_THRESHOLD - 40, SCROLL_THRESHOLD],
     outputRange: [0, 1],
     extrapolate: 'clamp',
   });
 
-  // Back-button icon crossfades: white (over cover) → theme color (over solid header)
+  // Back-button icon crossfade: white → theme color
   const whiteIconOpacity = scrollY.interpolate({
     inputRange: [SCROLL_THRESHOLD - 40, SCROLL_THRESHOLD],
     outputRange: [1, 0],
@@ -306,7 +305,6 @@ export default function ProfileScreen() {
     extrapolate: 'clamp',
   });
 
-  // Name block slides up slightly while fading in — subtle polish
   const nameTranslateY = scrollY.interpolate({
     inputRange: [SCROLL_THRESHOLD - 40, SCROLL_THRESHOLD],
     outputRange: [8, 0],
@@ -359,16 +357,10 @@ export default function ProfileScreen() {
   }
 
   // ── Always-visible header ──
-  // Background and name fade in on scroll; the back button itself never disappears.
+  // Now positioned inside the SafeAreaView's content box, so no extra top inset needed.
   const renderStickyHeader = () => (
     <Animated.View
-      style={[
-        styles.stickyHeader,
-        {
-          height: headerHeight,
-          paddingTop: insets.top,
-        },
-      ]}
+      style={styles.stickyHeader}
       pointerEvents="box-none"
     >
       {/* Solid background that fades in over the cover as you scroll */}
@@ -390,14 +382,12 @@ export default function ProfileScreen() {
           activeOpacity={0.7}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
-          {/* White icon — readable over the cover photo */}
           <Animated.View
             pointerEvents="none"
             style={[styles.backIconLayer, { opacity: whiteIconOpacity }]}
           >
             <Feather name="arrow-left" size={22} color="#ffffff" />
           </Animated.View>
-          {/* Themed icon — readable on the solid header */}
           <Animated.View
             pointerEvents="none"
             style={[styles.backIconLayer, { opacity: themedIconOpacity }]}
@@ -555,7 +545,10 @@ export default function ProfileScreen() {
   // ── Posts tab ──
   if (activeTab === 'posts') {
     return (
-      <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <SafeAreaView
+        style={[styles.container, { backgroundColor: colors.background }]}
+        edges={['top']}
+      >
         <Animated.FlatList
           data={posts}
           keyExtractor={(item) => item.id}
@@ -589,13 +582,16 @@ export default function ProfileScreen() {
           }
         />
         {renderStickyHeader()}
-      </View>
+      </SafeAreaView>
     );
   }
 
   // ── Replies / Media tabs ──
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: colors.background }]}
+      edges={['top']}
+    >
       <Animated.ScrollView
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} />
@@ -628,7 +624,7 @@ export default function ProfileScreen() {
         </View>
       </Animated.ScrollView>
       {renderStickyHeader()}
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -712,14 +708,15 @@ const styles = StyleSheet.create({
   tabText: { fontSize: 16, fontWeight: '600' },
   tabTextActive: { color: '#6C63FF' },
 
-  // ── Always-visible header ──
+  // ── Always-visible header (positioned inside SafeAreaView content) ──
   stickyHeader: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
+    height: STICKY_HEADER_HEIGHT,
     zIndex: 10,
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
   },
   stickyHeaderInner: {
     flexDirection: 'row',
