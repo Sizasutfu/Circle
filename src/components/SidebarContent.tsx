@@ -15,6 +15,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useLive } from '../contexts/LiveContext';
 import { Avatar } from './Avatar';
+import VerificationBadge from './VerificationBadge';
 
 interface SidebarItem {
   icon: keyof typeof Feather.glyphMap;
@@ -68,6 +69,8 @@ export default function SidebarContent(props: DrawerContentComponentProps) {
   };
 
   const currentRoute = props.state?.routes?.[props.state.index]?.name || '';
+
+  const isVerified = !!((user as any)?.isVerified ?? (user as any)?.verified);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -165,15 +168,20 @@ export default function SidebarContent(props: DrawerContentComponentProps) {
               style={styles.userProfile}
               onPress={() => handleNavigate('Profile')}
             >
-              <Avatar
-                source={user?.avatar}
-                size={40}
-                fallback={user?.name || 'User'}
-              />
+              <Avatar source={user?.avatar} size={40} />
               <View style={styles.userInfo}>
-                <Text style={[styles.userName, { color: colors.text }]} numberOfLines={1}>
-                  {user?.name || 'Guest'}
-                </Text>
+                <View style={styles.userNameRow}>
+                  <Text style={[styles.userName, { color: colors.text }]} numberOfLines={1}>
+                    {user?.name || 'Guest'}
+                  </Text>
+                  {isVerified && (
+                    <VerificationBadge
+                      size={14}
+                      color={colors.primary}
+                      style={styles.verifiedBadge}
+                    />
+                  )}
+                </View>
                 <Text style={[styles.userHandle, { color: colors.textSecondary }]} numberOfLines={1}>
                   @{user?.username || 'user'}
                 </Text>
@@ -308,9 +316,17 @@ const styles = StyleSheet.create({
     flex: 1,
     marginLeft: 12,
   },
+  userNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   userName: {
     fontSize: 15,
     fontWeight: '700',
+    flexShrink: 1,
+  },
+  verifiedBadge: {
+    marginLeft: 4,
   },
   userHandle: {
     fontSize: 14,
