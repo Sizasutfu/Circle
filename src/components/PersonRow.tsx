@@ -1,8 +1,9 @@
 // src/components/PersonRow.tsx
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { useTheme } from '../contexts/ThemeContext';
 import { Avatar } from './Avatar';
+import VerificationBadge from './VerificationBadge';
 import type { ExplorePerson } from '../hooks/useExplore';
 
 interface PersonRowProps {
@@ -22,34 +23,48 @@ export default function PersonRow({
   showFollowButton = true,
   subtitle,
 }: PersonRowProps) {
+  const { colors, isDark } = useTheme();
+
+  const followButtonBg = isFollowing
+    ? (isDark ? '#374151' : '#f3f4f6')
+    : colors.primary;
+
+  const followButtonTextColor = isFollowing
+    ? colors.text
+    : 'white';
+
   return (
     <TouchableOpacity style={styles.container} onPress={onPress} activeOpacity={0.7}>
-      <Avatar source={person.avatar} size={44} fallback={person.name} />
+      <Avatar source={person.avatar} size={44} />
       <View style={styles.info}>
         <View style={styles.nameRow}>
-          <Text style={styles.name} numberOfLines={1}>
+          <Text style={[styles.name, { color: colors.text }]} numberOfLines={1}>
             {person.name}
           </Text>
           {person.verified && (
-            <Feather name="check-circle" size={13} color="#6C63FF" style={styles.verifiedIcon} />
+            <VerificationBadge
+              size={14}
+              color={colors.primary}
+              style={styles.verifiedBadge}
+            />
           )}
         </View>
-        <Text style={styles.username} numberOfLines={1}>
+        <Text style={[styles.username, { color: colors.textSecondary }]} numberOfLines={1}>
           @{person.username || 'user'}
         </Text>
-        <Text style={styles.subtitle} numberOfLines={1}>
+        <Text style={[styles.subtitle, { color: colors.textMuted }]} numberOfLines={1}>
           {subtitle ?? `${person.postCount} posts · ${person.followerCount} followers`}
         </Text>
       </View>
       {showFollowButton && onFollowToggle && (
         <TouchableOpacity
-          style={[styles.followButton, isFollowing && styles.followButtonActive]}
+          style={[styles.followButton, { backgroundColor: followButtonBg }]}
           onPress={(e) => {
             e.stopPropagation();
             onFollowToggle();
           }}
         >
-          <Text style={[styles.followButtonText, isFollowing && styles.followButtonTextActive]}>
+          <Text style={[styles.followButtonText, { color: followButtonTextColor }]}>
             {isFollowing ? 'Following' : 'Follow'}
           </Text>
         </TouchableOpacity>
@@ -77,37 +92,26 @@ const styles = StyleSheet.create({
   name: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#1f2937',
     flexShrink: 1,
   },
-  verifiedIcon: {
+  verifiedBadge: {
     marginLeft: 4,
   },
   username: {
     fontSize: 13,
-    color: '#6b7280',
     marginTop: 1,
   },
   subtitle: {
     fontSize: 12,
-    color: '#9ca3af',
     marginTop: 2,
   },
   followButton: {
     paddingHorizontal: 14,
     paddingVertical: 6,
     borderRadius: 16,
-    backgroundColor: '#6C63FF',
-  },
-  followButtonActive: {
-    backgroundColor: '#f3f4f6',
   },
   followButtonText: {
     fontSize: 13,
     fontWeight: '600',
-    color: 'white',
-  },
-  followButtonTextActive: {
-    color: '#6b7280',
   },
 });
