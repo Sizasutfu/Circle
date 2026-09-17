@@ -23,6 +23,7 @@ import { Avatar } from '../components/Avatar';
 import VerificationBadge from '../components/VerificationBadge';
 import PostCard, { Post } from '../components/PostCard';
 import { useTabBarHeight } from '../hooks/useTabBarHeight';
+import { useTabBarHideOnScroll } from '../hooks/useTabBarHideOnScroll';
 import api from '../api/client';
 import { formatNumber, safeString } from '../utils/helpers';
 import { resolveMediaUrl } from '../lib/media';
@@ -48,10 +49,7 @@ const STICKY_HEADER_HEIGHT = 56;
 const SCROLL_THRESHOLD = 120;
 
 // The sticky action button only reveals after the big button in the profile
-// header has scrolled fully off-screen. The big button sits around
-// y≈246–280 in the scroll content (cover 160 + headerHeight offset + avatar
-// row -40 margin + ~34 button height), so we delay its sticky copy to
-// ~220-280 to avoid a window where both are visible at once.
+// header has scrolled fully off-screen.
 const ACTION_REVEAL_START = SCROLL_THRESHOLD + 100; // 220
 const ACTION_REVEAL_END = SCROLL_THRESHOLD + 160;   // 280
 
@@ -66,6 +64,9 @@ export default function ProfileScreen() {
   const [activeTab, setActiveTab] = useState<ProfileTab>('posts');
   const [refreshing, setRefreshing] = useState(false);
   const [followPending, setFollowPending] = useState(false);
+
+  // ✅ Hide tab bar on scroll down / show on scroll up
+  const handleTabBarScroll = useTabBarHideOnScroll();
 
   const params = route.params as { userId?: string; username?: string } | undefined;
   const targetIdentifier = params?.userId || params?.username || user?.id || '';
@@ -321,9 +322,15 @@ export default function ProfileScreen() {
     extrapolate: 'clamp',
   });
 
+  // ✅ onScroll now drives both the header animations AND the tab bar hide/show
   const onScroll = Animated.event(
     [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-    { useNativeDriver: true }
+    {
+      useNativeDriver: true,
+      listener: (event: any) => {
+        handleTabBarScroll(event);
+      },
+    }
   );
 
   // ── Shared action button ──
