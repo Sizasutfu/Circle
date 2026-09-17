@@ -23,6 +23,12 @@ import { useWs } from '../contexts/WsContext';
 import { useQueryClient } from '@tanstack/react-query';
 import AppHeader from '../components/AppHeader';
 
+// ─── Live video ─────────────────────────────────────────────
+import { useLive } from '../contexts/LiveContext';
+import LiveFeedStrip from '../components//LiveFeedStrip';
+import LiveOverlay from '../components//LiveOverlay';
+import LiveSetupModal from '../components//LiveSetupModal';
+
 const { width: screenWidth } = Dimensions.get('window');
 const isWeb = Platform.OS === 'web';
 const maxContentWidth = 600;
@@ -44,6 +50,9 @@ export default function FeedScreen() {
   const flatListRef = useRef<FlatList>(null);
   const { registerHandler } = useWs();
   const queryClient = useQueryClient();
+
+  // ✅ Live context
+  const { openSetup } = useLive();
 
   const scrollY = useRef(new Animated.Value(0)).current;
   const fabTranslateY = useRef(new Animated.Value(0)).current;
@@ -170,6 +179,10 @@ export default function FeedScreen() {
     (navigation.navigate as any)('CreatePostModal');
   }, [navigation]);
 
+  const handleGoLive = useCallback(() => {
+    openSetup();
+  }, [openSetup]);
+
   const handleLoadMore = useCallback(() => {
     if (hasNextPage && !isFetchingNextPage) {
       fetchNextPage();
@@ -243,7 +256,17 @@ export default function FeedScreen() {
     );
   }, [isFetchingNextPage]);
 
-  // ── Responsive container style using StyleSheet.flatten ──
+  // ✅ List header shows the live strip
+  const ListHeaderComponent = useMemo(
+    () => (
+      <View>
+        <LiveFeedStrip />
+      </View>
+    ),
+    []
+  );
+
+  // ── Responsive container style ──
   const containerStyle = StyleSheet.flatten([
     styles.container,
     { backgroundColor: colors.background },
@@ -276,9 +299,19 @@ export default function FeedScreen() {
     );
   }
 
+  // ── Empty state (still shows live strip + overlays) ──
   if (posts.length === 0) {
     return (
-      <SafeAreaView style={containerStyle} edges={['top']}>
+      <View style={containerStyle}>
+        <AppHeader
+          title="Circle"
+          showMenu={true}
+          rightActions={[
+            { icon: 'radio', onPress: handleGoLive },
+            { icon: 'bell', onPress: handleNotifications, badge: 0 },
+          ]}
+        />
+
         <View style={styles.emptyContainer}>
           <Feather name="feather" size={48} color={colors.textMuted} />
           <Text style={[styles.emptyTitle, { color: colors.text }]}>No posts yet</Text>
@@ -295,6 +328,7 @@ export default function FeedScreen() {
               <Text style={styles.emptyButtonText}>View Global Feed</Text>
             </TouchableOpacity>
           )}
+
           <Animated.View
             style={[
               styles.fabContainer,
@@ -306,7 +340,11 @@ export default function FeedScreen() {
             </TouchableOpacity>
           </Animated.View>
         </View>
-      </SafeAreaView>
+
+        {/* Live overlays */}
+        <LiveOverlay />
+        <LiveSetupModal />
+      </View>
     );
   }
 
@@ -317,11 +355,8 @@ export default function FeedScreen() {
         title="Circle"
         showMenu={true}
         rightActions={[
-          {
-            icon: 'bell',
-            onPress: handleNotifications,
-            badge: 0,
-          },
+          { icon: 'radio', onPress: handleGoLive },
+          { icon: 'bell', onPress: handleNotifications, badge: 0 },
         ]}
       />
 
@@ -359,6 +394,7 @@ export default function FeedScreen() {
         data={posts}
         keyExtractor={keyExtractor}
         renderItem={renderItem}
+        ListHeaderComponent={ListHeaderComponent}
         refreshControl={
           <RefreshControl
             refreshing={isLoading}
@@ -402,6 +438,10 @@ export default function FeedScreen() {
           <Feather name="plus" size={28} color="white" />
         </TouchableOpacity>
       </Animated.View>
+
+      {/* ─── Live overlays ─── */}
+      <LiveOverlay />
+      <LiveSetupModal />
     </View>
   );
 }

@@ -13,8 +13,8 @@ import {
 } from 'react-native';
 import { RTCView } from 'react-native-webrtc';
 import { Feather } from '@expo/vector-icons';
-import { useLive } from '../../contexts/LiveContext';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useLive } from '../contexts/LiveContext';
+import { useTheme } from '../contexts/ThemeContext';
 
 export default function LiveSetupModal() {
   const { colors, isDark } = useTheme();

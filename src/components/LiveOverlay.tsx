@@ -14,8 +14,8 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RTCView } from 'react-native-webrtc';
 import { Feather } from '@expo/vector-icons';
-import { useLive } from '../../contexts/LiveContext';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useLive } from '../contexts/LiveContext';
+import { useTheme } from '../contexts/ThemeContext';
 
 const REACTIONS = ['❤️', '🔥', '👏', '😂'];
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');

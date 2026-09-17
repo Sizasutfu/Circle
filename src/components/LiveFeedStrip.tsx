@@ -8,9 +8,9 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Feather } from '@expo/vector-icons';
-import { useLive } from '../../contexts/LiveContext';
-import { useTheme } from '../../contexts/ThemeContext';
-import { resolveMediaUrl } from '../../lib/media';
+import { useLive } from '../contexts/LiveContext';
+import { useTheme } from '../contexts/ThemeContext';
+import { resolveMediaUrl } from '../lib/media';
 
 export default function LiveFeedStrip() {
   const { colors, isDark } = useTheme();
