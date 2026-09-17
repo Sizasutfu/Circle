@@ -101,15 +101,7 @@ export default function ChangePasswordScreen() {
         keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
       >
         {/* ─── Header ─── */}
-        <View
-          style={[
-            styles.header,
-            {
-              backgroundColor: colors.background,
-              borderBottomColor: colors.border,
-            },
-          ]}
-        >
+        <View style={[styles.header, { backgroundColor: colors.background }]}>
           <TouchableOpacity onPress={() => navigation.goBack()} disabled={isLoading}>
             <Feather name="arrow-left" size={24} color={colors.text} />
           </TouchableOpacity>
@@ -134,15 +126,7 @@ export default function ChangePasswordScreen() {
           {/* ─── Current Password ─── */}
           <View style={styles.field}>
             <Text style={[styles.label, { color: colors.text }]}>Current Password</Text>
-            <View
-              style={[
-                styles.inputContainer,
-                {
-                  backgroundColor: colors.input,
-                  borderColor: colors.inputBorder,
-                },
-              ]}
-            >
+            <View style={[styles.inputContainer, { backgroundColor: colors.input }]}>
               <TextInput
                 style={[styles.input, { color: colors.text }]}
                 value={currentPassword}
@@ -168,15 +152,7 @@ export default function ChangePasswordScreen() {
           {/* ─── New Password ─── */}
           <View style={styles.field}>
             <Text style={[styles.label, { color: colors.text }]}>New Password</Text>
-            <View
-              style={[
-                styles.inputContainer,
-                {
-                  backgroundColor: colors.input,
-                  borderColor: colors.inputBorder,
-                },
-              ]}
-            >
+            <View style={[styles.inputContainer, { backgroundColor: colors.input }]}>
               <TextInput
                 style={[styles.input, { color: colors.text }]}
                 value={newPassword}
@@ -205,15 +181,7 @@ export default function ChangePasswordScreen() {
           {/* ─── Confirm Password ─── */}
           <View style={styles.field}>
             <Text style={[styles.label, { color: colors.text }]}>Confirm New Password</Text>
-            <View
-              style={[
-                styles.inputContainer,
-                {
-                  backgroundColor: colors.input,
-                  borderColor: colors.inputBorder,
-                },
-              ]}
-            >
+            <View style={[styles.inputContainer, { backgroundColor: colors.input }]}>
               <TextInput
                 style={[styles.input, { color: colors.text }]}
                 value={confirmPassword}
@@ -240,10 +208,7 @@ export default function ChangePasswordScreen() {
           <View
             style={[
               styles.requirementsContainer,
-              {
-                backgroundColor: isDark ? '#1f2937' : '#f9fafb',
-                borderColor: colors.border,
-              },
+              { backgroundColor: isDark ? '#1f2937' : '#f9fafb' },
             ]}
           >
             <Text style={[styles.requirementsTitle, { color: colors.text }]}>Password must:</Text>
@@ -349,7 +314,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderBottomWidth: 1,
   },
   headerTitle: {
     fontSize: 18,
@@ -396,7 +360,6 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
     borderRadius: 10,
   },
   input: {
@@ -416,7 +379,6 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 16,
     marginBottom: 24,
-    borderWidth: 1,
   },
   requirementsTitle: {
     fontSize: 14,
