@@ -81,8 +81,6 @@ function TypingDots({ isDark, colors }: { isDark: boolean; colors: any }) {
     <View style={styles.messageRow}>
       <View style={[styles.messageBubble, styles.bubbleLeft, styles.typingBubble, {
         backgroundColor: isDark ? '#374151' : '#f3f4f6',
-        borderWidth: isDark ? 0 : 1,
-        borderColor: colors.border,
       }]}>
         <Animated.View style={[styles.typingDot, { backgroundColor: colors.textMuted }, dotStyle(dot1)]} />
         <Animated.View style={[styles.typingDot, { backgroundColor: colors.textMuted }, dotStyle(dot2)]} />
@@ -226,10 +224,30 @@ export default function ChatDetailScreen() {
     const unregNewMessage = registerHandler('new_dm', (data: any) => {
       if (data.conversationId === conversationId && data.message) {
         const msg = data.message;
+
         setMessages((prev) => {
-          if (prev.find((m) => m.id === msg.id)) return prev;
+          // Exact duplicate already present → nothing to do
+          if (prev.some((m) => String(m.id) === String(msg.id))) return prev;
+
+          // Is this the server echo of a message we just sent optimistically?
+          const isMine = String(msg.sender_id) === String(user?.id);
+          if (isMine) {
+            const tempIdx = prev.findIndex(
+              (m) =>
+                String(m.id).startsWith('tmp_') &&
+                String(m.sender_id) === String(msg.sender_id) &&
+                m.body === msg.body
+            );
+            if (tempIdx !== -1) {
+              const next = [...prev];
+              next[tempIdx] = msg;   // swap temp → real
+              return next;
+            }
+          }
+
           return [...prev, msg];
         });
+
         api.patch(`/dm/conversations/${conversationId}/read`).catch(() => {});
       }
     });
@@ -247,7 +265,7 @@ export default function ChatDetailScreen() {
     const unregMessageRead = registerHandler('message_read', (data: any) => {
       if (data.conversationId === conversationId) {
         setMessages((prev) =>
-          prev.map((m) => (m.id === data.messageId ? { ...m, is_read: true } : m))
+          prev.map((m) => (String(m.id) === String(data.messageId) ? { ...m, is_read: true } : m))
         );
       }
     });
@@ -256,7 +274,7 @@ export default function ChatDetailScreen() {
       if (data.conversationId === conversationId) {
         setMessages((prev) =>
           prev.map((m) =>
-            m.id === data.messageId
+            String(m.id) === String(data.messageId)
               ? { ...m, body: data.body ?? m.body, edited_at: data.editedAt || data.edited_at || new Date().toISOString() }
               : m
           )
@@ -266,7 +284,7 @@ export default function ChatDetailScreen() {
 
     const unregDeleted = registerHandler('message_deleted', (data: any) => {
       if (data.conversationId === conversationId) {
-        setMessages((prev) => prev.filter((m) => m.id !== data.messageId));
+        setMessages((prev) => prev.filter((m) => String(m.id) !== String(data.messageId)));
       }
     });
 
@@ -278,7 +296,7 @@ export default function ChatDetailScreen() {
       unregDeleted();
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     };
-  }, [conversationId, registerHandler]);
+  }, [conversationId, registerHandler, user?.id]);
 
   // Poll for new messages
   useEffect(() => {
@@ -286,6 +304,8 @@ export default function ChatDetailScreen() {
       if (messages.length === 0) return;
       const lastMessage = messages[messages.length - 1];
       if (!lastMessage) return;
+      // Skip polling while the last message is still optimistic — the POST is in flight
+      if (String(lastMessage.id).startsWith('tmp_')) return;
       try {
         const response = await api.get(
           `/dm/conversations/${conversationId}/messages/new?after_id=${lastMessage.id}`
@@ -293,8 +313,8 @@ export default function ChatDetailScreen() {
         const newMsgs = response.data?.messages || response.data || [];
         if (newMsgs.length > 0) {
           setMessages((prev) => {
-            const existingIds = new Set(prev.map((m) => m.id));
-            const filtered = newMsgs.filter((m: any) => !existingIds.has(m.id));
+            const existingIds = new Set(prev.map((m) => String(m.id)));
+            const filtered = newMsgs.filter((m: any) => !existingIds.has(String(m.id)));
             return [...prev, ...filtered];
           });
           api.patch(`/dm/conversations/${conversationId}/read`).catch(() => {});
@@ -368,9 +388,20 @@ export default function ChatDetailScreen() {
         media: null,
       });
       const saved = response.data?.data || response.data || response;
-      setMessages((prev) => prev.filter((m) => m.id !== tempId));
-      if (saved && saved.id) setMessages((prev) => [...prev, saved]);
-      if (isAlive()) {
+
+      setMessages((prev) => {
+        // Always remove the optimistic temp row
+        const withoutTemp = prev.filter((m) => m.id !== tempId);
+
+        // If the WS echo already landed, don't append a second copy
+        if (saved && saved.id && withoutTemp.some((m) => String(m.id) === String(saved.id))) {
+          return withoutTemp;
+        }
+
+        return saved && saved.id ? [...withoutTemp, saved] : withoutTemp;
+      });
+
+      if (isAlive() && saved && saved.id) {
         sendMessage({ type: 'send_message', conversationId, message: saved });
       }
       Keyboard.dismiss();
@@ -437,8 +468,8 @@ export default function ChatDetailScreen() {
       const result = await fetchMessages(cursor);
       if (result.messages.length > 0) {
         setMessages((prev) => {
-          const existingIds = new Set(prev.map((m) => m.id));
-          const newMsgs = result.messages.filter((m: any) => !existingIds.has(m.id));
+          const existingIds = new Set(prev.map((m) => String(m.id)));
+          const newMsgs = result.messages.filter((m: any) => !existingIds.has(String(m.id)));
           return [...newMsgs, ...prev];
         });
         setCursor(result.messages[0]?.id || null);
@@ -469,11 +500,7 @@ export default function ChatDetailScreen() {
             styles.messageBubble,
             isMine
               ? [styles.bubbleRight, { backgroundColor: colors.primary }]
-              : [styles.bubbleLeft, {
-                  backgroundColor: isDark ? '#374151' : '#f3f4f6',
-                  borderWidth: isDark ? 0 : 1,
-                  borderColor: colors.border,
-                }],
+              : [styles.bubbleLeft, { backgroundColor: isDark ? '#374151' : '#f3f4f6' }],
             isBeingEdited && {
               borderWidth: 2,
               borderColor: colors.primary,
@@ -504,9 +531,7 @@ export default function ChatDetailScreen() {
     );
   };
 
-  const keyExtractor = useCallback((item: Message, index: number) => {
-    return item.id ? `${item.id}-${index}` : `msg-${index}`;
-  }, []);
+  const keyExtractor = useCallback((item: Message) => item.id, []);
 
   // Scroll to bottom
   useEffect(() => {
@@ -573,15 +598,7 @@ export default function ChatDetailScreen() {
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
       >
         {/* Header */}
-        <View
-          style={[
-            styles.header,
-            {
-              backgroundColor: colors.background,
-              borderBottomColor: colors.border,
-            },
-          ]}
-        >
+        <View style={[styles.header, { backgroundColor: colors.background }]}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
             <Feather name="arrow-left" size={24} color={colors.text} />
           </TouchableOpacity>
@@ -589,7 +606,7 @@ export default function ChatDetailScreen() {
             style={styles.headerInfo}
             onPress={() => (navigation.navigate as any)('Profile', { userId: otherUserId })}
           >
-            <Avatar source={otherAvatarUrl} size={36} fallback={otherName || 'User'} />
+            <Avatar source={otherAvatarUrl} size={36} />
             <View style={styles.headerText}>
               <Text style={[styles.headerName, { color: colors.text }]}>{otherName || 'User'}</Text>
               <View style={styles.headerStatus}>
@@ -627,7 +644,6 @@ export default function ChatDetailScreen() {
         {editingMessage && (
           <View style={[styles.editingBanner, {
             backgroundColor: isDark ? '#1f2937' : '#f3f4f6',
-            borderTopColor: colors.border,
           }]}>
             <Feather name="edit-2" size={16} color={colors.primary} />
             <Text style={[styles.editingBannerText, { color: colors.text }]} numberOfLines={1}>
@@ -645,7 +661,6 @@ export default function ChatDetailScreen() {
             styles.inputBar,
             {
               backgroundColor: colors.background,
-              borderTopColor: colors.border,
               paddingBottom: keyboardVisible ? 0 : Math.max(insets.bottom, 8),
             },
           ]}
@@ -722,7 +737,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 12,
     paddingVertical: 10,
-    borderBottomWidth: 1,
   },
   backButton: { padding: 4 },
   headerInfo: { flex: 1, flexDirection: 'row', alignItems: 'center', marginLeft: 8 },
@@ -762,7 +776,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderTopWidth: 1,
     gap: 8,
   },
   editingBannerText: { flex: 1, fontSize: 13, fontWeight: '500' },
@@ -772,7 +785,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderTopWidth: 1,
   },
   input: {
     flex: 1,
