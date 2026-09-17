@@ -20,6 +20,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { Avatar } from '../components/Avatar';
+import VerificationBadge from '../components/VerificationBadge';
 import PostCard, { Post } from '../components/PostCard';
 import { useTabBarHeight } from '../hooks/useTabBarHeight';
 import api from '../api/client';
@@ -39,6 +40,7 @@ interface ProfileData {
   followersCount: number;
   followingCount: number;
   isFollowed?: boolean;
+  isVerified?: boolean;
   isCurrentUser: boolean;
 }
 
@@ -91,6 +93,7 @@ export default function ProfileScreen() {
         followersCount: Number(profileData.followersCount || profileData.followerCount || 0),
         followingCount: Number(profileData.followingCount || profileData.following || 0),
         isFollowed: !!profileData.isFollowed,
+        isVerified: !!(profileData.isVerified ?? profileData.verified),
         isCurrentUser: isCurrentUser,
       } as ProfileData;
     },
@@ -334,12 +337,21 @@ export default function ProfileScreen() {
             <Feather name="arrow-left" size={22} color={colors.text} />
           </TouchableOpacity>
           <View style={styles.stickyTitleWrap}>
-            <Text
-              style={[styles.stickyName, { color: colors.text }]}
-              numberOfLines={1}
-            >
-              {safeString(profile.name)}
-            </Text>
+            <View style={styles.stickyNameRow}>
+              <Text
+                style={[styles.stickyName, { color: colors.text }]}
+                numberOfLines={1}
+              >
+                {safeString(profile.name)}
+              </Text>
+              {profile.isVerified && (
+                <VerificationBadge
+                  size={14}
+                  color={colors.primary}
+                  style={styles.stickyVerifiedBadge}
+                />
+              )}
+            </View>
             <Text
               style={[styles.stickyPostCount, { color: colors.textSecondary }]}
               numberOfLines={1}
@@ -398,7 +410,7 @@ export default function ProfileScreen() {
               },
             ]}
           >
-            <Avatar source={profile.avatar} size={80} fallback={profile.name} />
+            <Avatar source={profile.avatar} size={80} />
           </View>
           <View style={styles.headerActions}>
             {profile.isCurrentUser ? (
@@ -433,7 +445,18 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        <Text style={[styles.name, { color: colors.text }]}>{safeString(profile.name)}</Text>
+        <View style={styles.nameRow}>
+          <Text style={[styles.name, { color: colors.text }]} numberOfLines={1}>
+            {safeString(profile.name)}
+          </Text>
+          {profile.isVerified && (
+            <VerificationBadge
+              size={18}
+              color={colors.primary}
+              style={styles.verifiedBadge}
+            />
+          )}
+        </View>
         <Text style={[styles.username, { color: colors.textSecondary }]}>@{safeString(profile.username)}</Text>
 
         {profile.bio && <Text style={[styles.bio, { color: colors.text }]}>{safeString(profile.bio)}</Text>}
@@ -617,7 +640,14 @@ const styles = StyleSheet.create({
   followButtonActive: { backgroundColor: '#e5e7eb' },
   followButtonText: { color: 'white', fontWeight: '600' },
   followButtonTextActive: { color: '#374151' },
-  name: { fontSize: 24, fontWeight: 'bold', marginTop: 8 },
+
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  name: { fontSize: 24, fontWeight: 'bold', flexShrink: 1 },
+  verifiedBadge: { marginLeft: 6 },
   username: { fontSize: 14 },
   bio: { fontSize: 14, marginTop: 4, lineHeight: 20 },
   statsRow: {
@@ -675,9 +705,17 @@ const styles = StyleSheet.create({
     flex: 1,
     marginLeft: 4,
   },
+  stickyNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   stickyName: {
     fontSize: 16,
     fontWeight: '700',
+    flexShrink: 1,
+  },
+  stickyVerifiedBadge: {
+    marginLeft: 4,
   },
   stickyPostCount: {
     fontSize: 12,
