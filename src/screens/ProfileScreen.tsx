@@ -299,10 +299,76 @@ export default function ProfileScreen() {
     extrapolate: 'clamp',
   });
 
+  // Action button slides in from the right when the header reveals
+  const actionTranslateX = scrollY.interpolate({
+    inputRange: [SCROLL_THRESHOLD - 40, SCROLL_THRESHOLD],
+    outputRange: [40, 0],
+    extrapolate: 'clamp',
+  });
+
   const onScroll = Animated.event(
     [{ nativeEvent: { contentOffset: { y: scrollY } } }],
     { useNativeDriver: true }
   );
+
+  // ── Shared action button (used in both header and sticky header) ──
+  const renderActionButton = (compact: boolean) => {
+    if (!profile) return null;
+
+    if (profile.isCurrentUser) {
+      return (
+        <TouchableOpacity
+          style={[
+            compact ? styles.editButtonCompact : styles.editButton,
+            { backgroundColor: isDark ? '#374151' : '#f3f4f6' },
+          ]}
+          onPress={handleEditProfile}
+          activeOpacity={0.8}
+        >
+          <Text
+            style={[
+              compact ? styles.editButtonTextCompact : styles.editButtonText,
+              { color: colors.text },
+            ]}
+            numberOfLines={1}
+          >
+            Edit Profile
+          </Text>
+        </TouchableOpacity>
+      );
+    }
+
+    const bg = profile.isFollowed
+      ? (isDark ? '#374151' : '#e5e7eb')
+      : colors.primary;
+    const fg = profile.isFollowed ? colors.text : 'white';
+
+    return (
+      <TouchableOpacity
+        style={[
+          compact ? styles.followButtonCompact : styles.followButton,
+          { backgroundColor: bg },
+        ]}
+        onPress={handleFollowToggle}
+        disabled={followPending}
+        activeOpacity={0.8}
+      >
+        {followPending ? (
+          <ActivityIndicator size="small" color={fg} />
+        ) : (
+          <Text
+            style={[
+              compact ? styles.followButtonTextCompact : styles.followButtonText,
+              { color: fg },
+            ]}
+            numberOfLines={1}
+          >
+            {profile.isFollowed ? 'Following' : 'Follow'}
+          </Text>
+        )}
+      </TouchableOpacity>
+    );
+  };
 
   // ── Not logged in ──
   if (!user) {
@@ -409,6 +475,19 @@ export default function ProfileScreen() {
             {formatNumber(profile.postsCount)} posts
           </Text>
         </Animated.View>
+
+        {/* Action button that slides in with the header */}
+        <Animated.View
+          style={[
+            styles.stickyActionWrap,
+            {
+              opacity: headerReveal,
+              transform: [{ translateX: actionTranslateX }],
+            },
+          ]}
+        >
+          {renderActionButton(true)}
+        </Animated.View>
       </View>
     </Animated.View>
   );
@@ -430,44 +509,7 @@ export default function ProfileScreen() {
             <Avatar source={profile.avatar} size={80} />
           </View>
           <View style={styles.headerActions}>
-            {profile.isCurrentUser ? (
-              <TouchableOpacity
-                style={[styles.editButton, { backgroundColor: isDark ? '#374151' : '#f3f4f6' }]}
-                onPress={handleEditProfile}
-              >
-                <Text style={[styles.editButtonText, { color: colors.text }]}>Edit Profile</Text>
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity
-                style={[
-                  styles.followButton,
-                  {
-                    backgroundColor: profile.isFollowed
-                      ? (isDark ? '#374151' : '#e5e7eb')
-                      : colors.primary,
-                  },
-                ]}
-                onPress={handleFollowToggle}
-                disabled={followPending}
-                activeOpacity={0.8}
-              >
-                {followPending ? (
-                  <ActivityIndicator
-                    size="small"
-                    color={profile.isFollowed ? colors.text : 'white'}
-                  />
-                ) : (
-                  <Text
-                    style={[
-                      styles.followButtonText,
-                      { color: profile.isFollowed ? colors.text : 'white' },
-                    ]}
-                  >
-                    {profile.isFollowed ? 'Following' : 'Follow'}
-                  </Text>
-                )}
-              </TouchableOpacity>
-            )}
+            {renderActionButton(false)}
           </View>
         </View>
 
@@ -640,7 +682,16 @@ const styles = StyleSheet.create({
   },
   avatarBorder: { borderWidth: 4, borderRadius: 100 },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  editButton: { paddingHorizontal: 16, paddingVertical: 6, borderRadius: 100 },
+
+  // ── Big action buttons (in the profile header) ──
+  editButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 7,
+    borderRadius: 100,
+    minWidth: 96,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   editButtonText: { fontWeight: '600', fontSize: 14 },
   followButton: {
     paddingHorizontal: 20,
@@ -649,13 +700,28 @@ const styles = StyleSheet.create({
     minWidth: 96,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
   },
-  followButtonText: { fontWeight: '600' },
+  followButtonText: { fontWeight: '600', fontSize: 14 },
+
+  // ── Compact action buttons (in the sticky header) ──
+  editButtonCompact: {
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+    borderRadius: 100,
+    minWidth: 80,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editButtonTextCompact: { fontWeight: '600', fontSize: 13 },
+  followButtonCompact: {
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+    borderRadius: 100,
+    minWidth: 80,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  followButtonTextCompact: { fontWeight: '600', fontSize: 13 },
 
   nameRow: {
     flexDirection: 'row',
@@ -720,6 +786,9 @@ const styles = StyleSheet.create({
   stickyPostCount: {
     fontSize: 12,
     marginTop: 1,
+  },
+  stickyActionWrap: {
+    marginLeft: 8,
   },
 
   content: { paddingHorizontal: 4 },
