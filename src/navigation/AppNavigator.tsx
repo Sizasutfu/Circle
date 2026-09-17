@@ -72,11 +72,11 @@ function MainTabs() {
         headerShown: false,
         tabBarIcon: ({ focused, color, size }) => {
           let iconName: keyof typeof Feather.glyphMap = 'home';
-          if (route.name === 'Feed') iconName = focused ? 'home' : 'home';
-          else if (route.name === 'Explore') iconName = focused ? 'search' : 'search';
-          else if (route.name === 'Messages') iconName = focused ? 'message-circle' : 'message-circle';
-          else if (route.name === 'Profile') iconName = focused ? 'user' : 'user';
-          else if (route.name === 'Settings') iconName = focused ? 'settings' : 'settings';
+          if (route.name === 'Feed') iconName = 'home';
+          else if (route.name === 'Explore') iconName = 'search';
+          else if (route.name === 'Messages') iconName = 'message-circle';
+          else if (route.name === 'MyProfile') iconName = 'user';
+          else if (route.name === 'Settings') iconName = 'settings';
           return <Feather name={iconName} size={size} color={color} />;
         },
         tabBarActiveTintColor: colors.primary,
@@ -88,8 +88,6 @@ function MainTabs() {
           paddingTop: 8,
           paddingBottom: Platform.OS === 'ios' ? bottomInset : 8,
           backgroundColor: colors.background,
-          borderTopWidth: 1,
-          borderTopColor: colors.border,
           shadowColor: isDark ? 'transparent' : '#000',
           shadowOffset: { width: 0, height: -2 },
           shadowOpacity: isDark ? 0 : 0.05,
@@ -106,7 +104,11 @@ function MainTabs() {
       <Tab.Screen name="Feed" component={FeedScreen} />
       <Tab.Screen name="Explore" component={ExploreScreen} />
       <Tab.Screen name="Messages" component={MessagesScreen} />
-      <Tab.Screen name="Profile" component={ProfileScreen} />
+      <Tab.Screen
+        name="MyProfile"
+        component={ProfileScreen}
+        options={{ tabBarLabel: 'Profile' }}
+      />
       <Tab.Screen name="Settings" component={SettingsScreen} />
     </Tab.Navigator>
   );
@@ -128,6 +130,7 @@ function WebNavigator() {
       <Stack.Screen name="Feed" component={FeedScreen} />
       <Stack.Screen name="Explore" component={ExploreScreen} />
       <Stack.Screen name="Messages" component={MessagesScreen} />
+      <Stack.Screen name="MyProfile" component={ProfileScreen} options={{ title: 'Profile' }} />
       <Stack.Screen name="Profile" component={ProfileScreen} />
       <Stack.Screen name="FollowList" component={FollowListScreen} />
       <Stack.Screen name="Settings" component={SettingsScreen} />
@@ -252,6 +255,14 @@ function MainStack() {
       screenOptions={{ headerShown: false, cardStyle: { backgroundColor: colors.background } }}
     >
       <Stack.Screen name="Drawer" component={DrawerNavigator} />
+
+      {/* ── Pushed profile view ── */}
+      <Stack.Screen
+        name="Profile"
+        component={ProfileScreen}
+        options={{ headerShown: false, cardStyle: { backgroundColor: colors.background } }}
+      />
+
       <Stack.Screen
         name="CreatePostModal"
         component={CreatePostScreen}
@@ -381,10 +392,6 @@ const styles = StyleSheet.create({
       alignSelf: 'center',
       width: '100%',
       minHeight: '100%',
-      borderLeftWidth: 1,
-      borderRightWidth: 1,
-      borderLeftColor: 'rgba(0,0,0,0.08)',
-      borderRightColor: 'rgba(0,0,0,0.08)',
     }),
   },
   badge: {

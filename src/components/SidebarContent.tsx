@@ -38,14 +38,14 @@ export default function SidebarContent(props: DrawerContentComponentProps) {
     { icon: 'hash', label: 'Topics', route: 'Topics' },
     { icon: 'message-square', label: 'Whisper', route: 'WhisperInbox' },
     { icon: 'bar-chart-2', label: 'Dashboard', route: 'Dashboard' },
-    { icon: 'user', label: 'Profile', route: 'Profile' },
+    { icon: 'user', label: 'Profile', route: 'MyProfile' },
     { icon: 'settings', label: 'Settings', route: 'Settings' },
   ];
 
   const handleNavigate = (route: string) => {
     props.navigation.closeDrawer();
 
-    const tabScreens = ['Feed', 'Explore', 'Messages', 'Profile', 'Settings'];
+    const tabScreens = ['Feed', 'Explore', 'Messages', 'MyProfile', 'Settings'];
     if (tabScreens.includes(route)) {
       // @ts-ignore
       props.navigation.navigate('MainTabs', { screen: route });
@@ -96,7 +96,7 @@ export default function SidebarContent(props: DrawerContentComponentProps) {
               (item.route === 'Feed' && currentRoute === 'Main') ||
               (item.route === 'Explore' && currentRoute === 'Explore') ||
               (item.route === 'Messages' && currentRoute === 'Messages') ||
-              (item.route === 'Profile' && currentRoute === 'Profile') ||
+              (item.route === 'MyProfile' && currentRoute === 'MyProfile') ||
               (item.route === 'Settings' && currentRoute === 'Settings') ||
               (item.route === 'WhisperInbox' && currentRoute === 'WhisperInbox') ||
               (item.route === 'Dashboard' && currentRoute === 'Dashboard');
@@ -166,7 +166,7 @@ export default function SidebarContent(props: DrawerContentComponentProps) {
           <View style={[styles.userSection, { borderTopColor: colors.border }]}>
             <TouchableOpacity
               style={styles.userProfile}
-              onPress={() => handleNavigate('Profile')}
+              onPress={() => handleNavigate('MyProfile')}
             >
               <Avatar source={user?.avatar} size={40} />
               <View style={styles.userInfo}>
