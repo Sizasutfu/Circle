@@ -190,12 +190,7 @@ export default function FeedScreen() {
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   const renderItem = useCallback(
-    ({ item }: { item: FeedPost }) => (
-      <PostCard
-        key={`${item.id}-${item.likes?.length || 0}-${item.reposts?.length || 0}`}
-        post={item}
-      />
-    ),
+    ({ item }: { item: FeedPost }) => <PostCard post={item} />,
     []
   );
 
@@ -416,9 +411,6 @@ export default function FeedScreen() {
         maxToRenderPerBatch={3}
         updateCellsBatchingPeriod={50}
         windowSize={7}
-        maintainVisibleContentPosition={{
-          minIndexForVisible: 0,
-        }}
         onScroll={handleScroll}
         scrollEventThrottle={16}
       />
