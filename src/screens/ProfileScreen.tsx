@@ -285,6 +285,7 @@ export default function ProfileScreen() {
 
   // ── Animated scroll value ──
   const scrollY = useRef(new Animated.Value(0)).current;
+  const headerHeight = insets.top + STICKY_HEADER_HEIGHT;
 
   // Header reveal (background + name fade in past threshold)
   const headerReveal = scrollY.interpolate({
@@ -357,13 +358,23 @@ export default function ProfileScreen() {
   }
 
   // ── Always-visible header ──
-  // Now positioned inside the SafeAreaView's content box, so no extra top inset needed.
+  // Positioned absolutely over the screen. Its top padding is set explicitly
+  // to insets.top so it clears the status bar — absolute children escape
+  // SafeAreaView's padding, so we have to push it down ourselves.
   const renderStickyHeader = () => (
     <Animated.View
-      style={styles.stickyHeader}
+      style={[
+        styles.stickyHeader,
+        {
+          height: headerHeight,
+          paddingTop: insets.top,
+        },
+      ]}
       pointerEvents="box-none"
     >
-      {/* Solid background that fades in over the cover as you scroll */}
+      {/* Solid background that fades in over the cover as you scroll.
+          Its absolute-fill covers the full header height including the
+          status-bar strip, so the theme background seals the top. */}
       <Animated.View
         pointerEvents="none"
         style={[
@@ -545,15 +556,19 @@ export default function ProfileScreen() {
   // ── Posts tab ──
   if (activeTab === 'posts') {
     return (
-      <SafeAreaView
-        style={[styles.container, { backgroundColor: colors.background }]}
-        edges={['top']}
-      >
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
         <Animated.FlatList
           data={posts}
           keyExtractor={(item) => item.id}
           renderItem={renderPostItem}
-          ListHeaderComponent={renderHeader}
+          ListHeaderComponent={
+            <>
+              {/* Spacer so content starts below the safe area —
+                  the header itself is absolutely positioned above. */}
+              <View style={{ height: headerHeight }} />
+              {renderHeader()}
+            </>
+          }
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: contentBottomPadding }}
           style={styles.content}
@@ -582,16 +597,13 @@ export default function ProfileScreen() {
           }
         />
         {renderStickyHeader()}
-      </SafeAreaView>
+      </View>
     );
   }
 
   // ── Replies / Media tabs ──
   return (
-    <SafeAreaView
-      style={[styles.container, { backgroundColor: colors.background }]}
-      edges={['top']}
-    >
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <Animated.ScrollView
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} />
@@ -601,7 +613,10 @@ export default function ProfileScreen() {
         onScroll={onScroll}
         scrollEventThrottle={16}
       >
+        {/* Spacer so content starts below the safe area */}
+        <View style={{ height: headerHeight }} />
         {renderHeader()}
+
         <View style={styles.content}>
           {activeTab === 'replies' && (
             <View style={styles.emptyState}>
@@ -624,7 +639,7 @@ export default function ProfileScreen() {
         </View>
       </Animated.ScrollView>
       {renderStickyHeader()}
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -708,15 +723,14 @@ const styles = StyleSheet.create({
   tabText: { fontSize: 16, fontWeight: '600' },
   tabTextActive: { color: '#6C63FF' },
 
-  // ── Always-visible header (positioned inside SafeAreaView content) ──
+  // ── Always-visible header (pushed down by insets.top so it clears the status bar) ──
   stickyHeader: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    height: STICKY_HEADER_HEIGHT,
     zIndex: 10,
-    justifyContent: 'center',
+    justifyContent: 'flex-end',
   },
   stickyHeaderInner: {
     flexDirection: 'row',
