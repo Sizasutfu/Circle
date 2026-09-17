@@ -15,6 +15,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { Avatar } from '../components/Avatar';
+import VerificationBadge from '../components/VerificationBadge';
 import { useTabBarHeight } from '../hooks/useTabBarHeight';
 import api from '../api/client';
 import { timeAgo } from '../utils/helpers';
@@ -94,7 +95,6 @@ export default function MessagesScreen() {
           styles.conversationItem,
           {
             backgroundColor: colors.background,
-            borderBottomColor: colors.border,
           },
           // Unread highlight — subtle tint that still respects the app background
           isUnread && { backgroundColor: isDark ? '#1f2937' : '#f0f4ff' },
@@ -102,16 +102,21 @@ export default function MessagesScreen() {
         onPress={() => openConversation(item)}
         activeOpacity={0.7}
       >
-        <Avatar
-          source={avatarUrl}
-          size={50}
-          fallback={item.other_name || 'User'}
-        />
+        <Avatar source={avatarUrl} size={50} />
         <View style={styles.conversationContent}>
           <View style={styles.conversationHeader}>
-            <Text style={[styles.userName, { color: colors.text }]}>
-              {item.other_name}
-            </Text>
+            <View style={styles.nameRow}>
+              <Text style={[styles.userName, { color: colors.text }]} numberOfLines={1}>
+                {item.other_name}
+              </Text>
+              {item.other_verified && (
+                <VerificationBadge
+                  size={14}
+                  color={colors.primary}
+                  style={styles.verifiedBadge}
+                />
+              )}
+            </View>
             <Text
               style={[
                 styles.timestamp,
@@ -194,10 +199,7 @@ export default function MessagesScreen() {
       <View
         style={[
           styles.header,
-          {
-            backgroundColor: colors.background,
-            borderBottomColor: colors.border,
-          },
+          { backgroundColor: colors.background },
         ]}
       >
         <Text style={[styles.headerTitle, { color: colors.text }]}>Messages</Text>
@@ -293,7 +295,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderBottomWidth: 1,
   },
   headerTitle: {
     fontSize: 20,
@@ -310,7 +311,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderBottomWidth: 1,
   },
   conversationContent: {
     flex: 1,
@@ -321,9 +321,19 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 8,
+  },
   userName: {
     fontSize: 15,
     fontWeight: '600',
+    flexShrink: 1,
+  },
+  verifiedBadge: {
+    marginLeft: 4,
   },
   timestamp: {
     fontSize: 12,
