@@ -28,13 +28,6 @@ export interface ExplorePerson {
 
 export type SearchResultType = 'post' | 'user' | 'group';
 
-// The backend's /search endpoint uses different (plural, and
-// differently-worded for people) type names than this app's UI does.
-// UI: 'all' | 'post' | 'user' | 'group'
-// API: 'all' | 'posts' | 'people' | 'groups'
-// Sending the UI's value straight through gets a 400 for anything but
-// 'all', since the backend's VALID_TYPES set doesn't recognize 'post',
-// 'user', or 'group'.
 const SEARCH_TYPE_TO_API: Record<'all' | SearchResultType, string> = {
   all: 'all',
   post: 'posts',
@@ -59,16 +52,69 @@ function normalizePerson(raw: any): ExplorePerson {
   };
 }
 
-// The backend's /search endpoint returns a single mixed array of posts,
-// users, and groups. It tags results with `_type` where it can tell, but
-// not always — this mirrors the same inference the web SearchContext does,
-// so mobile and web classify ambiguous results identically.
 function inferSearchResultType(item: any): SearchResultType {
   if (item._type) return item._type;
   if (item.text !== undefined && item.userId !== undefined) return 'post';
   if (item.topic !== undefined || item.displayName !== undefined) return 'group';
   if (item.email !== undefined || item.username !== undefined) return 'user';
   return 'post';
+}
+
+/**
+ * The /search endpoint returns posts with the author data in one of two
+ * shapes depending on whether the backend ran the posts through
+ * `hydratePosts` first:
+ *
+ *   Nested:  { user: { id, name, username, picture, verified } }
+ *   Flat:    { userId, author, authorUsername, authorPicture, authorVerified }
+ *
+ * PostCard reads `post.user.{name,username,avatar,verified}`, so we
+ * coalesce both shapes into that canonical nested object here. This is
+ * why search results previously fell through to PostCard's
+ * `user?.name || 'Anonymous'` default — normalizePost looks for
+ * `raw.user.*`, but the flat shape has none of those fields.
+ */
+function buildCanonicalUser(item: any) {
+  const rawUser = item.user || {};
+
+  const id =
+    rawUser.id ??
+    rawUser.userId ??
+    item.userId ??
+    item.user_id;
+
+  const name =
+    rawUser.name ??
+    rawUser.author ??
+    item.author ??
+    item.authorName ??
+    item.name;
+
+  const username =
+    rawUser.username ??
+    item.authorUsername ??
+    item.username;
+
+  const picture =
+    rawUser.avatar ??
+    rawUser.picture ??
+    item.authorPicture ??
+    item.avatar ??
+    item.picture;
+
+  const verified = !!(
+    rawUser.verified ??
+    item.authorVerified ??
+    item.verified
+  );
+
+  return {
+    id: String(id ?? ''),
+    name: name || 'Anonymous',
+    username: username || '',
+    avatar: picture ? resolveMediaUrl(picture) : null,
+    verified,
+  };
 }
 
 export interface SearchResultPost {
@@ -86,7 +132,17 @@ export type SearchResult = SearchResultPost | SearchResultUser | SearchResultGro
 
 function normalizeSearchResult(item: any): SearchResult {
   const type = inferSearchResultType(item);
-  if (type === 'post') return { ...normalizePost(item), _type: 'post' };
+
+  if (type === 'post') {
+    return {
+      ...normalizePost(item),
+      _type: 'post',
+      // Explicit user override — normalizePost already ran, but if the
+      // search endpoint sent flat author fields it would have missed them.
+      user: buildCanonicalUser(item),
+    };
+  }
+
   if (type === 'user') return { ...normalizePerson(item), _type: 'user' };
   return { ...item, _type: 'group' };
 }
@@ -111,7 +167,6 @@ export const useFollowTopic = () =>
     },
   });
 
-// ── Paginated feed for a single topic (e.g. tapping a trending topic) ──
 export const useTopicFeed = (topic: string | null) =>
   useInfiniteQuery({
     queryKey: ['explore', 'topic-feed', topic],
@@ -131,7 +186,7 @@ export const useTopicFeed = (topic: string | null) =>
   });
 
 // ============================================================
-//  TRENDING POSTS - Updated to use Infinite Query
+//  TRENDING POSTS
 // ============================================================
 export const useTrendingPosts = () =>
   useInfiniteQuery({
@@ -143,10 +198,10 @@ export const useTrendingPosts = () =>
           limit: 20,
         },
       });
-      
+
       const raw = res.data?.data?.posts ?? res.data?.data ?? [];
       const hasMore = res.data?.data?.hasMore ?? raw.length === 20;
-      
+
       return {
         posts: raw.map((post: any) => ({
           ...normalizePost(post),
@@ -164,7 +219,6 @@ export const useTrendingPosts = () =>
 // ============================================================
 //  PEOPLE
 // ============================================================
-// Recommendations — NOT a text search, requires a logged-in userId.
 export const useRecommendedPeople = (userId?: number | string, limit = 12) =>
   useQuery({
     queryKey: ['explore', 'people', userId, limit],
@@ -198,8 +252,6 @@ export const useFollowToggle = () => {
       return { userId, isFollowing: !isFollowing };
     },
     onSuccess: () => {
-      // People lists and search results both embed follow state, so both
-      // need to reflect the change.
       queryClient.invalidateQueries({ queryKey: ['explore', 'people'] });
       queryClient.invalidateQueries({ queryKey: ['explore', 'new-members'] });
       queryClient.invalidateQueries({ queryKey: ['explore', 'search'] });
@@ -214,9 +266,6 @@ export const useExploreSearch = (query: string, type: 'all' | SearchResultType =
   const trimmed = query.trim();
   const apiType = SEARCH_TYPE_TO_API[type] ?? 'all';
   return useInfiniteQuery({
-    // Keep the UI's `type` in the query key (not apiType) since that's
-    // what the caller/UI actually varies on — the mapping is an
-    // implementation detail of talking to this particular API.
     queryKey: ['explore', 'search', trimmed, type],
     queryFn: async ({ pageParam = 1 }) => {
       const res = await api.get('/search', {
@@ -242,8 +291,6 @@ export const useExploreSearch = (query: string, type: 'all' | SearchResultType =
     },
     getNextPageParam: (last) => last.nextPage,
     initialPageParam: 1,
-    // Same 2-character floor as the web version — avoids firing a search
-    // request on every single keystroke of a one-letter query.
     enabled: trimmed.length >= 2,
   });
 };
