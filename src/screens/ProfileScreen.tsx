@@ -294,18 +294,6 @@ export default function ProfileScreen() {
     extrapolate: 'clamp',
   });
 
-  // Back-button icon crossfade: white → theme color
-  const whiteIconOpacity = scrollY.interpolate({
-    inputRange: [SCROLL_THRESHOLD - 40, SCROLL_THRESHOLD],
-    outputRange: [1, 0],
-    extrapolate: 'clamp',
-  });
-  const themedIconOpacity = scrollY.interpolate({
-    inputRange: [SCROLL_THRESHOLD - 40, SCROLL_THRESHOLD],
-    outputRange: [0, 1],
-    extrapolate: 'clamp',
-  });
-
   const nameTranslateY = scrollY.interpolate({
     inputRange: [SCROLL_THRESHOLD - 40, SCROLL_THRESHOLD],
     outputRange: [8, 0],
@@ -360,7 +348,7 @@ export default function ProfileScreen() {
   // ── Always-visible header ──
   // Positioned absolutely over the screen. Its top padding is set explicitly
   // to insets.top so it clears the status bar — absolute children escape
-  // SafeAreaView's padding, so we have to push it down ourselves.
+  // SafeAreaView's padding, so we push it down ourselves.
   const renderStickyHeader = () => (
     <Animated.View
       style={[
@@ -372,7 +360,7 @@ export default function ProfileScreen() {
       ]}
       pointerEvents="box-none"
     >
-      {/* Solid background that fades in over the cover as you scroll.
+      {/* Solid background that fades in over the content as you scroll.
           Its absolute-fill covers the full header height including the
           status-bar strip, so the theme background seals the top. */}
       <Animated.View
@@ -393,18 +381,7 @@ export default function ProfileScreen() {
           activeOpacity={0.7}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
-          <Animated.View
-            pointerEvents="none"
-            style={[styles.backIconLayer, { opacity: whiteIconOpacity }]}
-          >
-            <Feather name="arrow-left" size={22} color="#ffffff" />
-          </Animated.View>
-          <Animated.View
-            pointerEvents="none"
-            style={[styles.backIconLayer, { opacity: themedIconOpacity }]}
-          >
-            <Feather name="arrow-left" size={22} color={colors.text} />
-          </Animated.View>
+          <Feather name="arrow-left" size={22} color={colors.text} />
         </TouchableOpacity>
 
         <Animated.View
@@ -741,16 +718,6 @@ const styles = StyleSheet.create({
   stickyBackButton: {
     width: 34,
     height: 34,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  backIconLayer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },
