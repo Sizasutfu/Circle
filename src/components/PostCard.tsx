@@ -219,7 +219,6 @@ function PostCard({
   const groupTopic = groupId ? (groupMap.get(groupId)?.displayName || groupMap.get(groupId)?.topic) : null;
   const relativeTime = timeAgo(createdAt);
 
-  // ✅ Live post detection
   const isLivePost = !!isLive && !!liveSessionId;
 
   const [isExpanded, setIsExpanded] = useState(false);
@@ -470,7 +469,6 @@ function PostCard({
     );
   };
 
-  // ✅ Live preview tile — replaces media for live posts
   const renderLivePreview = () => {
     return (
       <TouchableOpacity
@@ -478,16 +476,13 @@ function PostCard({
         onPress={handleOpenLive}
         style={[styles.livePreview, { backgroundColor: '#0f172a' }]}
       >
-        {/* Subtle radial pattern using two stacked views */}
         <View style={styles.liveGlow} pointerEvents="none" />
 
-        {/* LIVE badge top-left */}
         <View style={styles.liveBadge}>
           <View style={styles.liveDot} />
           <Text style={styles.liveBadgeText}>LIVE</Text>
         </View>
 
-        {/* Center: avatar + name + hint */}
         <View style={styles.liveCenter}>
           <View style={styles.liveAvatarWrap}>
             {avatarUrl ? (
@@ -508,7 +503,6 @@ function PostCard({
           <Text style={styles.liveHint}>Tap to watch live</Text>
         </View>
 
-        {/* Bottom-right play indicator */}
         <View style={styles.livePlayWrap}>
           <Feather name="play" size={18} color="#fff" style={{ marginLeft: 2 }} />
         </View>
@@ -517,7 +511,6 @@ function PostCard({
   };
 
   const renderMedia = () => {
-    // ✅ Live posts take priority — no need for image/video
     if (isLivePost) return renderLivePreview();
 
     if (video) {
@@ -731,7 +724,6 @@ function PostCard({
     );
   }
 
-  // ✅ Live posts always have media (the preview)
   const hasMedia = !!(image || video) || isLivePost;
 
   return (
@@ -853,10 +845,6 @@ function PostCard({
               <Feather name="share-2" size={22} color={colors.textMuted} />
               <Text style={[styles.engagementText, { color: colors.textSecondary }]}>{shares || 0}</Text>
             </TouchableOpacity>
-
-            <TouchableOpacity style={styles.engagementButton} onPress={handleQuote}>
-              <Feather name="message-square" size={22} color={colors.textMuted} />
-            </TouchableOpacity>
           </View>
         </View>
       </View>
@@ -937,7 +925,6 @@ const styles = StyleSheet.create({
   groupBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12, marginLeft: 6 },
   groupBadgeText: { fontSize: 11 },
 
-  // Live indicator next to author name
   liveIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -995,7 +982,6 @@ const styles = StyleSheet.create({
   showMore: { fontSize: 14, marginTop: 4 },
   fullBleedWrapper: { width: '100%', marginTop: 12 },
 
-  // ── Live preview tile ──
   livePreview: {
     width: '100%',
     height: SCREEN_WIDTH * 0.75,
