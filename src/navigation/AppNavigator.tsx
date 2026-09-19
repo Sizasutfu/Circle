@@ -16,6 +16,7 @@ import WelcomeScreen from '../screens/WelcomeScreen';
 import LoginScreen from '../screens/LoginScreen';
 import SignUpScreen from '../screens/SignUpScreen';
 import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
+import EmailVerificationScreen from '../screens/EmailVerificationScreen';
 import FeedScreen from '../screens/FeedScreen';
 import ExploreScreen from '../screens/ExploreScreen';
 import TopicsScreen from '../screens/TopicsScreen';
@@ -67,6 +68,21 @@ function toCount(v: any): number {
 function badgeLabel(n: number): string | undefined {
   if (n <= 0) return undefined;
   return n > 99 ? '99+' : String(n);
+}
+
+// ── Email verified flag, tolerant of every field name we might get ──
+function extractEmailVerified(u: any): boolean | undefined {
+  if (!u) return undefined;
+  const raw =
+    u.emailVerified ??
+    u.email_verified ??
+    u.isEmailVerified ??
+    u.is_email_verified ??
+    u.verifiedEmail;
+  if (typeof raw === 'boolean') return raw;
+  if (raw === 1 || raw === '1' || raw === 'true') return true;
+  if (raw === 0 || raw === '0' || raw === 'false') return false;
+  return undefined;
 }
 
 // ============================================================
@@ -376,6 +392,12 @@ export default function AppNavigator() {
     },
   };
 
+  const emailVerified = extractEmailVerified(user);
+  // Only gate when the API explicitly says "not verified". A missing field
+  // (undefined) is treated as "don't know" so we never lock anyone out of
+  // an account that predates the field.
+  const needsEmailVerification = !!user && emailVerified === false;
+
   return (
     <View style={[styles.rootContainer, { backgroundColor: colors.background }]}>
       <NavigationContainer theme={customTheme}>
@@ -385,6 +407,12 @@ export default function AppNavigator() {
           >
             {!user ? (
               <Stack.Screen name="Auth" component={AuthStack} />
+            ) : needsEmailVerification ? (
+              <Stack.Screen
+                name="VerifyEmail"
+                component={EmailVerificationScreen}
+                options={{ headerShown: false, gestureEnabled: false }}
+              />
             ) : showWelcome ? (
               <Stack.Screen name="Welcome" options={{ headerShown: false }}>
                 {() => (
