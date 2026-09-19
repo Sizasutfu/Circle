@@ -66,7 +66,7 @@ export default function EmailVerificationScreen() {
     }, 1000);
   }, []);
 
-  const verifyCode = useCallback(
+    const verifyCode = useCallback(
     async (submitted: string) => {
       if (submitLockRef.current) return;
       submitLockRef.current = true;
@@ -86,12 +86,11 @@ export default function EmailVerificationScreen() {
         if (updatedUser && (updatedUser.id || updatedUser.email)) {
           updateUser({
             ...updatedUser,
-            // Ensure the flag is set even if the API is inconsistent
+            // Force the flag on, in case the backend response is inconsistent
             emailVerified: true,
-            email_verified: true,
           });
         } else if (user) {
-          updateUser({ ...user, emailVerified: true, email_verified: true });
+          updateUser({ ...user, emailVerified: true });
         }
         // AppNavigator will unmount this screen on the next render
       } catch (err: any) {
