@@ -52,6 +52,57 @@ const storage = {
 };
 
 // ============================================================
+//  FLAG NORMALIZERS
+//  Preserve the "unknown" case (field not sent) as `undefined`.
+//  Coercing with `!!` turns absent into "explicitly false", which
+//  makes the verification gate fire for verified users whose API
+//  returns the flag under a different name or omits it entirely.
+// ============================================================
+function readBooleanFlag(raw: any, keys: string[]): boolean | undefined {
+  if (!raw) return undefined;
+  for (const key of keys) {
+    const v = raw[key];
+    if (v === undefined || v === null) continue;
+    if (typeof v === 'boolean') return v;
+    if (v === 1 || v === '1' || v === 'true') return true;
+    if (v === 0 || v === '0' || v === 'false') return false;
+    // Any other non-null value (a date string, a count, etc.) — treat as truthy
+    return !!v;
+  }
+  return undefined;
+}
+
+function normalizeEmailVerified(raw: any): boolean | undefined {
+  // A non-null "verified at" timestamp is a positive signal on its own
+  const ts =
+    raw?.emailVerifiedAt ??
+    raw?.email_verified_at ??
+    raw?.email_confirmed_at;
+  if (ts) return true;
+
+  return readBooleanFlag(raw, [
+    'emailVerified',
+    'email_verified',
+    'isEmailVerified',
+    'is_email_verified',
+    'verifiedEmail',
+    'verified_email',
+  ]);
+}
+
+function normalizePhoneVerified(raw: any): boolean | undefined {
+  const ts = raw?.phoneVerifiedAt ?? raw?.phone_verified_at;
+  if (ts) return true;
+
+  return readBooleanFlag(raw, [
+    'phoneVerified',
+    'phone_verified',
+    'isPhoneVerified',
+    'is_phone_verified',
+  ]);
+}
+
+// ============================================================
 //  TYPES
 // ============================================================
 interface User {
@@ -151,42 +202,43 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   // ── Login ──
   const login = useCallback(async (email: string, password: string): Promise<User> => {
     console.log('🔐 Login attempt for:', email);
-    
+
     const response = await api.post('/users/login', { email, password });
     console.log('📦 Login response:', JSON.stringify(response.data, null, 2));
 
-    // Your backend returns: { success: true, data: { id, name, email, username, token, ... } }
-    // The token is inside the 'data' object
+    // Backend returns: { success: true, data: { id, name, email, username, token, ... } }
     const userData = response.data.data;
-    
+
     if (!userData) {
       throw new Error('Invalid response from server');
     }
 
-    // Extract token from userData
     const { token, ...userWithoutToken } = userData;
-    
-    // Ensure all required fields are present
-    const user: User = {
+
+    // emailVerified / phoneVerified stay `undefined` when the API
+    // doesn't send them — the verification gate in AppNavigator uses
+    // `=== false` and ignores "unknown", so verified users aren't
+    // dropped onto the VerifyEmail screen by accident.
+    const nextUser: User = {
       id: String(userWithoutToken.id || ''),
       name: userWithoutToken.name || 'Anonymous',
       email: userWithoutToken.email || '',
       username: userWithoutToken.username || userWithoutToken.email?.split('@')[0] || 'user',
       avatar: userWithoutToken.avatar || userWithoutToken.picture || null,
       verified: !!userWithoutToken.verified,
-      emailVerified: !!userWithoutToken.email_verified,
-      phoneVerified: !!userWithoutToken.phone_verified,
+      emailVerified: normalizeEmailVerified(userWithoutToken),
+      phoneVerified: normalizePhoneVerified(userWithoutToken),
     };
 
-    await setCurrentUser(user, token);
-    console.log('✅ Login successful for:', user.username);
-    return user;
+    await setCurrentUser(nextUser, token);
+    console.log('✅ Login successful for:', nextUser.username);
+    return nextUser;
   }, [setCurrentUser]);
 
   // ── Register ──
   const register = useCallback(async (data: RegisterData): Promise<User> => {
     console.log('📝 Register attempt:', data.email);
-    
+
     const response = await api.post('/users/register', data);
     console.log('📦 Register response:', JSON.stringify(response.data, null, 2));
 
@@ -196,21 +248,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
 
     const { token, ...userWithoutToken } = userData;
-    
-    const user: User = {
+
+    const nextUser: User = {
       id: String(userWithoutToken.id || ''),
       name: userWithoutToken.name || 'Anonymous',
       email: userWithoutToken.email || '',
       username: userWithoutToken.username || userWithoutToken.email?.split('@')[0] || 'user',
       avatar: userWithoutToken.avatar || userWithoutToken.picture || null,
       verified: !!userWithoutToken.verified,
-      emailVerified: !!userWithoutToken.email_verified,
-      phoneVerified: !!userWithoutToken.phone_verified,
+      emailVerified: normalizeEmailVerified(userWithoutToken),
+      phoneVerified: normalizePhoneVerified(userWithoutToken),
     };
 
-    await setCurrentUser(user, token);
-    console.log('✅ Registration successful for:', user.username);
-    return user;
+    await setCurrentUser(nextUser, token);
+    console.log('✅ Registration successful for:', nextUser.username);
+    return nextUser;
   }, [setCurrentUser]);
 
   // ============================================================
@@ -224,8 +276,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const verifyPhoneOtp = useCallback(async (phone: string, code: string): Promise<User> => {
     const response = await api.post('/auth/phone/verify-otp', { phone, code });
     const { token, data } = response.data;
-    await setCurrentUser(data, token);
-    return data;
+
+    // Normalize the payload the same way as login/register, so the
+    // verification flags survive the same way regardless of entry point.
+    const nextUser: User = {
+      id: String(data.id || ''),
+      name: data.name || 'Anonymous',
+      email: data.email || '',
+      username: data.username || data.email?.split('@')[0] || 'user',
+      avatar: data.avatar || data.picture || null,
+      verified: !!data.verified,
+      emailVerified: normalizeEmailVerified(data),
+      phoneVerified: normalizePhoneVerified(data),
+    };
+
+    await setCurrentUser(nextUser, token);
+    return nextUser;
   }, [setCurrentUser]);
 
   const registerPhoneSendOtp = useCallback(async (phone: string, name: string): Promise<void> => {
@@ -235,8 +301,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const registerPhoneVerifyOtp = useCallback(async (phone: string, code: string, name: string): Promise<User> => {
     const response = await api.post('/auth/phone/register/verify-otp', { phone, code, name });
     const { token, data } = response.data;
-    await setCurrentUser(data, token);
-    return data;
+
+    const nextUser: User = {
+      id: String(data.id || ''),
+      name: data.name || 'Anonymous',
+      email: data.email || '',
+      username: data.username || data.email?.split('@')[0] || 'user',
+      avatar: data.avatar || data.picture || null,
+      verified: !!data.verified,
+      emailVerified: normalizeEmailVerified(data),
+      phoneVerified: normalizePhoneVerified(data),
+    };
+
+    await setCurrentUser(nextUser, token);
+    return nextUser;
   }, [setCurrentUser]);
 
   // ============================================================
@@ -250,9 +328,26 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const verifyEmail = useCallback(async (email: string, code: string): Promise<User> => {
     const response = await api.post('/users/email/verify', { email, code });
     const { token, data } = response.data;
-    await setCurrentUser(data, token);
-    return data;
-  }, [setCurrentUser]);
+
+    // Prefer the fresh user from the response; fall back to merging
+    // the flag onto the current user so the gate always clears.
+    const fresh = data?.user ?? data;
+    const nextUser: User = fresh && (fresh.id || fresh.email)
+      ? {
+          id: String(fresh.id || ''),
+          name: fresh.name || 'Anonymous',
+          email: fresh.email || email,
+          username: fresh.username || fresh.email?.split('@')[0] || 'user',
+          avatar: fresh.avatar || fresh.picture || null,
+          verified: !!fresh.verified,
+          emailVerified: true,
+          phoneVerified: normalizePhoneVerified(fresh),
+        }
+      : { ...(user as User), emailVerified: true };
+
+    await setCurrentUser(nextUser, token);
+    return nextUser;
+  }, [setCurrentUser, user]);
 
   // ============================================================
   //  PASSWORD RESET
