@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useWs } from '../contexts/WsContext';
@@ -49,6 +49,40 @@ export default function NotificationsScreen() {
   const [isConnected, setIsConnected] = useState(false);
 
   const notifications = data?.pages?.flatMap(page => page.notifications) || [];
+
+  // ---- Refs so the blur/unmount handler never reads stale values ----
+  const hasUnreadRef = useRef(false);
+  const markAllReadRef = useRef(markAllRead);
+  const isMarkingAllRef = useRef(false);
+
+  useEffect(() => {
+    hasUnreadRef.current = notifications.some((n) => !n.read);
+  }, [notifications]);
+
+  useEffect(() => {
+    markAllReadRef.current = markAllRead;
+  }, [markAllRead]);
+
+  // Mark everything read when the user leaves the screen (tab switch,
+  // navigating to a detail screen, or unmounting).
+  useFocusEffect(
+    useCallback(() => {
+      // Reset the in-flight guard whenever the screen regains focus.
+      isMarkingAllRef.current = false;
+
+      return () => {
+        if (!userId) return;
+        if (!hasUnreadRef.current) return;
+        if (isMarkingAllRef.current) return;
+
+        isMarkingAllRef.current = true;
+        // Optimistically flip the local flag so a rapid focus/blur cycle
+        // doesn't fire a second mutation before the refetch lands.
+        hasUnreadRef.current = false;
+        markAllReadRef.current();
+      };
+    }, [userId])
+  );
 
   useEffect(() => {
     const checkConnection = () => {
@@ -212,6 +246,9 @@ export default function NotificationsScreen() {
   };
 
   const handleMarkAllRead = () => {
+    // Keep the ref in sync so the blur handler doesn't fire a duplicate.
+    hasUnreadRef.current = false;
+    isMarkingAllRef.current = true;
     markAllRead();
   };
 
