@@ -42,6 +42,7 @@ import DashboardScreen from '../screens/DashboardScreen';
 // ----- Components -----
 import SidebarContent from '../components/SidebarContent';
 import AnimatedTabBar from '../components/AnimatedTabBar';
+import NotificationsSync from '../components/NotificationsSync';
 
 // ----- Hooks -----
 import { useUnreadCount } from '../hooks/useNotifications';
@@ -402,6 +403,7 @@ export default function AppNavigator() {
     <View style={[styles.rootContainer, { backgroundColor: colors.background }]}>
       <NavigationContainer theme={customTheme}>
         <TabBarProvider>
+          <NotificationsSync />
           <Stack.Navigator
             screenOptions={{ headerShown: false, cardStyle: { backgroundColor: colors.background } }}
           >

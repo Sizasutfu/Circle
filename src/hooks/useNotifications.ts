@@ -151,15 +151,37 @@ export const useNotifications = (userId: string) => {
   });
 };
 
+// ── Unread count ─────────────────────────────────────────────
+// Polls every 30s as a fallback, and NotificationsSync (mounted at
+// the root of the app) invalidates this query whenever a
+// `new-notification` / `notification-read` / `all-notifications-read`
+// event arrives over the WebSocket — even if the notifications tab
+// was never opened this session.
 export const useUnreadCount = (userId: string) => {
   return useQuery({
     queryKey: ['notifications', userId, 'unread'],
     queryFn: async (): Promise<number> => {
       if (!userId) return 0;
       const response = await api.get(`/notifications/${userId}/unread-count`);
-      return response.data.count || response.data || 0;
+
+      // Unwrap every common envelope:
+      //   { count: N }
+      //   { data: { count: N } }
+      //   { data: { data: { count: N } } }
+      //   raw number
+      const body = response.data;
+      const count =
+        body?.count ??
+        body?.data?.count ??
+        body?.data?.data?.count ??
+        (typeof body === 'number' ? body : 0);
+
+      return Number(count) || 0;
     },
     enabled: !!userId,
+    refetchInterval: 30000,
+    refetchOnMount: 'always',
+    staleTime: 5000,
   });
 };
 
