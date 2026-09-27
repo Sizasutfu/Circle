@@ -9,6 +9,7 @@ import type { SearchResult } from '../hooks/useExplore';
 interface SearchResultItemProps {
   result: SearchResult;
   isFollowing?: boolean;
+  isVisible?: boolean;
   onPersonPress?: (userId: number) => void;
   onFollowToggle?: (userId: number) => void;
   onGroupPress?: (groupId: number) => void;
@@ -18,15 +19,20 @@ interface SearchResultItemProps {
 // mixed array. Each _type gets routed to the component that already knows
 // how to render it — PostCard for posts, PersonRow for users — rather than
 // building a third, search-specific post/person renderer.
+//
+// `isVisible` is forwarded only to PostCard, which uses it to pause videos
+// that have scrolled out of view. The prop is optional so this component
+// stays usable in any context that doesn't do viewability tracking.
 export default function SearchResultItem({
   result,
   isFollowing = false,
+  isVisible,
   onPersonPress,
   onFollowToggle,
   onGroupPress,
 }: SearchResultItemProps) {
   if (result._type === 'post') {
-    return <PostCard post={result as any} />;
+    return <PostCard post={result as any} isVisible={isVisible} />;
   }
 
   if (result._type === 'user') {

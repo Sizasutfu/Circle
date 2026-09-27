@@ -20,6 +20,7 @@ import PersonRow from '../components/PersonRow';
 import TopicListRow from '../components/TopicListRow';
 import SearchResultItem from '../components/SearchResultItem';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
+import { useVisibleItems } from '../hooks/useVisibleItems';
 import {
   useTopics,
   useTrendingPosts,
@@ -82,6 +83,11 @@ export default function ExploreScreen() {
   const queryClient = useQueryClient();
   const flatListRef = useRef<FlatList>(null);
 
+  // ✅ Tracks which items are on screen. Shared between the trending list
+  // and the search list — only one of them is mounted at a time, so
+  // passing the same config/callback pair to both is safe.
+  const { visibleIds, viewabilityConfig, onViewableItemsChanged } = useVisibleItems();
+
   const [searchInput, setSearchInput] = useState('');
   const [inputFocused, setInputFocused] = useState(false);
   const [searchType, setSearchType] = useState<'all' | SearchResultType>('all');
@@ -128,17 +134,6 @@ export default function ExploreScreen() {
     () => searchData?.pages?.flatMap((page: any) => page.results) ?? [],
     [searchData]
   );
-
-  useEffect(() => {
-    if (isSearching) {
-      console.log('🔍 Search state:', {
-        hasMoreSearch,
-        isFetchingMoreSearch,
-        searchResultsLength: searchResults.length,
-        query: trimmedQuery,
-      });
-    }
-  }, [hasMoreSearch, isFetchingMoreSearch, searchResults, trimmedQuery, isSearching]);
 
   const { data: history = [] } = useSearchHistory();
   const saveHistory = useSaveSearchHistory();
@@ -257,6 +252,7 @@ export default function ExploreScreen() {
     (navigation.navigate as any)('CreatePostModal');
   }, [navigation]);
 
+  // Topic row tap → topic detail screen (not the Topics list)
   const handleTopicPress = useCallback((topic: string) => {
     (navigation.navigate as any)('TopicDetail', { topic });
   }, [navigation]);
@@ -273,7 +269,6 @@ export default function ExploreScreen() {
   );
 
   const handleLoadMoreSearch = useCallback(() => {
-    console.log('📥 Load more called, hasMoreSearch:', hasMoreSearch, 'isFetching:', isFetchingMoreSearch);
     if (hasMoreSearch && !isFetchingMoreSearch) {
       fetchMoreSearch();
     }
@@ -306,10 +301,13 @@ export default function ExploreScreen() {
     }
 
     return (
-      <View>
-        <PostCard post={item} />
+      <View key={`trending-${item.id}`}>
+        <PostCard
+          post={item}
+          isVisible={visibleIds.has(String(item.id))}
+        />
         <View style={[styles.rankContainer, { backgroundColor: colors.background }]}>
-          <View style={[styles.rankBadge, { backgroundColor: rankBg }]}>
+          <View style={[styles.rankBadge, { backgroundColor: rankBg, borderColor: colors.border }]}>
             <Text style={[styles.rankText, { color: rankColor }]}>
               #{safeString(rank)}
             </Text>
@@ -429,37 +427,16 @@ export default function ExploreScreen() {
   );
 
   const renderSearchItem = ({ item }: { item: any }) => (
-    <View style={styles.searchItemWrapper}>
+    <View style={styles.searchItemWrapper} key={`search-${item.id || Math.random()}`}>
       <SearchResultItem
         result={item}
         isFollowing={item._type === 'user' ? followingIds.has(item.id) : false}
+        isVisible={item._type === 'post' ? visibleIds.has(String(item.id)) : undefined}
         onPersonPress={handlePersonPress}
         onFollowToggle={handleFollowToggle}
       />
     </View>
   );
-
-  const renderSearchFooter = () => {
-    if (isFetchingMoreSearch) {
-      return (
-        <View style={styles.footerLoader}>
-          <ActivityIndicator size="small" color={colors.primary} />
-          <Text style={[styles.footerText, { color: colors.textSecondary }]}>Loading more...</Text>
-        </View>
-      );
-    }
-    if (hasMoreSearch && !isFetchingMoreSearch && searchResults.length > 0) {
-      return (
-        <TouchableOpacity
-          style={[styles.loadMoreButton, { backgroundColor: colors.background }]}
-          onPress={handleLoadMoreSearch}
-        >
-          <Text style={[styles.loadMoreText, { color: colors.primary }]}>Load More</Text>
-        </TouchableOpacity>
-      );
-    }
-    return null;
-  };
 
   const renderTrendingFooter = () => {
     if (!isFetchingMoreTrending) return null;
@@ -489,7 +466,15 @@ export default function ExploreScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
       {/* Header */}
-      <View style={[styles.header, { backgroundColor: colors.background }]}>
+      <View
+        style={[
+          styles.header,
+          {
+            backgroundColor: colors.background,
+            borderBottomColor: colors.border,
+          },
+        ]}
+      >
         <Text style={[styles.headerTitle, { color: colors.text }]}>Explore</Text>
       </View>
 
@@ -497,7 +482,10 @@ export default function ExploreScreen() {
       <View
         style={[
           styles.searchContainer,
-          { backgroundColor: isDark ? '#1f2937' : '#f3f4f6' },
+          {
+            backgroundColor: colors.background,
+            borderColor: colors.border,
+          },
         ]}
       >
         <Feather name="search" size={20} color={colors.textMuted} style={styles.searchIcon} />
@@ -526,7 +514,10 @@ export default function ExploreScreen() {
         <View
           style={[
             styles.historyContainer,
-            { backgroundColor: isDark ? '#1f2937' : '#f9fafb' },
+            {
+              backgroundColor: colors.background,
+              borderColor: colors.border,
+            },
           ]}
         >
           <View style={styles.historyHeader}>
@@ -563,14 +554,28 @@ export default function ExploreScreen() {
             keyExtractor={(item: any, index: number) => `${item._type}-${item.id ?? index}`}
             renderItem={renderSearchItem}
             ListHeaderComponent={renderSearchHeader}
-            ListFooterComponent={renderSearchFooter}
             onEndReached={handleLoadMoreSearch}
             onEndReachedThreshold={0.5}
-            contentContainerStyle={[
-              searchResults.length === 0 ? { flex: 1 } : { paddingBottom: 20 },
-            ]}
+            ListFooterComponent={
+              isFetchingMoreSearch ? (
+                <View style={styles.footerLoader}>
+                  <ActivityIndicator size="small" color={colors.primary} />
+                </View>
+              ) : null
+            }
+            ListEmptyComponent={
+              <View style={styles.emptyContainer}>
+                <Feather name="search" size={48} color={colors.textMuted} />
+                <Text style={[styles.emptyTitle, { color: colors.text }]}>No results found</Text>
+                <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
+                  Try searching for different keywords or usernames.
+                </Text>
+              </View>
+            }
+            contentContainerStyle={searchResults.length === 0 ? { flex: 1 } : undefined}
             showsVerticalScrollIndicator={false}
-            style={{ flex: 1 }}
+            viewabilityConfig={viewabilityConfig}
+            onViewableItemsChanged={onViewableItemsChanged}
           />
         )
       ) : !showHistory ? (
@@ -603,6 +608,8 @@ export default function ExploreScreen() {
           maxToRenderPerBatch={5}
           updateCellsBatchingPeriod={50}
           windowSize={7}
+          viewabilityConfig={viewabilityConfig}
+          onViewableItemsChanged={onViewableItemsChanged}
         />
       ) : null}
 
@@ -627,6 +634,7 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: 16,
     paddingVertical: 12,
+    borderBottomWidth: 1,
   },
   headerTitle: {
     fontSize: 20,
@@ -640,6 +648,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 10,
+    borderWidth: 1,
   },
   searchIcon: {
     marginRight: 8,
@@ -656,6 +665,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginBottom: 12,
     borderRadius: 10,
+    borderWidth: 1,
     paddingVertical: 4,
   },
   historyHeader: {
@@ -760,18 +770,6 @@ const styles = StyleSheet.create({
   footerText: {
     fontSize: 14,
   },
-  loadMoreButton: {
-    paddingVertical: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginVertical: 8,
-    borderRadius: 8,
-    marginHorizontal: 16,
-  },
-  loadMoreText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
   feedContent: {
     paddingTop: 8,
   },
@@ -787,6 +785,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 2,
     borderRadius: 12,
+    borderWidth: 1,
   },
   rankText: {
     fontSize: 12,

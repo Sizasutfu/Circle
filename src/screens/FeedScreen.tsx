@@ -19,6 +19,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useFeed } from '../hooks/useFeed';
 import { useTabBarHeight } from '../hooks/useTabBarHeight';
 import { useTabBarHideOnScroll } from '../hooks/useTabBarHideOnScroll';
+import { useVisibleItems } from '../hooks/useVisibleItems';
 import PostCard, { Post } from '../components/PostCard';
 import PostCardSkeleton, { PostCardSkeletonList } from '../components/PostCardSkeleton';
 import { useWs } from '../contexts/WsContext';
@@ -52,6 +53,9 @@ export default function FeedScreen() {
   const flatListRef = useRef<FlatList>(null);
   const { registerHandler } = useWs();
   const queryClient = useQueryClient();
+
+  // ✅ Track which posts are actually on screen so videos can pause
+  const { visibleIds, viewabilityConfig, onViewableItemsChanged } = useVisibleItems();
 
   // ✅ Live context
   const { openSetup } = useLive();
@@ -194,9 +198,12 @@ export default function FeedScreen() {
     }
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
+  // Pass a real isVisible flag so PostCard can pause off-screen videos.
   const renderItem = useCallback(
-    ({ item }: { item: FeedPost }) => <PostCard post={item} />,
-    []
+    ({ item }: { item: FeedPost }) => (
+      <PostCard post={item} isVisible={visibleIds.has(String(item.id))} />
+    ),
+    [visibleIds]
   );
 
   const keyExtractor = useCallback((item: FeedPost, index: number) => {
@@ -416,6 +423,8 @@ export default function FeedScreen() {
         windowSize={7}
         onScroll={handleScroll}
         scrollEventThrottle={16}
+        viewabilityConfig={viewabilityConfig}
+        onViewableItemsChanged={onViewableItemsChanged}
       />
 
       <Animated.View

@@ -16,6 +16,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useTabBarHeight } from '../hooks/useTabBarHeight';
+import { useVisibleItems } from '../hooks/useVisibleItems';
 import { useTopicFeed, useFollowTopic } from '../hooks/useExplore';
 import { useQueryClient } from '@tanstack/react-query';
 import PostCard from '../components/PostCard';
@@ -30,6 +31,9 @@ export default function TopicDetailScreen() {
   const { contentBottomPadding } = useTabBarHeight();
   const queryClient = useQueryClient();
   const flatListRef = useRef<FlatList>(null);
+
+  // ✅ Track which topic posts are on screen so videos pause when scrolled past
+  const { visibleIds, viewabilityConfig, onViewableItemsChanged } = useVisibleItems();
 
   const topic = (route.params as any)?.topic || '';
   const decodedTopic = useMemo(() => {
@@ -96,11 +100,15 @@ export default function TopicDetailScreen() {
     navigation.goBack();
   }, [navigation]);
 
-  const renderPostItem = ({ item }: { item: any }) => (
-    <PostCard
-      key={`${item.id}-${item.likes?.length || 0}-${item.reposts?.length || 0}`}
-      post={item}
-    />
+  // Pass a real isVisible so PostCard can pause off-screen videos.
+  const renderPostItem = useCallback(
+    ({ item }: { item: any }) => (
+      <PostCard
+        post={item}
+        isVisible={visibleIds.has(String(item.id))}
+      />
+    ),
+    [visibleIds]
   );
 
   const renderHeader = () => (
@@ -186,7 +194,7 @@ export default function TopicDetailScreen() {
       <AnimatedFlatList
         ref={flatListRef}
         data={topicPosts}
-        keyExtractor={(item: any) => item.id}
+        keyExtractor={(item: any) => String(item.id)}
         renderItem={renderPostItem}
         refreshControl={
           <RefreshControl
@@ -211,6 +219,8 @@ export default function TopicDetailScreen() {
         maxToRenderPerBatch={5}
         updateCellsBatchingPeriod={50}
         windowSize={7}
+        viewabilityConfig={viewabilityConfig}
+        onViewableItemsChanged={onViewableItemsChanged}
       />
     </SafeAreaView>
   );

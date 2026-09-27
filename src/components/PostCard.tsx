@@ -131,9 +131,6 @@ type RichToken =
   | { type: 'hashtag'; value: string; tag: string }
   | { type: 'url'; value: string };
 
-// Matches URLs first, then @mentions, then #hashtags. Word-boundary
-// checks are done manually in the loop so we don't rely on lookbehind
-// (Hermes doesn't support it everywhere).
 const RICH_TOKEN_REGEX = /(https?:\/\/[^\s]+)|@([\w\u00C0-\u017F\-]+)|#([\w\u00C0-\u017F]+)/g;
 
 function tokenizeRichText(text: string): RichToken[] {
@@ -149,9 +146,6 @@ function tokenizeRichText(text: string): RichToken[] {
     const [full, url, mention, hashtag] = match;
     const start = match.index;
     const prevChar = start > 0 ? text[start - 1] : '';
-    // Same rule as formatText.js's `(?<!\w)`: the @ or # must not be
-    // preceded by a word character (so emails and #hashtag-within-word
-    // don't trigger).
     const boundaryOk = start === 0 || !/[A-Za-z0-9_]/.test(prevChar);
 
     if (url) {
@@ -473,6 +467,7 @@ function PostCard({
     };
   }, [id, text, image, video, isVisible]);
 
+  // ── Pause when scrolled out of view; keep position ──
   useEffect(() => {
     if (!isVisible) {
       videoRef.current?.pauseAsync?.().catch(() => {});
@@ -801,7 +796,7 @@ function PostCard({
               <Feather name="video-off" size={32} color={colors.textMuted} />
               <Text style={[styles.videoErrorText, { color: colors.textSecondary }]}>Video failed to load</Text>
             </View>
-          ) : isVisible ? (
+          ) : (
             <>
               <TouchableOpacity
                 activeOpacity={1}
@@ -890,10 +885,6 @@ function PostCard({
                 </View>
               )}
             </>
-          ) : (
-            <View style={[styles.videoPlaceholder, { backgroundColor: isDark ? '#374151' : '#1f2937' }]}>
-              <Feather name="play-circle" size={40} color={colors.textMuted} />
-            </View>
           )}
         </View>
       );
@@ -1503,10 +1494,6 @@ const styles = StyleSheet.create({
   },
   mediaPlayer: { width: '100%', height: SCREEN_WIDTH * 0.5625 },
   mediaImage: { width: '100%', height: SCREEN_WIDTH },
-  videoPlaceholder: {
-    width: '100%', height: SCREEN_WIDTH * 0.5625,
-    alignItems: 'center', justifyContent: 'center',
-  },
   videoErrorContainer: { padding: 24, alignItems: 'center' },
   videoErrorText: { fontSize: 14, marginTop: 8 },
 

@@ -24,6 +24,7 @@ import VerificationBadge from '../components/VerificationBadge';
 import PostCard, { Post } from '../components/PostCard';
 import { useTabBarHeight } from '../hooks/useTabBarHeight';
 import { useTabBarHideOnScroll } from '../hooks/useTabBarHideOnScroll';
+import { useVisibleItems } from '../hooks/useVisibleItems';
 import api from '../api/client';
 import { formatNumber, safeString } from '../utils/helpers';
 import { resolveMediaUrl } from '../lib/media';
@@ -64,6 +65,9 @@ export default function ProfileScreen() {
   const [activeTab, setActiveTab] = useState<ProfileTab>('posts');
   const [refreshing, setRefreshing] = useState(false);
   const [followPending, setFollowPending] = useState(false);
+
+  // ✅ Track which posts are on screen so videos pause when scrolled past
+  const { visibleIds, viewabilityConfig, onViewableItemsChanged } = useVisibleItems();
 
   // ✅ Hide tab bar on scroll down / show on scroll up
   const handleTabBarScroll = useTabBarHideOnScroll();
@@ -290,7 +294,10 @@ export default function ProfileScreen() {
     (navigation.navigate as any)('FollowList', { userId: effectiveUserId, mode });
   };
 
-  const renderPostItem = ({ item }: { item: Post }) => <PostCard post={item} />;
+  // ── Pass a real isVisible so PostCard can pause off-screen videos ──
+  const renderPostItem = ({ item }: { item: Post }) => (
+    <PostCard post={item} isVisible={visibleIds.has(String(item.id))} />
+  );
 
   // ── Animated scroll value ──
   const scrollY = useRef(new Animated.Value(0)).current;
@@ -308,9 +315,6 @@ export default function ProfileScreen() {
     extrapolate: 'clamp',
   });
 
-  // The sticky action button uses its own, later window — so the big button
-  // in the profile header is guaranteed to be off-screen by the time the
-  // sticky copy starts appearing. No overlap, no duplicate.
   const actionOpacity = scrollY.interpolate({
     inputRange: [ACTION_REVEAL_START, ACTION_REVEAL_END],
     outputRange: [0, 1],
@@ -322,7 +326,6 @@ export default function ProfileScreen() {
     extrapolate: 'clamp',
   });
 
-  // ✅ onScroll now drives both the header animations AND the tab bar hide/show
   const onScroll = Animated.event(
     [{ nativeEvent: { contentOffset: { y: scrollY } } }],
     {
@@ -498,8 +501,6 @@ export default function ProfileScreen() {
           </Text>
         </Animated.View>
 
-        {/* Action button uses its own later reveal window so it never
-            duplicates the big button in the profile header. */}
         <Animated.View
           style={[
             styles.stickyActionWrap,
@@ -620,6 +621,8 @@ export default function ProfileScreen() {
               </View>
             )
           }
+          viewabilityConfig={viewabilityConfig}
+          onViewableItemsChanged={onViewableItemsChanged}
         />
         {renderStickyHeader()}
       </View>
