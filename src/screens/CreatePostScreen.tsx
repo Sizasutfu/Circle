@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,8 @@ import {
   StyleSheet,
   Modal,
   Dimensions,
+  FlatList,
+  Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -19,9 +21,32 @@ import { useNavigation, CommonActions } from '@react-navigation/native';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { Avatar } from '../components/Avatar';
+import VerificationBadge from '../components/VerificationBadge';
 import api from '../api/client';
 
 const { width, height } = Dimensions.get('window');
+
+interface MentionUser {
+  id: string;
+  name: string;
+  username: string;
+  avatar?: string | null;
+  verified?: boolean;
+}
+
+// Extract "@username" tokens from a body of text. Used for the
+// "mentioned users" preview row under the composer.
+function extractMentionedUsernames(text: string): string[] {
+  if (!text) return [];
+  const re = /(^|\s)@([A-Za-z0-9_]{1,30})/g;
+  const found = new Set<string>();
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(text)) !== null) {
+    found.add(match[2].toLowerCase());
+  }
+  return [...found];
+}
 
 export default function CreatePostScreen() {
   const navigation = useNavigation();
@@ -34,6 +59,157 @@ export default function CreatePostScreen() {
   const [videoUri, setVideoUri] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [showLoader, setShowLoader] = useState(false);
+
+  // ─── Mention autocomplete state ─────────────────────────────
+  const [cursorPosition, setCursorPosition] = useState(0);
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [mentionStart, setMentionStart] = useState(-1);
+  const [suggestions, setSuggestions] = useState<MentionUser[]>([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const inputRef = useRef<TextInput>(null);
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingSelectionRef = useRef<number | null>(null);
+  const forceSelection = pendingSelectionRef.current;
+
+  const mentionedUsernames = extractMentionedUsernames(text);
+
+  // ─── Detect an active @-mention at the cursor ───────────────
+  const detectMention = useCallback((value: string, cursor: number) => {
+    if (cursor <= 0) {
+      setMentionQuery(null);
+      setMentionStart(-1);
+      return;
+    }
+    const before = value.slice(0, cursor);
+    const lastAt = before.lastIndexOf('@');
+    if (lastAt === -1) {
+      setMentionQuery(null);
+      setMentionStart(-1);
+      return;
+    }
+    const afterAt = before.slice(lastAt + 1);
+    // If any whitespace between @ and cursor, the mention has ended.
+    if (/\s/.test(afterAt)) {
+      setMentionQuery(null);
+      setMentionStart(-1);
+      return;
+    }
+    // Require the @ to be at start of string or preceded by whitespace.
+    if (lastAt > 0 && !/[\s\n]/.test(before[lastAt - 1])) {
+      setMentionQuery(null);
+      setMentionStart(-1);
+      return;
+    }
+    setMentionStart(lastAt);
+    setMentionQuery(afterAt);
+  }, []);
+
+  // ─── Fetch suggestions with debounce ────────────────────────
+  useEffect(() => {
+    if (mentionQuery === null) {
+      setSuggestions([]);
+      setSuggestionsLoading(false);
+      return;
+    }
+
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+
+    setSuggestionsLoading(true);
+    searchTimerRef.current = setTimeout(async () => {
+      try {
+        const res = await api.get('/users', {
+          params: { q: mentionQuery, limit: 6 },
+        });
+        const data = res.data;
+        let list: any[] = [];
+        if (Array.isArray(data)) list = data;
+        else if (Array.isArray(data?.users)) list = data.users;
+        else if (Array.isArray(data?.data)) list = data.data;
+        else if (Array.isArray(data?.results)) list = data.results;
+        else if (Array.isArray(data?.data?.users)) list = data.data.users;
+        else if (Array.isArray(data?.data?.results)) list = data.data.results;
+
+        // Normalise shape. Drop self.
+        const mapped: MentionUser[] = list
+          .map((u: any) => ({
+            id: String(u.id ?? u.userId ?? u.user_id ?? ''),
+            name: u.name || u.username || 'User',
+            username: u.username || '',
+            avatar: u.avatar || u.picture || u.profile_picture || null,
+            verified: !!(u.verified ?? u.is_verified ?? u.isVerified),
+          }))
+          .filter((u) => u.username && u.id !== String(user?.id || ''));
+
+        setSuggestions(mapped);
+      } catch (err) {
+        // Silent — the dropdown just shows nothing on error
+        setSuggestions([]);
+      } finally {
+        setSuggestionsLoading(false);
+      }
+    }, 220);
+
+    return () => {
+      if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    };
+  }, [mentionQuery, user?.id]);
+
+  // ─── Handle typing ──────────────────────────────────────────
+  const handleChangeText = (value: string) => {
+    setText(value);
+    // If the user typed, cursor is presumably at end of the change.
+    // We'll re-validate on the next selection event anyway.
+    detectMention(value, cursorPosition);
+  };
+
+  const handleSelectionChange = (e: any) => {
+    if (pendingSelectionRef.current !== null) {
+      // A programmatic selection is in flight; ignore the echo.
+      return;
+    }
+    const pos = e.nativeEvent.selection.start;
+    setCursorPosition(pos);
+    detectMention(text, pos);
+  };
+
+  // ─── Insert a mention ──────────────────────────────────────
+  const insertMention = (u: MentionUser) => {
+    const before = text.slice(0, mentionStart);
+    const after = text.slice(cursorPosition);
+    const insertion = `@${u.username} `;
+    const newText = before + insertion + after;
+    const newCursor = before.length + insertion.length;
+
+    setText(newText);
+    setMentionQuery(null);
+    setMentionStart(-1);
+    setSuggestions([]);
+
+    // Nudge RN to move the cursor. We set a pending selection; the
+    // next onSelectionChange that echoes it clears the flag.
+    pendingSelectionRef.current = newCursor;
+    setCursorPosition(newCursor);
+    setTimeout(() => {
+      pendingSelectionRef.current = null;
+    }, 60);
+
+    inputRef.current?.focus();
+  };
+
+  // ─── Open the mention picker without typing @ ───────────────
+  const openMentionPicker = () => {
+    const pos = cursorPosition;
+    const before = text.slice(0, pos);
+    const after = text.slice(pos);
+    const needsSpace = before.length > 0 && !/[\s\n]$/.test(before);
+    const newText = before + (needsSpace ? ' @' : '@') + after;
+    const newCursor = (needsSpace ? before.length + 2 : before.length + 1);
+    setText(newText);
+    setCursorPosition(newCursor);
+    setMentionStart(newCursor - 1);
+    setMentionQuery('');
+    setTimeout(() => inputRef.current?.focus(), 60);
+  };
 
   // ---- Check if logged in ----
   if (!user) {
@@ -239,6 +415,8 @@ export default function CreatePostScreen() {
     </Modal>
   );
 
+  const showMentionDropdown = mentionQuery !== null && mentionStart >= 0;
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
       {/* ─── Loader Modal ─── */}
@@ -274,8 +452,13 @@ export default function CreatePostScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.body} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        style={styles.body}
+        keyboardShouldPersistTaps="handled"
+        onScrollBeginDrag={Keyboard.dismiss}
+      >
         <TextInput
+          ref={inputRef}
           style={[
             styles.textInput,
             {
@@ -288,9 +471,97 @@ export default function CreatePostScreen() {
           multiline
           numberOfLines={6}
           value={text}
-          onChangeText={setText}
+          onChangeText={handleChangeText}
+          onSelectionChange={handleSelectionChange}
           editable={!loading}
         />
+
+        {/* ─── Mention autocomplete dropdown ─── */}
+        {showMentionDropdown && (
+          <View
+            style={[
+              styles.mentionDropdown,
+              {
+                backgroundColor: colors.surface || colors.background,
+                borderColor: colors.border,
+                shadowColor: isDark ? 'transparent' : '#000',
+              },
+            ]}
+          >
+            <View style={[styles.mentionHeader, { borderBottomColor: colors.border }]}>
+              <Feather name="at-sign" size={12} color={colors.textMuted} />
+              <Text style={[styles.mentionHeaderText, { color: colors.textMuted }]}>
+                {mentionQuery ? `Searching "${mentionQuery}"` : 'Type a name'}
+              </Text>
+              {suggestionsLoading && (
+                <ActivityIndicator size="small" color={colors.primary} style={{ marginLeft: 6 }} />
+              )}
+            </View>
+
+            {suggestions.length === 0 && !suggestionsLoading ? (
+              <View style={styles.mentionEmpty}>
+                <Text style={[styles.mentionEmptyText, { color: colors.textMuted }]}>
+                  {mentionQuery ? 'No users found' : 'Start typing to search'}
+                </Text>
+              </View>
+            ) : (
+              <FlatList
+                data={suggestions}
+                keyExtractor={(u) => u.id}
+                keyboardShouldPersistTaps="handled"
+                scrollEnabled={suggestions.length > 4}
+                style={{ maxHeight: 220 }}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={styles.mentionRow}
+                    activeOpacity={0.7}
+                    onPress={() => insertMention(item)}
+                  >
+                    <Avatar source={item.avatar || undefined} size={34} fallback={item.name} />
+                    <View style={styles.mentionRowText}>
+                      <View style={styles.mentionNameRow}>
+                        <Text
+                          style={[styles.mentionName, { color: colors.text }]}
+                          numberOfLines={1}
+                        >
+                          {item.name}
+                        </Text>
+                        {item.verified && (
+                          <VerificationBadge size={12} style={{ marginLeft: 4 }} />
+                        )}
+                      </View>
+                      <Text
+                        style={[styles.mentionUsername, { color: colors.textSecondary }]}
+                        numberOfLines={1}
+                      >
+                        @{item.username}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                )}
+              />
+            )}
+          </View>
+        )}
+
+        {/* ─── Mentioned users preview ─── */}
+        {mentionedUsernames.length > 0 && (
+          <View style={styles.mentionsPreviewRow}>
+            <Feather name="at-sign" size={12} color={colors.textMuted} />
+            <Text style={[styles.mentionsPreviewText, { color: colors.textSecondary }]}>
+              Mentioning{' '}
+              {mentionedUsernames.slice(0, 3).map((u, i) => (
+                <Text key={u}>
+                  <Text style={{ color: colors.primary }}>@{u}</Text>
+                  {i < Math.min(mentionedUsernames.length, 3) - 1 ? ', ' : ''}
+                </Text>
+              ))}
+              {mentionedUsernames.length > 3
+                ? ` and ${mentionedUsernames.length - 3} more`
+                : ''}
+            </Text>
+          </View>
+        )}
 
         {(imageUri || videoUri) && (
           <View style={[styles.mediaPreview, { backgroundColor: isDark ? '#1f2937' : '#f3f4f6' }]}>
@@ -335,6 +606,19 @@ export default function CreatePostScreen() {
           >
             <Feather name="video" size={24} color={colors.textSecondary} />
             <Text style={[styles.mediaButtonText, { color: colors.textSecondary }]}>Video</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.mediaButton,
+              {
+                backgroundColor: isDark ? '#374151' : '#f3f4f6',
+              },
+            ]}
+            onPress={openMentionPicker}
+            disabled={loading}
+          >
+            <Feather name="at-sign" size={24} color={colors.textSecondary} />
+            <Text style={[styles.mediaButtonText, { color: colors.textSecondary }]}>Mention</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -387,6 +671,78 @@ const styles = StyleSheet.create({
     minHeight: 120,
     textAlignVertical: 'top',
   },
+
+  // ─── Mention autocomplete ───
+  mentionDropdown: {
+    marginTop: 8,
+    borderWidth: 1,
+    borderRadius: 12,
+    overflow: 'hidden',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  mentionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+  },
+  mentionHeaderText: {
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    flex: 1,
+  },
+  mentionEmpty: {
+    padding: 16,
+    alignItems: 'center',
+  },
+  mentionEmptyText: {
+    fontSize: 13,
+  },
+  mentionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 10,
+  },
+  mentionRowText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  mentionNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  mentionName: {
+    fontSize: 14,
+    fontWeight: '600',
+    flexShrink: 1,
+  },
+  mentionUsername: {
+    fontSize: 12,
+    marginTop: 1,
+  },
+
+  // ─── Mentioned users preview ───
+  mentionsPreviewRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 12,
+    paddingHorizontal: 4,
+  },
+  mentionsPreviewText: {
+    fontSize: 12,
+    flex: 1,
+  },
+
   mediaPreview: {
     marginTop: 16,
     borderRadius: 12,
@@ -421,6 +777,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     marginTop: 16,
     gap: 12,
+    flexWrap: 'wrap',
   },
   mediaButton: {
     flexDirection: 'row',
