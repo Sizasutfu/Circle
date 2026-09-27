@@ -12,6 +12,7 @@ import {
   StyleSheet,
   Dimensions,
 } from 'react-native';
+import type { StyleProp, TextStyle } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -121,6 +122,145 @@ function throttle(fn: Function, limit: number) {
       }, limit);
     }
   };
+}
+
+// ─── Rich text tokenizer for mentions / hashtags / URLs ──────
+type RichToken =
+  | { type: 'text'; value: string }
+  | { type: 'mention'; value: string; username: string }
+  | { type: 'hashtag'; value: string; tag: string }
+  | { type: 'url'; value: string };
+
+// Matches URLs first, then @mentions, then #hashtags. Word-boundary
+// checks are done manually in the loop so we don't rely on lookbehind
+// (Hermes doesn't support it everywhere).
+const RICH_TOKEN_REGEX = /(https?:\/\/[^\s]+)|@([\w\u00C0-\u017F\-]+)|#([\w\u00C0-\u017F]+)/g;
+
+function tokenizeRichText(text: string): RichToken[] {
+  const tokens: RichToken[] = [];
+  if (!text) return tokens;
+
+  RICH_TOKEN_REGEX.lastIndex = 0;
+
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = RICH_TOKEN_REGEX.exec(text)) !== null) {
+    const [full, url, mention, hashtag] = match;
+    const start = match.index;
+    const prevChar = start > 0 ? text[start - 1] : '';
+    // Same rule as formatText.js's `(?<!\w)`: the @ or # must not be
+    // preceded by a word character (so emails and #hashtag-within-word
+    // don't trigger).
+    const boundaryOk = start === 0 || !/[A-Za-z0-9_]/.test(prevChar);
+
+    if (url) {
+      if (start > lastIndex) tokens.push({ type: 'text', value: text.slice(lastIndex, start) });
+      tokens.push({ type: 'url', value: url });
+      lastIndex = start + full.length;
+      continue;
+    }
+
+    if (!boundaryOk) continue;
+
+    if (mention) {
+      if (start > lastIndex) tokens.push({ type: 'text', value: text.slice(lastIndex, start) });
+      tokens.push({ type: 'mention', value: full, username: mention });
+      lastIndex = start + full.length;
+      continue;
+    }
+
+    if (hashtag) {
+      if (start > lastIndex) tokens.push({ type: 'text', value: text.slice(lastIndex, start) });
+      tokens.push({ type: 'hashtag', value: full, tag: hashtag });
+      lastIndex = start + full.length;
+      continue;
+    }
+  }
+
+  if (lastIndex < text.length) {
+    tokens.push({ type: 'text', value: text.slice(lastIndex) });
+  }
+
+  return tokens;
+}
+
+// ─── RichText component ──────────────────────────────────────
+interface RichTextProps {
+  text: string;
+  style?: StyleProp<TextStyle>;
+  mentionStyle?: StyleProp<TextStyle>;
+  hashtagStyle?: StyleProp<TextStyle>;
+  linkStyle?: StyleProp<TextStyle>;
+  numberOfLines?: number;
+  onPress?: () => void;
+  onMentionPress?: (username: string) => void;
+  onHashtagPress?: (tag: string) => void;
+  onUrlPress?: (url: string) => void;
+}
+
+function RichText({
+  text,
+  style,
+  mentionStyle,
+  hashtagStyle,
+  linkStyle,
+  numberOfLines,
+  onPress,
+  onMentionPress,
+  onHashtagPress,
+  onUrlPress,
+}: RichTextProps) {
+  const tokens = useMemo(() => tokenizeRichText(text), [text]);
+
+  return (
+    <Text
+      style={style}
+      numberOfLines={numberOfLines}
+      onPress={onPress}
+      suppressHighlighting
+    >
+      {tokens.map((tok, i) => {
+        if (tok.type === 'mention' && onMentionPress) {
+          return (
+            <Text
+              key={i}
+              style={mentionStyle}
+              onPress={() => onMentionPress(tok.username)}
+              suppressHighlighting
+            >
+              {tok.value}
+            </Text>
+          );
+        }
+        if (tok.type === 'hashtag' && onHashtagPress) {
+          return (
+            <Text
+              key={i}
+              style={hashtagStyle}
+              onPress={() => onHashtagPress(tok.tag)}
+              suppressHighlighting
+            >
+              {tok.value}
+            </Text>
+          );
+        }
+        if (tok.type === 'url' && onUrlPress) {
+          return (
+            <Text
+              key={i}
+              style={linkStyle}
+              onPress={() => onUrlPress(tok.value)}
+              suppressHighlighting
+            >
+              {tok.value}
+            </Text>
+          );
+        }
+        return <Text key={i}>{tok.value}</Text>;
+      })}
+    </Text>
+  );
 }
 
 export interface Post {
@@ -268,6 +408,24 @@ function PostCard({
     (navigation.navigate as any)('EditPost', { postId: id });
   };
 
+  // ── Rich-text press handlers ──
+  const handleMentionPress = (mentionedUsername: string) => {
+    if (!mentionedUsername) return;
+    (navigation.navigate as any)('Profile', { username: mentionedUsername });
+  };
+
+  const handleHashtagPress = (tag: string) => {
+    if (!tag) return;
+    (navigation.navigate as any)('TopicDetail', { topic: tag });
+  };
+
+  const handleUrlPress = (url: string) => {
+    if (!url) return;
+    Linking.openURL(url).catch(() => {
+      Alert.alert('Error', 'Could not open link.');
+    });
+  };
+
   const handleOpenLive = () => {
     if (!liveSessionId) return;
     watchSession(liveSessionId);
@@ -323,7 +481,6 @@ function PostCard({
     }
   }, [isVisible]);
 
-  // Clean up fullscreen control timeout on unmount
   useEffect(() => {
     return () => {
       if (fsControlsTimeout.current) clearTimeout(fsControlsTimeout.current);
@@ -421,7 +578,6 @@ function PostCard({
     if (!video) return;
     fsHasSeekedRef.current = false;
 
-    // Pause the inline player and remember where it was.
     try {
       const status = await videoRef.current?.getStatusAsync();
       if (status && status.isLoaded) {
@@ -446,7 +602,6 @@ function PostCard({
 
     setVideoFullscreen(false);
 
-    // Resume inline at the same position (paused, with overlay shown).
     try {
       await videoRef.current?.setPositionAsync(pos);
       setPositionMs(pos);
@@ -694,7 +849,6 @@ function PostCard({
                 </View>
               )}
 
-              {/* ── Fullscreen button (always visible in the top-right) ── */}
               <TouchableOpacity
                 onPress={openVideoFullscreen}
                 style={styles.fullscreenButton}
@@ -920,10 +1074,19 @@ function PostCard({
           </View>
 
           {!!text && (
-            <TouchableOpacity activeOpacity={0.8} onPress={goToPostDetail}>
-              <Text style={[styles.postText, { color: colors.text }]} numberOfLines={shouldTruncate ? 3 : undefined}>
-                {text}
-              </Text>
+            <View>
+              <RichText
+                text={text}
+                style={[styles.postText, { color: colors.text }]}
+                mentionStyle={[styles.inlineLink, { color: colors.primary }]}
+                hashtagStyle={[styles.inlineLink, { color: colors.primary }]}
+                linkStyle={[styles.inlineLink, styles.inlineUrl, { color: colors.primary }]}
+                numberOfLines={shouldTruncate ? 3 : undefined}
+                onPress={goToPostDetail}
+                onMentionPress={handleMentionPress}
+                onHashtagPress={handleHashtagPress}
+                onUrlPress={handleUrlPress}
+              />
               {shouldTruncate && (
                 <TouchableOpacity onPress={toggleExpand}>
                   <Text style={[styles.showMore, { color: colors.primary }]}>Show more</Text>
@@ -934,7 +1097,7 @@ function PostCard({
                   <Text style={[styles.showMore, { color: colors.primary }]}>Show less</Text>
                 </TouchableOpacity>
               )}
-            </TouchableOpacity>
+            </View>
           )}
         </View>
       </View>
@@ -1021,7 +1184,6 @@ function PostCard({
         <View style={styles.fsContainer}>
           <StatusBar hidden />
 
-          {/* Tap anywhere to toggle controls */}
           <TouchableOpacity
             activeOpacity={1}
             onPress={toggleFsControls}
@@ -1054,7 +1216,6 @@ function PostCard({
                 <Feather name="x" size={26} color="#ffffff" />
               </TouchableOpacity>
 
-              {/* Center play/pause button */}
               <TouchableOpacity
                 activeOpacity={0.8}
                 onPress={toggleFsPlayPause}
@@ -1070,7 +1231,6 @@ function PostCard({
                 </View>
               </TouchableOpacity>
 
-              {/* Bottom controls */}
               <View style={styles.fsBottomBar}>
                 <Text style={styles.fsTime}>{formatDuration(fsPositionMs)}</Text>
                 <TouchableOpacity
@@ -1228,6 +1388,15 @@ const styles = StyleSheet.create({
   mentionBadgeText: { fontSize: 11, marginLeft: 4 },
   postText: { fontSize: 15, lineHeight: 22, marginTop: 6 },
   showMore: { fontSize: 14, marginTop: 4 },
+
+  // ── Inline rich text link styles ──
+  inlineLink: {
+    fontWeight: '600',
+  },
+  inlineUrl: {
+    textDecorationLine: 'underline',
+  },
+
   fullBleedWrapper: { width: '100%', marginTop: 12 },
 
   livePreview: {
@@ -1375,7 +1544,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // ── Inline fullscreen button ──
   fullscreenButton: {
     position: 'absolute',
     top: 10,
