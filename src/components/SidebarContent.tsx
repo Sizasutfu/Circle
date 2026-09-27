@@ -46,6 +46,7 @@ export default function SidebarContent(props: DrawerContentComponentProps) {
     { icon: 'search', label: 'Explore', route: 'Explore' },
     { icon: 'bell', label: 'Notifications', route: 'Notifications', badge: unreadNotifications },
     { icon: 'message-circle', label: 'Messages', route: 'Messages', badge: unreadMessages },
+    { icon: 'users', label: 'Groups', route: 'Groups' },
     { icon: 'hash', label: 'Topics', route: 'Topics' },
     { icon: 'message-square', label: 'Whisper', route: 'WhisperInbox' },
     { icon: 'bar-chart-2', label: 'Dashboard', route: 'Dashboard' },
@@ -108,6 +109,7 @@ export default function SidebarContent(props: DrawerContentComponentProps) {
               (item.route === 'Explore' && currentRoute === 'Explore') ||
               (item.route === 'Messages' && currentRoute === 'Messages') ||
               (item.route === 'Notifications' && currentRoute === 'Notifications') ||
+              (item.route === 'Groups' && currentRoute === 'Groups') ||
               (item.route === 'MyProfile' && currentRoute === 'MyProfile') ||
               (item.route === 'Settings' && currentRoute === 'Settings') ||
               (item.route === 'WhisperInbox' && currentRoute === 'WhisperInbox') ||

@@ -8,6 +8,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { TabBarProvider } from '../contexts/TabBarContext';
+import { GroupsProvider } from '../contexts/GroupsContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Platform, View, StyleSheet, Dimensions, Text } from 'react-native';
 
@@ -38,6 +39,8 @@ import EditPostScreen from '../screens/EditPostScreen';
 import NewMessageScreen from '../screens/NewMessageScreen';
 import WhisperInboxScreen from '../screens/WhisperInboxScreen';
 import DashboardScreen from '../screens/DashboardScreen';
+import GroupsScreen from '../screens/GroupsScreen';
+import GroupDetailScreen from '../screens/GroupDetailScreen';
 
 // ----- Components -----
 import SidebarContent from '../components/SidebarContent';
@@ -88,6 +91,7 @@ function extractEmailVerified(u: any): boolean | undefined {
 
 // ============================================================
 //  Bottom Tab Navigator
+//  Groups is intentionally NOT a tab — it lives in the drawer.
 // ============================================================
 function MainTabs() {
   const insets = useSafeAreaInsets();
@@ -210,20 +214,16 @@ function WebNavigator() {
       <Stack.Screen name="BlockedUsers" component={BlockedUsersScreen} />
       <Stack.Screen name="WhisperInbox" component={WhisperInboxScreen} />
       <Stack.Screen name="Dashboard" component={DashboardScreen} />
+      <Stack.Screen name="Groups" component={GroupsScreen} />
+      <Stack.Screen name="GroupDetail" component={GroupDetailScreen} />
     </Stack.Navigator>
   );
 }
 
 // ============================================================
 //  Drawer Navigator
-//
-//  PostDetail, CommentDetail, and TopicDetail were previously
-//  declared here as hidden screens. They've been moved up into
-//  MainStack so that screens living directly in MainStack
-//  (Profile, FollowList, etc.) can navigate to them too.
-//
-//  Navigating to those routes from a Drawer child (Feed, Explore,
-//  etc.) still works — the action simply bubbles up to MainStack.
+//  Groups lives here as a first-class entry so it's reachable
+//  from the sidebar, not the bottom tab bar.
 // ============================================================
 function DrawerNavigator() {
   const { colors } = useTheme();
@@ -249,6 +249,14 @@ function DrawerNavigator() {
         options={{
           drawerLabel: 'Home',
           drawerIcon: ({ color, size }) => <Feather name="home" size={size} color={color} />,
+        }}
+      />
+      <Drawer.Screen
+        name="Groups"
+        component={GroupsScreen}
+        options={{
+          drawerLabel: 'Groups',
+          drawerIcon: ({ color, size }) => <Feather name="users" size={size} color={color} />,
         }}
       />
       <Drawer.Screen
@@ -290,12 +298,8 @@ function AuthStack() {
 
 // ============================================================
 //  Main Stack
-//
-//  Detail screens that need to be reachable from BOTH the
-//  Drawer's children (Feed, Explore, …) and MainStack's own
-//  children (Profile, FollowList, …) live here. This is the
-//  common ancestor of every authenticated screen, so one
-//  declaration is enough for all navigation sources.
+//  Detail screens that must be reachable from BOTH the Drawer
+//  children and MainStack's own children live here.
 // ============================================================
 function MainStack() {
   const { colors } = useTheme();
@@ -325,6 +329,11 @@ function MainStack() {
       <Stack.Screen
         name="TopicDetail"
         component={TopicDetailScreen}
+        options={{ headerShown: false, cardStyle: { backgroundColor: colors.background } }}
+      />
+      <Stack.Screen
+        name="GroupDetail"
+        component={GroupDetailScreen}
         options={{ headerShown: false, cardStyle: { backgroundColor: colors.background } }}
       />
 
@@ -422,43 +431,42 @@ export default function AppNavigator() {
   };
 
   const emailVerified = extractEmailVerified(user);
-  // Only gate when the API explicitly says "not verified". A missing field
-  // (undefined) is treated as "don't know" so we never lock anyone out of
-  // an account that predates the field.
   const needsEmailVerification = !!user && emailVerified === false;
 
   return (
     <View style={[styles.rootContainer, { backgroundColor: colors.background }]}>
       <NavigationContainer theme={customTheme}>
-        <TabBarProvider>
-          <NotificationsSync />
-          <Stack.Navigator
-            screenOptions={{ headerShown: false, cardStyle: { backgroundColor: colors.background } }}
-          >
-            {!user ? (
-              <Stack.Screen name="Auth" component={AuthStack} />
-            ) : needsEmailVerification ? (
-              <Stack.Screen
-                name="VerifyEmail"
-                component={EmailVerificationScreen}
-                options={{ headerShown: false, gestureEnabled: false }}
-              />
-            ) : showWelcome ? (
-              <Stack.Screen name="Welcome" options={{ headerShown: false }}>
-                {() => (
-                  <WelcomeScreen
-                    onFinish={() => {
-                      setShowWelcome(false);
-                      setIsNewUser(false);
-                    }}
-                  />
-                )}
-              </Stack.Screen>
-            ) : (
-              <Stack.Screen name="Main" component={MainStack} />
-            )}
-          </Stack.Navigator>
-        </TabBarProvider>
+        <GroupsProvider>
+          <TabBarProvider>
+            <NotificationsSync />
+            <Stack.Navigator
+              screenOptions={{ headerShown: false, cardStyle: { backgroundColor: colors.background } }}
+            >
+              {!user ? (
+                <Stack.Screen name="Auth" component={AuthStack} />
+              ) : needsEmailVerification ? (
+                <Stack.Screen
+                  name="VerifyEmail"
+                  component={EmailVerificationScreen}
+                  options={{ headerShown: false, gestureEnabled: false }}
+                />
+              ) : showWelcome ? (
+                <Stack.Screen name="Welcome" options={{ headerShown: false }}>
+                  {() => (
+                    <WelcomeScreen
+                      onFinish={() => {
+                        setShowWelcome(false);
+                        setIsNewUser(false);
+                      }}
+                    />
+                  )}
+                </Stack.Screen>
+              ) : (
+                <Stack.Screen name="Main" component={MainStack} />
+              )}
+            </Stack.Navigator>
+          </TabBarProvider>
+        </GroupsProvider>
       </NavigationContainer>
     </View>
   );

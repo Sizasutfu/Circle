@@ -6,6 +6,7 @@ import { WsProvider } from './src/contexts/WsContext';
 import { ThemeProvider } from './src/contexts/ThemeContext';
 import { WhisperProvider } from './src/contexts/WhisperContext';
 import { LiveProvider } from './src/contexts/LiveContext';
+import { GroupsProvider } from './src/contexts/GroupsContext';
 import AppNavigator from './src/navigation/AppNavigator';
 
 const queryClient = new QueryClient({
@@ -26,7 +27,9 @@ export default function App() {
             <WsProvider>
               <WhisperProvider>
                 <LiveProvider>
-                  <AppNavigator />
+                  <GroupsProvider>
+                    <AppNavigator />
+                  </GroupsProvider>
                 </LiveProvider>
               </WhisperProvider>
             </WsProvider>
