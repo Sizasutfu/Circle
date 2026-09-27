@@ -324,6 +324,13 @@ function PostCard({
     groupId = null, reasons = [], user = undefined
   } = post || {};
 
+  // Coerce once — the API may send these as 0/1 from MySQL, or as
+  // '' for absent media. Rendering a bare 0 inside a View triggers
+  // "Text strings must be rendered within a <Text> component".
+  const isRepostBool = !!isRepost;
+  const hasImage = !!image;
+  const hasVideo = !!video;
+
   const safeComments = Array.isArray(post?.comments) ? post.comments : [];
 
   const propLiked = isLikedByMe(post, currentUser?.id);
@@ -346,7 +353,7 @@ function PostCard({
   useEffect(() => { setLocalVideoViews(propVideoViews); }, [propVideoViews]);
 
   const displayName = user?.name || 'Anonymous';
-  const username = user?.username || '';
+  const username = user?.username || null;
   const avatarUrl = user?.avatar || null;
   const isVerified = !!user?.verified;
   const userId = user?.id;
@@ -966,7 +973,7 @@ function PostCard({
             <Feather name="share" size={16} color={colors.text} />
             <Text style={[styles.dropdownItemText, { color: colors.text }]}>Share as Image</Text>
           </TouchableOpacity>
-          {image && (
+          {hasImage && (
             <>
               <View style={[styles.dropdownDivider, { backgroundColor: colors.border }]} />
               <TouchableOpacity onPress={() => { Alert.alert('Download', 'Original image download not implemented yet.'); setIsDropdownOpen(false); }} style={styles.dropdownItem}>
@@ -991,7 +998,7 @@ function PostCard({
 
   if (!post) return null;
 
-  if (isRepost && (!text || text.trim() === '') && originalPost) {
+  if (isRepostBool && (!text || text.trim() === '') && originalPost) {
     return (
       <View style={[styles.repostWrapper, { borderBottomColor: colors.border }]}>
         <View style={styles.repostBanner}>
@@ -1008,7 +1015,7 @@ function PostCard({
 
   return (
     <View style={[styles.card, { borderBottomColor: colors.border }]}>
-      {isRepost && originalPost && (
+      {isRepostBool && originalPost && (
         <View style={styles.repostBanner}>
           <Feather name="repeat" size={14} color={colors.textMuted} />
           <Text style={[styles.repostBannerText, { color: colors.textSecondary }]}>{displayName} quoted</Text>
@@ -1150,7 +1157,7 @@ function PostCard({
             minimumZoomScale={1}
             centerContent
           >
-            {image && (
+            {hasImage && (
               <Image
                 source={{ uri: image }}
                 style={styles.lightboxImage}
@@ -1180,7 +1187,7 @@ function PostCard({
             onPress={toggleFsControls}
             style={styles.fsTouchable}
           >
-            {video && (
+            {hasVideo && (
               <Video
                 ref={fullscreenVideoRef}
                 source={{ uri: video }}
