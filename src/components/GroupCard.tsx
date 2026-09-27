@@ -107,13 +107,7 @@ export default function GroupCard({ group }: Props) {
 
   return (
     <TouchableOpacity
-      style={[
-        styles.card,
-        {
-          backgroundColor: colors.card,
-          borderColor: colors.border,
-        },
-      ]}
+      style={styles.card}
       onPress={openDetail}
       activeOpacity={0.75}
     >
@@ -211,14 +205,13 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    padding: 12,
-    borderRadius: 14,
-    borderWidth: 1,
+    paddingHorizontal: 4,
+    paddingVertical: 10,
     gap: 12,
   },
   coverWrap: {
-    width: 72,
-    height: 72,
+    width: 68,
+    height: 68,
     borderRadius: 12,
     overflow: 'hidden',
     backgroundColor: '#000',
@@ -232,7 +225,7 @@ const styles = StyleSheet.create({
   },
   body: {
     flex: 1,
-    minWidth: 0, // allow text to shrink/truncate properly
+    minWidth: 0,
   },
   name: {
     fontSize: 15,
