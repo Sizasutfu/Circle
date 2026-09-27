@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { Feather } from '@expo/vector-icons';
 import { Video, ResizeMode, AVPlaybackStatus } from 'expo-av';
 import { useNavigation } from '@react-navigation/native';
@@ -27,7 +28,7 @@ import { timeAgo, formatNumber, safeString } from '../utils/helpers';
 import { extractMentions } from '../lib/formatText';
 import api from '../api/client';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 // ─── Helpers ─────────────────────────────────────────────────
 function isUserInList(list: any, currentUserId: any): boolean {
@@ -240,6 +241,17 @@ function PostCard({
   const [durationMs, setDurationMs] = useState(0);
   const [progressBarWidth, setProgressBarWidth] = useState(0);
 
+  // ── Fullscreen video state ──
+  const [videoFullscreen, setVideoFullscreen] = useState(false);
+  const fullscreenVideoRef = useRef<Video>(null);
+  const fsHasSeekedRef = useRef(false);
+  const [fsIsPlaying, setFsIsPlaying] = useState(false);
+  const [fsPositionMs, setFsPositionMs] = useState(0);
+  const [fsDurationMs, setFsDurationMs] = useState(0);
+  const [fsShowControls, setFsShowControls] = useState(true);
+  const [fsProgressBarWidth, setFsProgressBarWidth] = useState(0);
+  const fsControlsTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const isMentionedInText = useMemo(() => {
     if (!currentUser || !text) return false;
     const mentions = extractMentions(text);
@@ -310,6 +322,13 @@ function PostCard({
       setShowVideoOverlay(true);
     }
   }, [isVisible]);
+
+  // Clean up fullscreen control timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (fsControlsTimeout.current) clearTimeout(fsControlsTimeout.current);
+    };
+  }, []);
 
   const handleVideoPlaybackStatus = (status: AVPlaybackStatus) => {
     if (!status.isLoaded) return;
@@ -390,6 +409,110 @@ function PostCard({
     } catch (err) {
       console.warn('Seek failed:', err);
     }
+  };
+
+  // ── Fullscreen video handlers ──
+  const scheduleFsControlsHide = () => {
+    if (fsControlsTimeout.current) clearTimeout(fsControlsTimeout.current);
+    fsControlsTimeout.current = setTimeout(() => setFsShowControls(false), 3000);
+  };
+
+  const openVideoFullscreen = async () => {
+    if (!video) return;
+    fsHasSeekedRef.current = false;
+
+    // Pause the inline player and remember where it was.
+    try {
+      const status = await videoRef.current?.getStatusAsync();
+      if (status && status.isLoaded) {
+        setFsPositionMs(status.positionMillis ?? 0);
+        setFsDurationMs(status.durationMillis ?? 0);
+        await videoRef.current?.pauseAsync();
+      }
+    } catch {}
+
+    setVideoFullscreen(true);
+    setFsShowControls(true);
+    scheduleFsControlsHide();
+  };
+
+  const closeVideoFullscreen = async () => {
+    let pos = fsPositionMs;
+    try {
+      const status = await fullscreenVideoRef.current?.getStatusAsync();
+      if (status && status.isLoaded) pos = status.positionMillis ?? pos;
+      await fullscreenVideoRef.current?.pauseAsync();
+    } catch {}
+
+    setVideoFullscreen(false);
+
+    // Resume inline at the same position (paused, with overlay shown).
+    try {
+      await videoRef.current?.setPositionAsync(pos);
+      setPositionMs(pos);
+    } catch {}
+    setShowVideoOverlay(true);
+  };
+
+  const handleFullscreenStatus = (status: AVPlaybackStatus) => {
+    if (!status.isLoaded) return;
+    setFsIsPlaying(!!status.isPlaying);
+    setFsPositionMs(status.positionMillis ?? 0);
+    setFsDurationMs(status.durationMillis ?? 0);
+
+    if (status.didJustFinish) {
+      fullscreenVideoRef.current?.setPositionAsync(0).catch(() => {});
+      fullscreenVideoRef.current?.pauseAsync().catch(() => {});
+      setFsIsPlaying(false);
+      setFsShowControls(true);
+    }
+  };
+
+  const handleFullscreenVideoLoad = async () => {
+    if (fsHasSeekedRef.current) return;
+    fsHasSeekedRef.current = true;
+    try {
+      if (fsPositionMs > 0) {
+        await fullscreenVideoRef.current?.setPositionAsync(fsPositionMs);
+      }
+      await fullscreenVideoRef.current?.playAsync();
+    } catch {}
+  };
+
+  const toggleFsPlayPause = async () => {
+    try {
+      const status = await fullscreenVideoRef.current?.getStatusAsync();
+      if (!status || !status.isLoaded) return;
+      if (status.isPlaying) {
+        await fullscreenVideoRef.current?.pauseAsync();
+      } else {
+        if (status.durationMillis && status.positionMillis >= status.durationMillis - 100) {
+          await fullscreenVideoRef.current?.setPositionAsync(0);
+        }
+        await fullscreenVideoRef.current?.playAsync();
+      }
+      scheduleFsControlsHide();
+    } catch {}
+  };
+
+  const toggleFsControls = () => {
+    setFsShowControls((prev) => {
+      const next = !prev;
+      if (next) scheduleFsControlsHide();
+      else if (fsControlsTimeout.current) clearTimeout(fsControlsTimeout.current);
+      return next;
+    });
+  };
+
+  const handleFsSeek = async (locationX: number) => {
+    if (!fullscreenVideoRef.current || !fsDurationMs || !fsProgressBarWidth) return;
+    const ratio = Math.max(0, Math.min(1, locationX / fsProgressBarWidth));
+    const targetMs = Math.round(ratio * fsDurationMs);
+    try {
+      await fullscreenVideoRef.current.setPositionAsync(targetMs);
+      setFsPositionMs(targetMs);
+      scheduleFsControlsHide();
+    } catch {}
   };
 
   const handleLike = async () => {
@@ -517,11 +640,7 @@ function PostCard({
       const progressRatio = durationMs > 0 ? Math.min(1, positionMs / durationMs) : 0;
 
       return (
-        <TouchableOpacity
-          activeOpacity={1}
-          onPress={handleVideoAreaPress}
-          style={styles.mediaContainer}
-        >
+        <View style={styles.mediaContainer}>
           {videoError ? (
             <View style={[styles.videoErrorContainer, { backgroundColor: isDark ? '#1f2937' : '#f3f4f6' }]}>
               <Feather name="video-off" size={32} color={colors.textMuted} />
@@ -529,19 +648,25 @@ function PostCard({
             </View>
           ) : isVisible ? (
             <>
-              <Video
-                ref={videoRef}
-                source={{ uri: video }}
-                style={styles.mediaPlayer}
-                resizeMode={ResizeMode.CONTAIN}
-                shouldPlay={false}
-                isLooping={false}
-                isMuted={false}
-                useNativeControls={false}
-                progressUpdateIntervalMillis={250}
-                onError={() => setVideoError(true)}
-                onPlaybackStatusUpdate={handleVideoPlaybackStatus}
-              />
+              <TouchableOpacity
+                activeOpacity={1}
+                onPress={handleVideoAreaPress}
+                style={styles.videoTouchable}
+              >
+                <Video
+                  ref={videoRef}
+                  source={{ uri: video }}
+                  style={styles.mediaPlayer}
+                  resizeMode={ResizeMode.CONTAIN}
+                  shouldPlay={false}
+                  isLooping={false}
+                  isMuted={false}
+                  useNativeControls={false}
+                  progressUpdateIntervalMillis={250}
+                  onError={() => setVideoError(true)}
+                  onPlaybackStatusUpdate={handleVideoPlaybackStatus}
+                />
+              </TouchableOpacity>
 
               {showVideoOverlay && (
                 <TouchableOpacity
@@ -568,6 +693,16 @@ function PostCard({
                   </Text>
                 </View>
               )}
+
+              {/* ── Fullscreen button (always visible in the top-right) ── */}
+              <TouchableOpacity
+                onPress={openVideoFullscreen}
+                style={styles.fullscreenButton}
+                activeOpacity={0.7}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Feather name="maximize-2" size={16} color="#ffffff" />
+              </TouchableOpacity>
 
               {durationMs > 0 && (
                 <View style={styles.progressContainer}>
@@ -606,7 +741,7 @@ function PostCard({
               <Feather name="play-circle" size={40} color={colors.textMuted} />
             </View>
           )}
-        </TouchableOpacity>
+        </View>
       );
     }
 
@@ -849,6 +984,7 @@ function PostCard({
         </View>
       </View>
 
+      {/* ── Image lightbox ── */}
       <Modal visible={lightboxVisible} transparent>
         <SafeAreaView style={styles.lightbox}>
           <TouchableOpacity style={styles.lightboxClose} onPress={closeLightbox}>
@@ -871,6 +1007,118 @@ function PostCard({
             )}
           </ScrollView>
         </SafeAreaView>
+      </Modal>
+
+      {/* ── Fullscreen video ── */}
+      <Modal
+        visible={videoFullscreen}
+        animationType="fade"
+        transparent={false}
+        statusBarTranslucent
+        onRequestClose={closeVideoFullscreen}
+        supportedOrientations={['portrait', 'landscape']}
+      >
+        <View style={styles.fsContainer}>
+          <StatusBar hidden />
+
+          {/* Tap anywhere to toggle controls */}
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={toggleFsControls}
+            style={styles.fsTouchable}
+          >
+            {video && (
+              <Video
+                ref={fullscreenVideoRef}
+                source={{ uri: video }}
+                style={styles.fsVideo}
+                resizeMode={ResizeMode.CONTAIN}
+                shouldPlay={false}
+                isLooping={false}
+                isMuted={false}
+                useNativeControls={false}
+                progressUpdateIntervalMillis={250}
+                onLoad={handleFullscreenVideoLoad}
+                onPlaybackStatusUpdate={handleFullscreenStatus}
+              />
+            )}
+          </TouchableOpacity>
+
+          {fsShowControls && (
+            <>
+              <TouchableOpacity
+                onPress={closeVideoFullscreen}
+                style={styles.fsClose}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Feather name="x" size={26} color="#ffffff" />
+              </TouchableOpacity>
+
+              {/* Center play/pause button */}
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={toggleFsPlayPause}
+                style={styles.fsCenterButton}
+              >
+                <View style={styles.fsCenterButtonInner}>
+                  <Feather
+                    name={fsIsPlaying ? 'pause' : 'play'}
+                    size={40}
+                    color="#ffffff"
+                    style={!fsIsPlaying ? { marginLeft: 6 } : undefined}
+                  />
+                </View>
+              </TouchableOpacity>
+
+              {/* Bottom controls */}
+              <View style={styles.fsBottomBar}>
+                <Text style={styles.fsTime}>{formatDuration(fsPositionMs)}</Text>
+                <TouchableOpacity
+                  activeOpacity={1}
+                  onLayout={(e) => setFsProgressBarWidth(e.nativeEvent.layout.width)}
+                  onPress={(e) => handleFsSeek(e.nativeEvent.locationX)}
+                  style={styles.fsProgressTouchable}
+                >
+                  <View style={styles.fsProgressTrack}>
+                    <View
+                      style={[
+                        styles.fsProgressFill,
+                        {
+                          width: `${
+                            fsDurationMs > 0
+                              ? Math.min(100, (fsPositionMs / fsDurationMs) * 100)
+                              : 0
+                          }%`,
+                        },
+                      ]}
+                    />
+                    <View
+                      style={[
+                        styles.fsProgressThumb,
+                        {
+                          left: `${
+                            fsDurationMs > 0
+                              ? Math.min(100, (fsPositionMs / fsDurationMs) * 100)
+                              : 0
+                          }%`,
+                        },
+                      ]}
+                    />
+                  </View>
+                </TouchableOpacity>
+                <Text style={styles.fsTime}>{formatDuration(fsDurationMs)}</Text>
+
+                <TouchableOpacity
+                  onPress={closeVideoFullscreen}
+                  style={styles.fsExitButton}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Feather name="minimize-2" size={18} color="#ffffff" />
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+        </View>
       </Modal>
     </View>
   );
@@ -1081,6 +1329,9 @@ const styles = StyleSheet.create({
     position: 'relative',
     backgroundColor: '#000',
   },
+  videoTouchable: {
+    width: '100%',
+  },
   mediaPlayer: { width: '100%', height: SCREEN_WIDTH * 0.5625 },
   mediaImage: { width: '100%', height: SCREEN_WIDTH },
   videoPlaceholder: {
@@ -1122,6 +1373,20 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 12,
     fontWeight: '600',
+  },
+
+  // ── Inline fullscreen button ──
+  fullscreenButton: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    zIndex: 3,
   },
 
   progressContainer: {
@@ -1187,4 +1452,110 @@ const styles = StyleSheet.create({
   lightboxClose: { position: 'absolute', top: 40, right: 20, zIndex: 10 },
   lightboxScroll: { flexGrow: 1, justifyContent: 'center' },
   lightboxImage: { width: SCREEN_WIDTH, height: SCREEN_WIDTH * 1.2 },
+
+  // ── Fullscreen video modal ──
+  fsContainer: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  fsTouchable: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fsVideo: {
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT,
+  },
+  fsClose: {
+    position: 'absolute',
+    top: 48,
+    left: 20,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+  },
+  fsCenterButton: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    marginLeft: -40,
+    marginTop: -40,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fsCenterButtonInner: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.85)',
+  },
+  fsBottomBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingBottom: 28,
+    paddingTop: 12,
+    gap: 10,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  fsTime: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+    minWidth: 40,
+    textAlign: 'center',
+    fontVariant: ['tabular-nums'],
+  },
+  fsProgressTouchable: {
+    flex: 1,
+    paddingVertical: 10,
+  },
+  fsProgressTrack: {
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.35)',
+    position: 'relative',
+    justifyContent: 'center',
+  },
+  fsProgressFill: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    backgroundColor: '#ffffff',
+    borderRadius: 2,
+  },
+  fsProgressThumb: {
+    position: 'absolute',
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#ffffff',
+    marginLeft: -6,
+    top: -4.5,
+  },
+  fsExitButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+  },
 });
