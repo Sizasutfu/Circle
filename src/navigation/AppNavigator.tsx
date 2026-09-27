@@ -216,6 +216,14 @@ function WebNavigator() {
 
 // ============================================================
 //  Drawer Navigator
+//
+//  PostDetail, CommentDetail, and TopicDetail were previously
+//  declared here as hidden screens. They've been moved up into
+//  MainStack so that screens living directly in MainStack
+//  (Profile, FollowList, etc.) can navigate to them too.
+//
+//  Navigating to those routes from a Drawer child (Feed, Explore,
+//  etc.) still works — the action simply bubbles up to MainStack.
 // ============================================================
 function DrawerNavigator() {
   const { colors } = useTheme();
@@ -253,9 +261,6 @@ function DrawerNavigator() {
 
       {/* Hidden screens — reachable via navigation.navigate */}
       <Drawer.Screen name="Settings"         component={SettingsScreen}          options={{ drawerItemStyle: { display: 'none' } }} />
-      <Drawer.Screen name="TopicDetail"       component={TopicDetailScreen}       options={{ drawerItemStyle: { display: 'none' } }} />
-      <Drawer.Screen name="PostDetail"        component={PostDetailScreen}        options={{ drawerItemStyle: { display: 'none' } }} />
-      <Drawer.Screen name="CommentDetail"     component={CommentDetailScreen}     options={{ drawerItemStyle: { display: 'none' } }} />
       <Drawer.Screen name="FollowList"        component={FollowListScreen}        options={{ drawerItemStyle: { display: 'none' } }} />
       <Drawer.Screen name="EditProfile"       component={EditProfileScreen}       options={{ drawerItemStyle: { display: 'none' } }} />
       <Drawer.Screen name="EditProfileField"  component={EditProfileFieldScreen}  options={{ drawerItemStyle: { display: 'none' } }} />
@@ -285,6 +290,12 @@ function AuthStack() {
 
 // ============================================================
 //  Main Stack
+//
+//  Detail screens that need to be reachable from BOTH the
+//  Drawer's children (Feed, Explore, …) and MainStack's own
+//  children (Profile, FollowList, …) live here. This is the
+//  common ancestor of every authenticated screen, so one
+//  declaration is enough for all navigation sources.
 // ============================================================
 function MainStack() {
   const { colors } = useTheme();
@@ -297,6 +308,23 @@ function MainStack() {
       <Stack.Screen
         name="Profile"
         component={ProfileScreen}
+        options={{ headerShown: false, cardStyle: { backgroundColor: colors.background } }}
+      />
+
+      {/* ── Detail screens reachable from any authenticated screen ── */}
+      <Stack.Screen
+        name="PostDetail"
+        component={PostDetailScreen}
+        options={{ headerShown: false, cardStyle: { backgroundColor: colors.background } }}
+      />
+      <Stack.Screen
+        name="CommentDetail"
+        component={CommentDetailScreen}
+        options={{ headerShown: false, cardStyle: { backgroundColor: colors.background } }}
+      />
+      <Stack.Screen
+        name="TopicDetail"
+        component={TopicDetailScreen}
         options={{ headerShown: false, cardStyle: { backgroundColor: colors.background } }}
       />
 
