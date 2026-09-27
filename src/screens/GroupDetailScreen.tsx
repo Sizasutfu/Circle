@@ -12,8 +12,9 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
+  Animated,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image as ExpoImage } from 'expo-image';
 import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -25,6 +26,17 @@ import { useTabBarHeight } from '../hooks/useTabBarHeight';
 import { useVisibleItems } from '../hooks/useVisibleItems';
 import PostCard from '../components/PostCard';
 
+const AnimatedFlatList = Animated.createAnimatedComponent(FlatList);
+
+const STICKY_HEADER_HEIGHT = 56;
+// The cover is 200px tall; the header reveal completes just before it
+// scrolls fully under the sticky header.
+const SCROLL_THRESHOLD = 180;
+// The compact action button gets its own later window so it never
+// duplicates the big Join button on the cover.
+const ACTION_REVEAL_START = SCROLL_THRESHOLD + 40; // 220
+const ACTION_REVEAL_END = SCROLL_THRESHOLD + 100;  // 280
+
 function fmtNum(n: number): string {
   if (!n) return '0';
   if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
@@ -34,6 +46,7 @@ function fmtNum(n: number): string {
 export default function GroupDetailScreen() {
   const navigation = useNavigation();
   const route = useRoute();
+  const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { colors } = useTheme();
   const { contentBottomPadding } = useTabBarHeight();
@@ -69,6 +82,39 @@ export default function GroupDetailScreen() {
 
   const initialFetchDone = useRef(false);
 
+  // ── Scroll-driven sticky header (matches ProfileScreen) ──
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const headerHeight = insets.top + STICKY_HEADER_HEIGHT;
+
+  const headerReveal = scrollY.interpolate({
+    inputRange: [SCROLL_THRESHOLD - 40, SCROLL_THRESHOLD],
+    outputRange: [0, 1],
+    extrapolate: 'clamp',
+  });
+
+  const nameTranslateY = scrollY.interpolate({
+    inputRange: [SCROLL_THRESHOLD - 40, SCROLL_THRESHOLD],
+    outputRange: [8, 0],
+    extrapolate: 'clamp',
+  });
+
+  const actionOpacity = scrollY.interpolate({
+    inputRange: [ACTION_REVEAL_START, ACTION_REVEAL_END],
+    outputRange: [0, 1],
+    extrapolate: 'clamp',
+  });
+
+  const actionTranslateX = scrollY.interpolate({
+    inputRange: [ACTION_REVEAL_START, ACTION_REVEAL_END],
+    outputRange: [40, 0],
+    extrapolate: 'clamp',
+  });
+
+  const onScroll = Animated.event(
+    [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+    { useNativeDriver: true }
+  );
+
   // Load group on mount
   useEffect(() => {
     if (!groupId) return;
@@ -103,6 +149,14 @@ export default function GroupDetailScreen() {
       setIsMember(fromMyGroups || !!currentGroup.isMember);
     }
   }, [currentGroup, myGroups, refreshKey]);
+
+  const handleBack = useCallback(() => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      (navigation.navigate as any)('Groups');
+    }
+  }, [navigation]);
 
   const handleJoinToggle = useCallback(async () => {
     if (!user) {
@@ -191,38 +245,165 @@ export default function GroupDetailScreen() {
     [visibleIds]
   );
 
-  // ── Loading ──
+  // ── Sticky header (mirrors ProfileScreen's renderStickyHeader) ──
+  const renderStickyHeader = () => (
+    <Animated.View
+      style={[
+        styles.stickyHeader,
+        {
+          height: headerHeight,
+          paddingTop: insets.top,
+        },
+      ]}
+      pointerEvents="box-none"
+    >
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          StyleSheet.absoluteFillObject,
+          {
+            backgroundColor: colors.background,
+            opacity: headerReveal,
+          },
+        ]}
+      />
+
+      <View style={styles.stickyHeaderInner}>
+        <TouchableOpacity
+          onPress={handleBack}
+          style={styles.stickyBackButton}
+          activeOpacity={0.7}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Feather name="arrow-left" size={22} color={colors.text} />
+        </TouchableOpacity>
+
+        <Animated.View
+          style={[
+            styles.stickyTitleWrap,
+            {
+              opacity: headerReveal,
+              transform: [{ translateY: nameTranslateY }],
+            },
+          ]}
+          pointerEvents="none"
+        >
+          <Text
+            style={[styles.stickyName, { color: colors.text }]}
+            numberOfLines={1}
+          >
+            {String(currentGroup?.displayName || `#${currentGroup?.topic || 'Group'}`)}
+          </Text>
+          <Text
+            style={[styles.stickyPostCount, { color: colors.textSecondary }]}
+            numberOfLines={1}
+          >
+            {currentGroup ? `${fmtNum(currentGroup.memberCount)} members` : ''}
+          </Text>
+        </Animated.View>
+
+        <Animated.View
+          style={[
+            styles.stickyActionWrap,
+            {
+              opacity: actionOpacity,
+              transform: [{ translateX: actionTranslateX }],
+            },
+          ]}
+        >
+          {user && currentGroup ? (
+            <TouchableOpacity
+              onPress={handleJoinToggle}
+              disabled={isJoining}
+              style={[
+                styles.stickyJoinBtn,
+                isMember
+                  ? {
+                      backgroundColor: colors.surface,
+                      borderColor: colors.border,
+                      borderWidth: 1,
+                    }
+                  : { backgroundColor: colors.primary },
+              ]}
+              activeOpacity={0.8}
+            >
+              {isJoining ? (
+                <ActivityIndicator size="small" color={isMember ? colors.text : '#fff'} />
+              ) : (
+                <Text
+                  style={[
+                    styles.stickyJoinText,
+                    { color: isMember ? colors.text : '#fff' },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {isMember ? 'Following' : 'Join'}
+                </Text>
+              )}
+            </TouchableOpacity>
+          ) : null}
+        </Animated.View>
+      </View>
+    </Animated.View>
+  );
+
+  // ── Loading state (still has a back button so the user isn't stuck) ──
   if (loading) {
     return (
-      <SafeAreaView style={[styles.center, { backgroundColor: colors.background }]} edges={['top']}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={[styles.loadingText, { color: colors.textSecondary }]}>
-          Loading group…
-        </Text>
-      </SafeAreaView>
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={{ paddingTop: insets.top }}>
+          <TouchableOpacity
+            onPress={handleBack}
+            style={styles.simpleBackButton}
+            activeOpacity={0.7}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Feather name="arrow-left" size={22} color={colors.text} />
+          </TouchableOpacity>
+        </View>
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.loadingText, { color: colors.textSecondary }]}>
+            Loading group…
+          </Text>
+        </View>
+      </View>
     );
   }
 
-  // ── Error ──
+  // ── Error state ──
   if (error || !currentGroup) {
     return (
-      <SafeAreaView style={[styles.center, { backgroundColor: colors.background }]} edges={['top']}>
-        <Feather name="alert-circle" size={48} color="#ef4444" />
-        <Text style={[styles.errorText, { color: colors.text }]}>
-          {String(error || 'Group not found.')}
-        </Text>
-        <TouchableOpacity
-          style={[styles.errorBtn, { backgroundColor: colors.primary }]}
-          onPress={() => navigation.goBack()}
-        >
-          <Text style={styles.errorBtnText}>Go Back</Text>
-        </TouchableOpacity>
-      </SafeAreaView>
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={{ paddingTop: insets.top }}>
+          <TouchableOpacity
+            onPress={handleBack}
+            style={styles.simpleBackButton}
+            activeOpacity={0.7}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Feather name="arrow-left" size={22} color={colors.text} />
+          </TouchableOpacity>
+        </View>
+        <View style={styles.center}>
+          <Feather name="alert-circle" size={48} color="#ef4444" />
+          <Text style={[styles.errorText, { color: colors.text }]}>
+            {String(error || 'Group not found.')}
+          </Text>
+          <TouchableOpacity
+            style={[styles.errorBtn, { backgroundColor: colors.primary }]}
+            onPress={handleBack}
+          >
+            <Text style={styles.errorBtnText}>Go Back</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
     );
   }
 
-  // ── Header (used as FlatList header) ──
-  const renderHeader = () => (
+  // ── Header content (cover + tabs + composer) — no back button here,
+  //    it lives in the sticky header so it can stay pinned on scroll. ──
+  const renderHeaderContent = () => (
     <View>
       {/* Cover */}
       <View style={styles.coverWrap}>
@@ -441,15 +622,16 @@ export default function GroupDetailScreen() {
   // ── About tab ──
   if (activeTab === 'about') {
     return (
-      <SafeAreaView
-        style={[styles.container, { backgroundColor: colors.background }]}
-        edges={['top']}
-      >
-        <ScrollView
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <Animated.ScrollView
+          onScroll={onScroll}
+          scrollEventThrottle={16}
           contentContainerStyle={{ paddingBottom: contentBottomPadding + 40 }}
           showsVerticalScrollIndicator={false}
         >
-          {renderHeader()}
+          <View style={{ height: headerHeight }} />
+          {renderHeaderContent()}
+
           <View
             style={[
               styles.aboutCard,
@@ -480,29 +662,35 @@ export default function GroupDetailScreen() {
               </Text>
             </View>
           </View>
-        </ScrollView>
-      </SafeAreaView>
+        </Animated.ScrollView>
+
+        {renderStickyHeader()}
+      </View>
     );
   }
 
   // ── Feed tab ──
   return (
-    <SafeAreaView
-      style={[styles.container, { backgroundColor: colors.background }]}
-      edges={['top']}
-    >
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <FlatList
+        <AnimatedFlatList
           data={groupFeed}
           keyExtractor={(item: any) => String(item.id)}
           renderItem={renderPost}
-          ListHeaderComponent={renderHeader}
+          ListHeaderComponent={
+            <View>
+              <View style={{ height: headerHeight }} />
+              {renderHeaderContent()}
+            </View>
+          }
           contentContainerStyle={{
             paddingBottom: contentBottomPadding + 40,
           }}
+          onScroll={onScroll}
+          scrollEventThrottle={16}
           onEndReached={handleLoadMore}
           onEndReachedThreshold={0.5}
           viewabilityConfig={viewabilityConfig}
@@ -533,7 +721,9 @@ export default function GroupDetailScreen() {
           showsVerticalScrollIndicator={false}
         />
       </KeyboardAvoidingView>
-    </SafeAreaView>
+
+      {renderStickyHeader()}
+    </View>
   );
 }
 
@@ -555,6 +745,66 @@ const styles = StyleSheet.create({
   },
   errorBtnText: { color: '#fff', fontWeight: '600' },
 
+  // ── Simple back button (loading + error states) ──
+  simpleBackButton: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 4,
+  },
+
+  // ── Sticky header (matches ProfileScreen) ──
+  stickyHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+    justifyContent: 'flex-end',
+  },
+  stickyHeaderInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    height: STICKY_HEADER_HEIGHT,
+  },
+  stickyBackButton: {
+    width: 34,
+    height: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stickyTitleWrap: {
+    flex: 1,
+    marginLeft: 8,
+  },
+  stickyName: {
+    fontSize: 16,
+    fontWeight: '700',
+    flexShrink: 1,
+  },
+  stickyPostCount: {
+    fontSize: 12,
+    marginTop: 1,
+  },
+  stickyActionWrap: {
+    marginLeft: 8,
+  },
+  stickyJoinBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+    borderRadius: 100,
+    minWidth: 80,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stickyJoinText: {
+    fontWeight: '600',
+    fontSize: 13,
+  },
+
+  // ── Cover ──
   coverWrap: {
     height: 200,
     position: 'relative',
@@ -610,6 +860,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
+  // ── Tabs ──
   tabsRow: {
     flexDirection: 'row',
     borderBottomWidth: 1,
@@ -625,6 +876,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
+  // ── Composer ──
   composer: {
     marginHorizontal: 12,
     marginTop: 12,
@@ -718,6 +970,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
 
+  // ── About tab ──
   aboutCard: {
     margin: 12,
     padding: 16,
@@ -736,6 +989,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
 
+  // ── Empty state ──
   empty: {
     paddingVertical: 40,
     alignItems: 'center',

@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useGroups } from '../contexts/GroupsContext';
@@ -18,6 +19,7 @@ import GroupCard from '../components/GroupCard';
 import MyGroupsStrip from '../components/MyGroupsStrip';
 
 export default function GroupsScreen() {
+  const navigation = useNavigation();
   const { user } = useAuth();
   const { colors } = useTheme();
   const { contentBottomPadding } = useTabBarHeight();
@@ -34,7 +36,6 @@ export default function GroupsScreen() {
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Initial load
   useEffect(() => {
     const run = async () => {
       try {
@@ -48,7 +49,6 @@ export default function GroupsScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
-  // Re-sync when refreshKey bumps (after join/leave)
   useEffect(() => {
     if (isInitialLoad) return;
     (async () => {
@@ -57,6 +57,15 @@ export default function GroupsScreen() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshKey]);
+
+  const handleBack = useCallback(() => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      // Reached from the drawer at the root — fall back to the feed tab
+      (navigation.navigate as any)('MainTabs', { screen: 'Feed' });
+    }
+  }, [navigation]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -72,7 +81,6 @@ export default function GroupsScreen() {
     if (!loadingGroups && hasMoreGroups) loadGroups(false);
   };
 
-  // ── Header rendered as a component (not a fragment element) ──
   const renderListHeader = () => (
     <View>
       {user ? <MyGroupsStrip /> : null}
@@ -87,21 +95,31 @@ export default function GroupsScreen() {
     []
   );
 
+  const headerBar = (
+    <View style={[styles.header, { backgroundColor: colors.background }]}>
+      <TouchableOpacity
+        onPress={handleBack}
+        style={styles.backButton}
+        activeOpacity={0.7}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      >
+        <Feather name="arrow-left" size={22} color={colors.text} />
+      </TouchableOpacity>
+      <Text style={[styles.headerTitle, { color: colors.text }]}>
+        {'Groups'}
+      </Text>
+      <View style={styles.headerSpacer} />
+    </View>
+  );
+
   if (isInitialLoad) {
     return (
       <SafeAreaView
         style={[styles.container, { backgroundColor: colors.background }]}
         edges={['top']}
       >
-        <View style={styles.header}>
-          <Text style={[styles.headerTitle, { color: colors.text }]}>
-            {'Groups'}
-          </Text>
-        </View>
-        <ActivityIndicator
-          style={{ marginTop: 40 }}
-          color={colors.primary}
-        />
+        {headerBar}
+        <ActivityIndicator style={{ marginTop: 40 }} color={colors.primary} />
       </SafeAreaView>
     );
   }
@@ -111,11 +129,7 @@ export default function GroupsScreen() {
       style={[styles.container, { backgroundColor: colors.background }]}
       edges={['top']}
     >
-      <View style={styles.header}>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>
-          {'Groups'}
-        </Text>
-      </View>
+      {headerBar}
 
       <FlatList
         data={groupsList}
@@ -139,22 +153,14 @@ export default function GroupsScreen() {
         onEndReachedThreshold={0.5}
         ListFooterComponent={
           loadingGroups && groupsList.length > 0 ? (
-            <ActivityIndicator
-              style={{ marginVertical: 16 }}
-              color={colors.primary}
-            />
+            <ActivityIndicator style={{ marginVertical: 16 }} color={colors.primary} />
           ) : hasMoreGroups ? (
             <TouchableOpacity
               style={[styles.loadMore, { borderColor: colors.border }]}
               onPress={loadMore}
               disabled={loadingGroups}
             >
-              <Text
-                style={[
-                  styles.loadMoreText,
-                  { color: colors.textSecondary },
-                ]}
-              >
+              <Text style={[styles.loadMoreText, { color: colors.textSecondary }]}>
                 {loadingGroups ? 'Loading…' : 'Load more'}
               </Text>
             </TouchableOpacity>
@@ -167,12 +173,7 @@ export default function GroupsScreen() {
               <Text style={[styles.emptyTitle, { color: colors.text }]}>
                 {'No groups yet'}
               </Text>
-              <Text
-                style={[
-                  styles.emptySubtitle,
-                  { color: colors.textSecondary },
-                ]}
-              >
+              <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
                 {'Check back soon for new communities.'}
               </Text>
             </View>
@@ -187,12 +188,25 @@ export default function GroupsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: {
-    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
     paddingVertical: 12,
   },
+  backButton: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   headerTitle: {
+    flex: 1,
     fontSize: 22,
     fontWeight: '800',
+    marginLeft: 4,
+  },
+  headerSpacer: {
+    width: 40,
   },
   listContent: {
     paddingHorizontal: 16,
