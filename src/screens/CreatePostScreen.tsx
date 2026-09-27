@@ -35,11 +35,28 @@ interface MentionUser {
   verified?: boolean;
 }
 
+interface TopicSuggestion {
+  topic: string;
+  post_count: number;
+}
+
 // Extract "@username" tokens from a body of text. Used for the
 // "mentioned users" preview row under the composer.
 function extractMentionedUsernames(text: string): string[] {
   if (!text) return [];
   const re = /(^|\s)@([A-Za-z0-9_]{1,30})/g;
+  const found = new Set<string>();
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(text)) !== null) {
+    found.add(match[2].toLowerCase());
+  }
+  return [...found];
+}
+
+// Extract "#tag" tokens from a body of text.
+function extractHashtags(text: string): string[] {
+  if (!text) return [];
+  const re = /(^|\s)#([A-Za-z0-9_]{1,50})/g;
   const found = new Set<string>();
   let match: RegExpExecArray | null;
   while ((match = re.exec(text)) !== null) {
@@ -60,54 +77,72 @@ export default function CreatePostScreen() {
   const [loading, setLoading] = useState(false);
   const [showLoader, setShowLoader] = useState(false);
 
-  // ─── Mention autocomplete state ─────────────────────────────
+  // ─── Autocomplete state (shared for mentions and hashtags) ──
   const [cursorPosition, setCursorPosition] = useState(0);
-  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
-  const [mentionStart, setMentionStart] = useState(-1);
-  const [suggestions, setSuggestions] = useState<MentionUser[]>([]);
+  const [activeQuery, setActiveQuery] = useState<{ kind: 'mention' | 'hashtag'; start: number; query: string } | null>(null);
+  const [mentionSuggestions, setMentionSuggestions] = useState<MentionUser[]>([]);
+  const [hashtagSuggestions, setHashtagSuggestions] = useState<TopicSuggestion[]>([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const inputRef = useRef<TextInput>(null);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingSelectionRef = useRef<number | null>(null);
-  const forceSelection = pendingSelectionRef.current;
 
   const mentionedUsernames = extractMentionedUsernames(text);
+  const usedHashtags = extractHashtags(text);
 
-  // ─── Detect an active @-mention at the cursor ───────────────
-  const detectMention = useCallback((value: string, cursor: number) => {
+  // ─── Detect an active @mention or #hashtag at the cursor ────
+  const detectAutocomplete = useCallback((value: string, cursor: number) => {
     if (cursor <= 0) {
-      setMentionQuery(null);
-      setMentionStart(-1);
+      setActiveQuery(null);
       return;
     }
     const before = value.slice(0, cursor);
+
+    // Look for the last @ or # before the cursor. Whichever is later wins.
     const lastAt = before.lastIndexOf('@');
-    if (lastAt === -1) {
-      setMentionQuery(null);
-      setMentionStart(-1);
+    const lastHash = before.lastIndexOf('#');
+    const lastTriggerIdx = Math.max(lastAt, lastHash);
+    if (lastTriggerIdx === -1) {
+      setActiveQuery(null);
       return;
     }
-    const afterAt = before.slice(lastAt + 1);
-    // If any whitespace between @ and cursor, the mention has ended.
-    if (/\s/.test(afterAt)) {
-      setMentionQuery(null);
-      setMentionStart(-1);
+
+    const trigger = before[lastTriggerIdx];
+    const afterTrigger = before.slice(lastTriggerIdx + 1);
+
+    // If any whitespace between trigger and cursor, the token has ended.
+    if (/\s/.test(afterTrigger)) {
+      setActiveQuery(null);
       return;
     }
-    // Require the @ to be at start of string or preceded by whitespace.
-    if (lastAt > 0 && !/[\s\n]/.test(before[lastAt - 1])) {
-      setMentionQuery(null);
-      setMentionStart(-1);
+
+    // The trigger must be at start of string or preceded by whitespace.
+    if (lastTriggerIdx > 0 && !/[\s\n]/.test(before[lastTriggerIdx - 1])) {
+      setActiveQuery(null);
       return;
     }
-    setMentionStart(lastAt);
-    setMentionQuery(afterAt);
+
+    // Mention text allows [A-Za-z0-9_] and up to 30 chars.
+    // Hashtag text allows [A-Za-z0-9_] and up to 50 chars.
+    const kind: 'mention' | 'hashtag' = trigger === '@' ? 'mention' : 'hashtag';
+    const maxLen = kind === 'mention' ? 30 : 50;
+    if (afterTrigger.length > maxLen) {
+      setActiveQuery(null);
+      return;
+    }
+    if (afterTrigger.length > 0 && !/^[A-Za-z0-9_]*$/.test(afterTrigger)) {
+      setActiveQuery(null);
+      return;
+    }
+
+    setActiveQuery({ kind, start: lastTriggerIdx, query: afterTrigger });
   }, []);
 
   // ─── Fetch suggestions with debounce ────────────────────────
   useEffect(() => {
-    if (mentionQuery === null) {
-      setSuggestions([]);
+    if (!activeQuery) {
+      setMentionSuggestions([]);
+      setHashtagSuggestions([]);
       setSuggestionsLoading(false);
       return;
     }
@@ -117,33 +152,58 @@ export default function CreatePostScreen() {
     setSuggestionsLoading(true);
     searchTimerRef.current = setTimeout(async () => {
       try {
-        const res = await api.get('/users', {
-          params: { q: mentionQuery, limit: 6 },
-        });
-        const data = res.data;
-        let list: any[] = [];
-        if (Array.isArray(data)) list = data;
-        else if (Array.isArray(data?.users)) list = data.users;
-        else if (Array.isArray(data?.data)) list = data.data;
-        else if (Array.isArray(data?.results)) list = data.results;
-        else if (Array.isArray(data?.data?.users)) list = data.data.users;
-        else if (Array.isArray(data?.data?.results)) list = data.data.results;
+        if (activeQuery.kind === 'mention') {
+          const res = await api.get('/users', {
+            params: { q: activeQuery.query, limit: 6 },
+          });
+          const data = res.data;
+          let list: any[] = [];
+          if (Array.isArray(data)) list = data;
+          else if (Array.isArray(data?.users)) list = data.users;
+          else if (Array.isArray(data?.data)) list = data.data;
+          else if (Array.isArray(data?.results)) list = data.results;
+          else if (Array.isArray(data?.data?.users)) list = data.data.users;
+          else if (Array.isArray(data?.data?.results)) list = data.data.results;
 
-        // Normalise shape. Drop self.
-        const mapped: MentionUser[] = list
-          .map((u: any) => ({
-            id: String(u.id ?? u.userId ?? u.user_id ?? ''),
-            name: u.name || u.username || 'User',
-            username: u.username || '',
-            avatar: u.avatar || u.picture || u.profile_picture || null,
-            verified: !!(u.verified ?? u.is_verified ?? u.isVerified),
-          }))
-          .filter((u) => u.username && u.id !== String(user?.id || ''));
+          const mapped: MentionUser[] = list
+            .map((u: any) => ({
+              id: String(u.id ?? u.userId ?? u.user_id ?? ''),
+              name: u.name || u.username || 'User',
+              username: u.username || '',
+              avatar: u.avatar || u.picture || u.profile_picture || null,
+              verified: !!(u.verified ?? u.is_verified ?? u.isVerified),
+            }))
+            .filter((u) => u.username && u.id !== String(user?.id || ''));
 
-        setSuggestions(mapped);
-      } catch (err) {
-        // Silent — the dropdown just shows nothing on error
-        setSuggestions([]);
+          setMentionSuggestions(mapped);
+          setHashtagSuggestions([]);
+        } else {
+          // Fetch trending topics once, filter locally. The endpoint
+          // doesn't support a search query, so we pull a larger page
+          // and filter client-side — cheap and works offline-ish.
+          const res = await api.get('/topics', { params: { limit: 50 } });
+          const data = res.data;
+          let raw: any[] = [];
+          if (Array.isArray(data)) raw = data;
+          else if (Array.isArray(data?.topics)) raw = data.topics;
+          else if (Array.isArray(data?.data)) raw = data.data;
+          else if (Array.isArray(data?.results)) raw = data.results;
+
+          const q = activeQuery.query.toLowerCase();
+          const mapped: TopicSuggestion[] = raw
+            .map((t: any) => ({
+              topic: String(t.topic ?? t.tag ?? '').toLowerCase(),
+              post_count: Number(t.post_count ?? t.count ?? 0),
+            }))
+            .filter((t) => t.topic && (!q || t.topic.includes(q)));
+
+          setHashtagSuggestions(mapped.slice(0, 8));
+          setMentionSuggestions([]);
+        }
+      } catch {
+        // Silent — dropdown just shows nothing on error
+        setMentionSuggestions([]);
+        setHashtagSuggestions([]);
       } finally {
         setSuggestionsLoading(false);
       }
@@ -152,41 +212,34 @@ export default function CreatePostScreen() {
     return () => {
       if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     };
-  }, [mentionQuery, user?.id]);
+  }, [activeQuery, user?.id]);
 
   // ─── Handle typing ──────────────────────────────────────────
   const handleChangeText = (value: string) => {
     setText(value);
-    // If the user typed, cursor is presumably at end of the change.
-    // We'll re-validate on the next selection event anyway.
-    detectMention(value, cursorPosition);
+    detectAutocomplete(value, cursorPosition);
   };
 
   const handleSelectionChange = (e: any) => {
-    if (pendingSelectionRef.current !== null) {
-      // A programmatic selection is in flight; ignore the echo.
-      return;
-    }
+    if (pendingSelectionRef.current !== null) return;
     const pos = e.nativeEvent.selection.start;
     setCursorPosition(pos);
-    detectMention(text, pos);
+    detectAutocomplete(text, pos);
   };
 
-  // ─── Insert a mention ──────────────────────────────────────
-  const insertMention = (u: MentionUser) => {
-    const before = text.slice(0, mentionStart);
+  // ─── Insert a suggestion ───────────────────────────────────
+  const insertToken = (insertion: string) => {
+    if (!activeQuery) return;
+    const before = text.slice(0, activeQuery.start);
     const after = text.slice(cursorPosition);
-    const insertion = `@${u.username} `;
     const newText = before + insertion + after;
     const newCursor = before.length + insertion.length;
 
     setText(newText);
-    setMentionQuery(null);
-    setMentionStart(-1);
-    setSuggestions([]);
+    setActiveQuery(null);
+    setMentionSuggestions([]);
+    setHashtagSuggestions([]);
 
-    // Nudge RN to move the cursor. We set a pending selection; the
-    // next onSelectionChange that echoes it clears the flag.
     pendingSelectionRef.current = newCursor;
     setCursorPosition(newCursor);
     setTimeout(() => {
@@ -196,18 +249,33 @@ export default function CreatePostScreen() {
     inputRef.current?.focus();
   };
 
-  // ─── Open the mention picker without typing @ ───────────────
+  const insertMention = (u: MentionUser) => insertToken(`@${u.username} `);
+  const insertHashtag = (t: TopicSuggestion) => insertToken(`#${t.topic} `);
+
+  // ─── Open a mention / hashtag picker without typing the trigger ──
   const openMentionPicker = () => {
     const pos = cursorPosition;
     const before = text.slice(0, pos);
     const after = text.slice(pos);
     const needsSpace = before.length > 0 && !/[\s\n]$/.test(before);
     const newText = before + (needsSpace ? ' @' : '@') + after;
-    const newCursor = (needsSpace ? before.length + 2 : before.length + 1);
+    const newCursor = needsSpace ? before.length + 2 : before.length + 1;
     setText(newText);
     setCursorPosition(newCursor);
-    setMentionStart(newCursor - 1);
-    setMentionQuery('');
+    setActiveQuery({ kind: 'mention', start: newCursor - 1, query: '' });
+    setTimeout(() => inputRef.current?.focus(), 60);
+  };
+
+  const openHashtagPicker = () => {
+    const pos = cursorPosition;
+    const before = text.slice(0, pos);
+    const after = text.slice(pos);
+    const needsSpace = before.length > 0 && !/[\s\n]$/.test(before);
+    const newText = before + (needsSpace ? ' #' : '#') + after;
+    const newCursor = needsSpace ? before.length + 2 : before.length + 1;
+    setText(newText);
+    setCursorPosition(newCursor);
+    setActiveQuery({ kind: 'hashtag', start: newCursor - 1, query: '' });
     setTimeout(() => inputRef.current?.focus(), 60);
   };
 
@@ -363,6 +431,7 @@ export default function CreatePostScreen() {
       setVideoUri(null);
 
       queryClient.invalidateQueries({ queryKey: ['feed'] });
+      queryClient.invalidateQueries({ queryKey: ['topics'] });
 
       setShowLoader(false);
       setLoading(false);
@@ -415,11 +484,11 @@ export default function CreatePostScreen() {
     </Modal>
   );
 
-  const showMentionDropdown = mentionQuery !== null && mentionStart >= 0;
+  const showDropdown = !!activeQuery;
+  const dropdownKind = activeQuery?.kind;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
-      {/* ─── Loader Modal ─── */}
       {renderLoader()}
 
       <View
@@ -476,11 +545,11 @@ export default function CreatePostScreen() {
           editable={!loading}
         />
 
-        {/* ─── Mention autocomplete dropdown ─── */}
-        {showMentionDropdown && (
+        {/* ─── Autocomplete dropdown (mentions OR hashtags) ─── */}
+        {showDropdown && (
           <View
             style={[
-              styles.mentionDropdown,
+              styles.autocompleteDropdown,
               {
                 backgroundColor: colors.surface || colors.background,
                 borderColor: colors.border,
@@ -488,67 +557,122 @@ export default function CreatePostScreen() {
               },
             ]}
           >
-            <View style={[styles.mentionHeader, { borderBottomColor: colors.border }]}>
-              <Feather name="at-sign" size={12} color={colors.textMuted} />
-              <Text style={[styles.mentionHeaderText, { color: colors.textMuted }]}>
-                {mentionQuery ? `Searching "${mentionQuery}"` : 'Type a name'}
+            <View style={[styles.autocompleteHeader, { borderBottomColor: colors.border }]}>
+              <Feather
+                name={dropdownKind === 'mention' ? 'at-sign' : 'hash'}
+                size={12}
+                color={colors.textMuted}
+              />
+              <Text style={[styles.autocompleteHeaderText, { color: colors.textMuted }]}>
+                {activeQuery && activeQuery.query
+                  ? `${dropdownKind === 'mention' ? 'Searching' : 'Tag'} "${activeQuery.query}"`
+                  : dropdownKind === 'mention'
+                  ? 'Type a name'
+                  : 'Popular tags'}
               </Text>
               {suggestionsLoading && (
                 <ActivityIndicator size="small" color={colors.primary} style={{ marginLeft: 6 }} />
               )}
             </View>
 
-            {suggestions.length === 0 && !suggestionsLoading ? (
-              <View style={styles.mentionEmpty}>
-                <Text style={[styles.mentionEmptyText, { color: colors.textMuted }]}>
-                  {mentionQuery ? 'No users found' : 'Start typing to search'}
-                </Text>
-              </View>
-            ) : (
-              <FlatList
-                data={suggestions}
-                keyExtractor={(u) => u.id}
-                keyboardShouldPersistTaps="handled"
-                scrollEnabled={suggestions.length > 4}
-                style={{ maxHeight: 220 }}
-                renderItem={({ item }) => (
-                  <TouchableOpacity
-                    style={styles.mentionRow}
-                    activeOpacity={0.7}
-                    onPress={() => insertMention(item)}
-                  >
-                    <Avatar source={item.avatar || undefined} size={34} fallback={item.name} />
-                    <View style={styles.mentionRowText}>
-                      <View style={styles.mentionNameRow}>
+            {/* ── Mention suggestions ── */}
+            {dropdownKind === 'mention' && (
+              mentionSuggestions.length === 0 && !suggestionsLoading ? (
+                <View style={styles.autocompleteEmpty}>
+                  <Text style={[styles.autocompleteEmptyText, { color: colors.textMuted }]}>
+                    {activeQuery?.query ? 'No users found' : 'Start typing to search'}
+                  </Text>
+                </View>
+              ) : (
+                <FlatList
+                  data={mentionSuggestions}
+                  keyExtractor={(u) => u.id}
+                  keyboardShouldPersistTaps="handled"
+                  scrollEnabled={mentionSuggestions.length > 4}
+                  style={{ maxHeight: 220 }}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={styles.autocompleteRow}
+                      activeOpacity={0.7}
+                      onPress={() => insertMention(item)}
+                    >
+                      <Avatar source={item.avatar || undefined} size={34} fallback={item.name} />
+                      <View style={styles.autocompleteRowText}>
+                        <View style={styles.autocompleteNameRow}>
+                          <Text
+                            style={[styles.autocompleteName, { color: colors.text }]}
+                            numberOfLines={1}
+                          >
+                            {item.name}
+                          </Text>
+                          {item.verified && (
+                            <VerificationBadge size={12} style={{ marginLeft: 4 }} />
+                          )}
+                        </View>
                         <Text
-                          style={[styles.mentionName, { color: colors.text }]}
+                          style={[styles.autocompleteUsername, { color: colors.textSecondary }]}
                           numberOfLines={1}
                         >
-                          {item.name}
+                          @{item.username}
                         </Text>
-                        {item.verified && (
-                          <VerificationBadge size={12} style={{ marginLeft: 4 }} />
-                        )}
                       </View>
-                      <Text
-                        style={[styles.mentionUsername, { color: colors.textSecondary }]}
-                        numberOfLines={1}
-                      >
-                        @{item.username}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                )}
-              />
+                    </TouchableOpacity>
+                  )}
+                />
+              )
+            )}
+
+            {/* ── Hashtag suggestions ── */}
+            {dropdownKind === 'hashtag' && (
+              hashtagSuggestions.length === 0 && !suggestionsLoading ? (
+                <View style={styles.autocompleteEmpty}>
+                  <Text style={[styles.autocompleteEmptyText, { color: colors.textMuted }]}>
+                    {activeQuery?.query ? 'No tags match' : 'No trending tags right now'}
+                  </Text>
+                </View>
+              ) : (
+                <FlatList
+                  data={hashtagSuggestions}
+                  keyExtractor={(t) => t.topic}
+                  keyboardShouldPersistTaps="handled"
+                  scrollEnabled={hashtagSuggestions.length > 4}
+                  style={{ maxHeight: 220 }}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={styles.autocompleteRow}
+                      activeOpacity={0.7}
+                      onPress={() => insertHashtag(item)}
+                    >
+                      <View style={[styles.hashtagIconWrap, { backgroundColor: isDark ? '#374151' : '#eef2ff' }]}>
+                        <Feather name="hash" size={16} color={colors.primary} />
+                      </View>
+                      <View style={styles.autocompleteRowText}>
+                        <Text
+                          style={[styles.autocompleteName, { color: colors.text }]}
+                          numberOfLines={1}
+                        >
+                          #{item.topic}
+                        </Text>
+                        <Text
+                          style={[styles.autocompleteUsername, { color: colors.textSecondary }]}
+                          numberOfLines={1}
+                        >
+                          {item.post_count} {item.post_count === 1 ? 'post' : 'posts'}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  )}
+                />
+              )
             )}
           </View>
         )}
 
         {/* ─── Mentioned users preview ─── */}
         {mentionedUsernames.length > 0 && (
-          <View style={styles.mentionsPreviewRow}>
+          <View style={styles.previewRow}>
             <Feather name="at-sign" size={12} color={colors.textMuted} />
-            <Text style={[styles.mentionsPreviewText, { color: colors.textSecondary }]}>
+            <Text style={[styles.previewText, { color: colors.textSecondary }]}>
               Mentioning{' '}
               {mentionedUsernames.slice(0, 3).map((u, i) => (
                 <Text key={u}>
@@ -558,6 +682,25 @@ export default function CreatePostScreen() {
               ))}
               {mentionedUsernames.length > 3
                 ? ` and ${mentionedUsernames.length - 3} more`
+                : ''}
+            </Text>
+          </View>
+        )}
+
+        {/* ─── Hashtags preview ─── */}
+        {usedHashtags.length > 0 && (
+          <View style={styles.previewRow}>
+            <Feather name="hash" size={12} color={colors.textMuted} />
+            <Text style={[styles.previewText, { color: colors.textSecondary }]}>
+              Tagged{' '}
+              {usedHashtags.slice(0, 3).map((t, i) => (
+                <Text key={t}>
+                  <Text style={{ color: colors.primary }}>#{t}</Text>
+                  {i < Math.min(usedHashtags.length, 3) - 1 ? ', ' : ''}
+                </Text>
+              ))}
+              {usedHashtags.length > 3
+                ? ` and ${usedHashtags.length - 3} more`
                 : ''}
             </Text>
           </View>
@@ -620,6 +763,19 @@ export default function CreatePostScreen() {
             <Feather name="at-sign" size={24} color={colors.textSecondary} />
             <Text style={[styles.mediaButtonText, { color: colors.textSecondary }]}>Mention</Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.mediaButton,
+              {
+                backgroundColor: isDark ? '#374151' : '#f3f4f6',
+              },
+            ]}
+            onPress={openHashtagPicker}
+            disabled={loading}
+          >
+            <Feather name="hash" size={24} color={colors.textSecondary} />
+            <Text style={[styles.mediaButtonText, { color: colors.textSecondary }]}>Tag</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -672,8 +828,8 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
 
-  // ─── Mention autocomplete ───
-  mentionDropdown: {
+  // ─── Autocomplete ───
+  autocompleteDropdown: {
     marginTop: 8,
     borderWidth: 1,
     borderRadius: 12,
@@ -683,7 +839,7 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
   },
-  mentionHeader: {
+  autocompleteHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
@@ -691,54 +847,61 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderBottomWidth: 1,
   },
-  mentionHeaderText: {
+  autocompleteHeaderText: {
     fontSize: 11,
     fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     flex: 1,
   },
-  mentionEmpty: {
+  autocompleteEmpty: {
     padding: 16,
     alignItems: 'center',
   },
-  mentionEmptyText: {
+  autocompleteEmptyText: {
     fontSize: 13,
   },
-  mentionRow: {
+  autocompleteRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
     paddingVertical: 10,
     gap: 10,
   },
-  mentionRowText: {
+  autocompleteRowText: {
     flex: 1,
     minWidth: 0,
   },
-  mentionNameRow: {
+  autocompleteNameRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  mentionName: {
+  autocompleteName: {
     fontSize: 14,
     fontWeight: '600',
     flexShrink: 1,
   },
-  mentionUsername: {
+  autocompleteUsername: {
     fontSize: 12,
     marginTop: 1,
   },
+  hashtagIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
-  // ─── Mentioned users preview ───
-  mentionsPreviewRow: {
+  // ─── Preview rows ───
+  previewRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     marginTop: 12,
     paddingHorizontal: 4,
   },
-  mentionsPreviewText: {
+  previewText: {
     fontSize: 12,
     flex: 1,
   },
