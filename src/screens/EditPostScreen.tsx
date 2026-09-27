@@ -52,7 +52,9 @@ export default function EditPostScreen() {
     queryKey: ['post', postId],
     queryFn: async () => {
       const response = await api.get(`/posts/${postId}`);
-      return response.data;
+      const body = response.data;
+      // Unwrap the sendOk envelope: { message, data: post }
+      return body?.data ?? body;
     },
   });
 
@@ -138,10 +140,11 @@ export default function EditPostScreen() {
       navigation.goBack();
     },
     onError: (error: any) => {
-      Alert.alert(
-        'Error',
-        error.response?.data?.message || 'Failed to update post. Please try again.'
-      );
+      const msg =
+        error.response?.data?.message ||
+        error.response?.data?.error ||
+        'Failed to update post. Please try again.';
+      Alert.alert('Error', msg);
     },
     onSettled: () => {
       setIsSaving(false);
@@ -165,7 +168,7 @@ export default function EditPostScreen() {
       videoUri !== null || existingVideo !== (post?.video || null);
 
     if (!textChanged && !imageChanged && !videoChanged) {
-      Alert.alert('No changes', 'You haven\'t made any changes to the post.');
+      Alert.alert('No changes', "You haven't made any changes to the post.");
       return;
     }
 
@@ -191,7 +194,8 @@ export default function EditPostScreen() {
                 type: fileType,
               } as any);
             } else if (existingImage === null && post?.image) {
-              formData.append('removeImage', 'true');
+              // Server expects `deleteImage`, not `removeImage`
+              formData.append('deleteImage', 'true');
             }
 
             if (videoUri) {
@@ -202,7 +206,7 @@ export default function EditPostScreen() {
                 type: 'video/mp4',
               } as any);
             } else if (existingVideo === null && post?.video) {
-              formData.append('removeVideo', 'true');
+              formData.append('deleteVideo', 'true');
             }
 
             updatePostMutation.mutate(formData);
@@ -260,7 +264,12 @@ export default function EditPostScreen() {
   }
 
   // ---- Check if current user is the author ----
-  const isAuthor = user?.id === post.user?.id;
+  // Coerce both sides to strings — the API may return the id as a
+  // number and the auth context may hold it as a string, or vice versa.
+  const currentUserId = user?.id != null ? String(user.id) : '';
+  const postAuthorId = post?.user?.id != null ? String(post.user.id) : '';
+  const isAuthor = !!currentUserId && currentUserId === postAuthorId;
+
   if (!isAuthor) {
     return (
       <SafeAreaView style={[styles.errorContainer, { backgroundColor: colors.background }]}>
