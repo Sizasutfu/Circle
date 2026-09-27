@@ -11,10 +11,14 @@ import {
   Alert,
   StyleSheet,
   Dimensions,
+  Pressable,
 } from 'react-native';
 import type { StyleProp, TextStyle } from 'react-native';
 import { Image } from 'expo-image';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Feather } from '@expo/vector-icons';
 import { Video, ResizeMode, AVPlaybackStatus } from 'expo-av';
@@ -30,6 +34,9 @@ import { extractMentions } from '../lib/formatText';
 import api from '../api/client';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+// X uses this exact red for destructive actions
+const DESTRUCTIVE = '#f4212e';
 
 // ─── Helpers ─────────────────────────────────────────────────
 function isUserInList(list: any, currentUserId: any): boolean {
@@ -312,6 +319,7 @@ function PostCard({
   isVisible = true,
 }: PostCardProps) {
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   const { user: currentUser } = useAuth();
   const { colors, isDark } = useTheme();
   const { likePost, unlikePost, repost: repostPost } = usePostActions(currentUser);
@@ -324,9 +332,6 @@ function PostCard({
     groupId = null, reasons = [], user = undefined
   } = post || {};
 
-  // Coerce once — the API may send these as 0/1 from MySQL, or as
-  // '' for absent media. Rendering a bare 0 inside a View triggers
-  // "Text strings must be rendered within a <Text> component".
   const isRepostBool = !!isRepost;
   const hasImage = !!image;
   const hasVideo = !!video;
@@ -365,8 +370,7 @@ function PostCard({
 
   const [isExpanded, setIsExpanded] = useState(false);
   const [videoError, setVideoError] = useState(false);
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const dropdownRef = useRef<View>(null);
+  const [menuVisible, setMenuVisible] = useState(false);
   const [showReasons, setShowReasons] = useState(false);
   const reasonRef = useRef<View>(null);
   const [previewData, setPreviewData] = useState<any>(null);
@@ -404,9 +408,30 @@ function PostCard({
     else if (username) (navigation.navigate as any)('Profile', { username });
   };
   const goToPostDetail = () => (navigation.navigate as any)('PostDetail', { postId: id });
-  const handleEditPost = () => {
-    setIsDropdownOpen(false);
-    (navigation.navigate as any)('EditPost', { postId: id });
+
+  // ── Sheet actions ──
+  const openMenu = () => setMenuVisible(true);
+  const closeMenu = () => setMenuVisible(false);
+
+  const handleSheetEdit = () => {
+    closeMenu();
+    setTimeout(() => {
+      (navigation.navigate as any)('EditPost', { postId: id });
+    }, 150);
+  };
+
+  const handleSheetDownload = () => {
+    closeMenu();
+    setTimeout(() => {
+      Alert.alert('Download', 'Image download not implemented yet.');
+    }, 150);
+  };
+
+  const handleSheetShare = () => {
+    closeMenu();
+    setTimeout(() => {
+      Alert.alert('Share', 'Image sharing not implemented yet.');
+    }, 150);
   };
 
   // ── Rich-text press handlers ──
@@ -474,7 +499,6 @@ function PostCard({
     };
   }, [id, text, image, video, isVisible]);
 
-  // ── Pause when scrolled out of view; keep position ──
   useEffect(() => {
     if (!isVisible) {
       videoRef.current?.pauseAsync?.().catch(() => {});
@@ -954,47 +978,113 @@ function PostCard({
     );
   };
 
-  const renderDropdown = () => (
-    <View ref={dropdownRef}>
-      <TouchableOpacity onPress={() => setIsDropdownOpen(!isDropdownOpen)} style={styles.dropdownButton}>
-        <Feather name="more-horizontal" size={20} color={colors.textMuted} />
-      </TouchableOpacity>
-      {isDropdownOpen && (
-        <View style={[styles.dropdownMenu, {
-          backgroundColor: colors.surface,
-          borderColor: colors.border,
-          shadowColor: isDark ? 'transparent' : '#000',
-        }]}>
-          <TouchableOpacity onPress={() => { Alert.alert('Download', 'Image download not implemented yet.'); setIsDropdownOpen(false); }} style={styles.dropdownItem}>
-            <Feather name="download" size={16} color={colors.text} />
-            <Text style={[styles.dropdownItemText, { color: colors.text }]}>Download as Image</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => { Alert.alert('Share', 'Image sharing not implemented yet.'); setIsDropdownOpen(false); }} style={styles.dropdownItem}>
-            <Feather name="share" size={16} color={colors.text} />
-            <Text style={[styles.dropdownItemText, { color: colors.text }]}>Share as Image</Text>
-          </TouchableOpacity>
-          {hasImage && (
-            <>
-              <View style={[styles.dropdownDivider, { backgroundColor: colors.border }]} />
-              <TouchableOpacity onPress={() => { Alert.alert('Download', 'Original image download not implemented yet.'); setIsDropdownOpen(false); }} style={styles.dropdownItem}>
-                <Feather name="image" size={16} color={colors.text} />
-                <Text style={[styles.dropdownItemText, { color: colors.text }]}>Download Original</Text>
+  // ── X-style bottom sheet menu ──
+  const renderActionSheet = () => {
+    const sheetBg = isDark ? '#16181c' : '#ffffff';
+    const handleColor = isDark ? '#3a3f45' : '#cfd9de';
+
+    return (
+      <Modal
+        visible={menuVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeMenu}
+        statusBarTranslucent
+      >
+        <View style={styles.sheetRoot}>
+          {/* Dim backdrop — tap to dismiss */}
+          <Pressable style={styles.sheetBackdrop} onPress={closeMenu} />
+
+          {/* Sheet */}
+          <View
+            style={[
+              styles.sheet,
+              {
+                backgroundColor: sheetBg,
+                paddingBottom: Math.max(insets.bottom, 12) + 4,
+              },
+            ]}
+          >
+            {/* Drag handle */}
+            <View style={styles.sheetHandleWrap}>
+              <View style={[styles.sheetHandle, { backgroundColor: handleColor }]} />
+            </View>
+
+            {/* Actions */}
+            <TouchableOpacity
+              style={styles.sheetItem}
+              activeOpacity={0.6}
+              onPress={handleSheetDownload}
+            >
+              <Feather name="download" size={20} color={colors.text} />
+              <Text style={[styles.sheetItemText, { color: colors.text }]}>
+                Download as Image
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.sheetItem}
+              activeOpacity={0.6}
+              onPress={handleSheetShare}
+            >
+              <Feather name="share" size={20} color={colors.text} />
+              <Text style={[styles.sheetItemText, { color: colors.text }]}>
+                Share as Image
+              </Text>
+            </TouchableOpacity>
+
+            {hasImage && (
+              <TouchableOpacity
+                style={styles.sheetItem}
+                activeOpacity={0.6}
+                onPress={handleSheetDownload}
+              >
+                <Feather name="image" size={20} color={colors.text} />
+                <Text style={[styles.sheetItemText, { color: colors.text }]}>
+                  Download Original
+                </Text>
               </TouchableOpacity>
-            </>
-          )}
-          {userId === currentUser?.id && (
-            <>
-              <View style={[styles.dropdownDivider, { backgroundColor: colors.border }]} />
-              <TouchableOpacity onPress={handleEditPost} style={styles.dropdownItem}>
-                <Feather name="edit-2" size={16} color={colors.text} />
-                <Text style={[styles.dropdownItemText, { color: colors.text }]}>Edit Post</Text>
+            )}
+
+            {userId === currentUser?.id && (
+              <TouchableOpacity
+                style={styles.sheetItem}
+                activeOpacity={0.6}
+                onPress={handleSheetEdit}
+              >
+                <Feather name="edit-2" size={20} color={colors.text} />
+                <Text style={[styles.sheetItemText, { color: colors.text }]}>
+                  Edit Post
+                </Text>
               </TouchableOpacity>
-            </>
-          )}
+            )}
+
+            {/* Destructive (placeholder — no delete handler yet) */}
+            {userId === currentUser?.id && (
+              <TouchableOpacity
+                style={styles.sheetItem}
+                activeOpacity={0.6}
+                onPress={() => {
+                  closeMenu();
+                  setTimeout(() => {
+                    Alert.alert(
+                      'Delete Post',
+                      'This action is not implemented yet.',
+                    );
+                  }, 150);
+                }}
+              >
+                <Feather name="trash-2" size={20} color={DESTRUCTIVE} />
+                <Text style={[styles.sheetItemText, { color: DESTRUCTIVE }]}>
+                  Delete Post
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
-      )}
-    </View>
-  );
+      </Modal>
+    );
+  };
 
   if (!post) return null;
 
@@ -1067,7 +1157,14 @@ function PostCard({
             <View style={styles.actionsRow}>
               {renderViewCounts()}
               {renderReasonButton()}
-              {renderDropdown()}
+              <TouchableOpacity
+                onPress={openMenu}
+                style={styles.moreButton}
+                activeOpacity={0.6}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Feather name="more-horizontal" size={18} color={colors.textMuted} />
+              </TouchableOpacity>
             </View>
           </View>
 
@@ -1144,6 +1241,9 @@ function PostCard({
           </View>
         </View>
       </View>
+
+      {/* ── X-style action sheet menu ── */}
+      {renderActionSheet()}
 
       {/* ── Image lightbox ── */}
       <Modal visible={lightboxVisible} transparent>
@@ -1366,19 +1466,13 @@ const styles = StyleSheet.create({
   },
   reasonTitle: { fontSize: 12, fontWeight: '600', marginBottom: 6 },
   reasonItem: { fontSize: 12, marginTop: 4 },
-  dropdownButton: { padding: 4 },
-  dropdownMenu: {
-    position: 'absolute', right: 0, top: 28, borderWidth: 1, borderRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1, shadowRadius: 4, elevation: 3,
-    minWidth: 160, paddingVertical: 4, zIndex: 10,
+
+  // ── Three-dot trigger (compact, muted) ──
+  moreButton: {
+    padding: 4,
+    marginLeft: 2,
   },
-  dropdownItem: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 16, paddingVertical: 10,
-  },
-  dropdownItemText: { fontSize: 14, marginLeft: 12 },
-  dropdownDivider: { height: 1, marginVertical: 4 },
+
   mentionBadge: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12, marginLeft: 6,
@@ -1719,5 +1813,40 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.15)',
+  },
+
+  // ── X-style action sheet ──
+  sheetRoot: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  sheetBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+  sheet: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingTop: 8,
+  },
+  sheetHandleWrap: {
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  sheetHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+  },
+  sheetItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    gap: 16,
+  },
+  sheetItemText: {
+    fontSize: 15,
+    fontWeight: '500',
   },
 });
