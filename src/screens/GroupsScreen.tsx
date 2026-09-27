@@ -62,7 +62,6 @@ export default function GroupsScreen() {
     if (navigation.canGoBack()) {
       navigation.goBack();
     } else {
-      // Reached from the drawer at the root — fall back to the feed tab
       (navigation.navigate as any)('MainTabs', { screen: 'Feed' });
     }
   }, [navigation]);
@@ -84,9 +83,16 @@ export default function GroupsScreen() {
   const renderListHeader = () => (
     <View>
       {user ? <MyGroupsStrip /> : null}
-      <Text style={[styles.sectionTitle, { color: colors.text }]}>
-        {'Trending Groups'}
-      </Text>
+      <View style={styles.sectionHeaderRow}>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>
+          {'Trending Groups'}
+        </Text>
+        {groupsList.length > 0 ? (
+          <Text style={[styles.sectionCount, { color: colors.textMuted }]}>
+            {groupsList.length}
+          </Text>
+        ) : null}
+      </View>
     </View>
   );
 
@@ -94,6 +100,8 @@ export default function GroupsScreen() {
     ({ item }: { item: any }) => <GroupCard group={item} />,
     []
   );
+
+  const renderSeparator = () => <View style={styles.separator} />;
 
   const headerBar = (
     <View style={[styles.header, { backgroundColor: colors.background }]}>
@@ -134,14 +142,13 @@ export default function GroupsScreen() {
       <FlatList
         data={groupsList}
         keyExtractor={(item: any) => String(item.id)}
-        numColumns={2}
-        columnWrapperStyle={styles.row}
         contentContainerStyle={[
           styles.listContent,
           { paddingBottom: contentBottomPadding + 40 },
         ]}
         ListHeaderComponent={renderListHeader}
         renderItem={renderItem}
+        ItemSeparatorComponent={renderSeparator}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -153,14 +160,19 @@ export default function GroupsScreen() {
         onEndReachedThreshold={0.5}
         ListFooterComponent={
           loadingGroups && groupsList.length > 0 ? (
-            <ActivityIndicator style={{ marginVertical: 16 }} color={colors.primary} />
+            <ActivityIndicator
+              style={{ marginVertical: 20 }}
+              color={colors.primary}
+            />
           ) : hasMoreGroups ? (
             <TouchableOpacity
               style={[styles.loadMore, { borderColor: colors.border }]}
               onPress={loadMore}
               disabled={loadingGroups}
             >
-              <Text style={[styles.loadMoreText, { color: colors.textSecondary }]}>
+              <Text
+                style={[styles.loadMoreText, { color: colors.textSecondary }]}
+              >
                 {loadingGroups ? 'Loading…' : 'Load more'}
               </Text>
             </TouchableOpacity>
@@ -173,7 +185,9 @@ export default function GroupsScreen() {
               <Text style={[styles.emptyTitle, { color: colors.text }]}>
                 {'No groups yet'}
               </Text>
-              <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
+              <Text
+                style={[styles.emptySubtitle, { color: colors.textSecondary }]}
+              >
                 {'Check back soon for new communities.'}
               </Text>
             </View>
@@ -210,18 +224,27 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingHorizontal: 16,
+    paddingTop: 8,
   },
-  row: {
-    gap: 12,
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
     marginBottom: 12,
   },
   sectionTitle: {
     fontSize: 16,
     fontWeight: '700',
-    marginBottom: 12,
+  },
+  sectionCount: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  separator: {
+    height: 10,
   },
   loadMore: {
-    marginTop: 8,
+    marginTop: 16,
     paddingVertical: 12,
     borderRadius: 12,
     borderWidth: 1,

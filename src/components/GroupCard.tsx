@@ -13,6 +13,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useGroups, Group } from '../contexts/GroupsContext';
 
+// Deterministic dark background per topic (stand-in for the CSS
+// gradients used in the web version).
 const GRADIENT_COLORS = [
   '#16151f', '#131a1e', '#1e1518',
   '#1a1710', '#121620', '#141a18',
@@ -95,15 +97,27 @@ export default function GroupCard({ group }: Props) {
   const cover = group.coverImage ? String(group.coverImage) : null;
   const postCount = Number(group.postCount) || 0;
 
+  const joinButtonStyle = isMember
+    ? {
+        backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#f3f4f6',
+        borderColor: colors.border,
+        borderWidth: 1,
+      }
+    : { backgroundColor: colors.primary };
+
   return (
     <TouchableOpacity
       style={[
         styles.card,
-        { backgroundColor: colors.card, borderColor: colors.border },
+        {
+          backgroundColor: colors.card,
+          borderColor: colors.border,
+        },
       ]}
       onPress={openDetail}
-      activeOpacity={0.85}
+      activeOpacity={0.75}
     >
+      {/* Cover thumbnail */}
       <View style={styles.coverWrap}>
         {cover ? (
           <Image
@@ -119,11 +133,12 @@ export default function GroupCard({ group }: Props) {
               { backgroundColor: topicColor(group.topic) },
             ]}
           >
-            <Feather name="users" size={28} color="rgba(255,255,255,0.8)" />
+            <Feather name="users" size={24} color="rgba(255,255,255,0.75)" />
           </View>
         )}
       </View>
 
+      {/* Body */}
       <View style={styles.body}>
         <Text
           style={[styles.name, { color: colors.text }]}
@@ -132,59 +147,61 @@ export default function GroupCard({ group }: Props) {
           {displayName}
         </Text>
 
-        <Text
-          style={[styles.description, { color: colors.textSecondary }]}
-          numberOfLines={2}
-        >
-          {description}
-        </Text>
+        {description ? (
+          <Text
+            style={[styles.description, { color: colors.textSecondary }]}
+            numberOfLines={2}
+          >
+            {description}
+          </Text>
+        ) : (
+          <Text
+            style={[styles.descriptionMuted, { color: colors.textMuted }]}
+            numberOfLines={1}
+          >
+            No description
+          </Text>
+        )}
 
-        <View style={styles.countsRow}>
-          <View style={styles.countItem}>
-            <Feather name="users" size={12} color={colors.textMuted} />
-            <Text style={[styles.countText, { color: colors.textMuted }]}>
-              {fmtNum(memberCount)}
-            </Text>
+        <View style={styles.footerRow}>
+          <View style={styles.stats}>
+            <View style={styles.statItem}>
+              <Feather name="users" size={12} color={colors.textMuted} />
+              <Text style={[styles.statText, { color: colors.textMuted }]}>
+                {fmtNum(memberCount)}
+              </Text>
+            </View>
+            <View style={styles.statItem}>
+              <Feather name="radio" size={12} color={colors.textMuted} />
+              <Text style={[styles.statText, { color: colors.textMuted }]}>
+                {fmtNum(postCount)}
+              </Text>
+            </View>
           </View>
-          <View style={styles.countItem}>
-            <Feather name="radio" size={12} color={colors.textMuted} />
-            <Text style={[styles.countText, { color: colors.textMuted }]}>
-              {fmtNum(postCount)}
-            </Text>
-          </View>
+
+          <TouchableOpacity
+            onPress={handleJoin}
+            disabled={isJoining || !user}
+            style={[styles.joinBtn, joinButtonStyle]}
+            activeOpacity={0.8}
+          >
+            {isJoining ? (
+              <ActivityIndicator
+                size="small"
+                color={isMember ? colors.text : '#fff'}
+              />
+            ) : (
+              <Text
+                style={[
+                  styles.joinText,
+                  { color: isMember ? colors.textSecondary : '#fff' },
+                ]}
+              >
+                {isMember ? 'Joined' : 'Join'}
+              </Text>
+            )}
+          </TouchableOpacity>
         </View>
-
-        <TouchableOpacity
-          onPress={handleJoin}
-          disabled={isJoining || !user}
-          style={[
-            styles.joinBtn,
-            isMember
-              ? {
-                  backgroundColor: isDark ? '#2a2a35' : '#e5e7eb',
-                  borderColor: colors.border,
-                  borderWidth: 1,
-                }
-              : { backgroundColor: colors.primary },
-          ]}
-          activeOpacity={0.8}
-        >
-          {isJoining ? (
-            <ActivityIndicator
-              size="small"
-              color={isMember ? colors.text : '#fff'}
-            />
-          ) : (
-            <Text
-              style={[
-                styles.joinText,
-                { color: isMember ? colors.textSecondary : '#fff' },
-              ]}
-            >
-              {isMember ? '✓ Joined' : 'Join'}
-            </Text>
-          )}
-        </TouchableOpacity>
       </View>
     </TouchableOpacity>
   );
@@ -192,14 +209,20 @@ export default function GroupCard({ group }: Props) {
 
 const styles = StyleSheet.create({
   card: {
-    flex: 1,
-    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    padding: 12,
+    borderRadius: 14,
     borderWidth: 1,
-    overflow: 'hidden',
+    gap: 12,
   },
   coverWrap: {
-    height: 80,
+    width: 72,
+    height: 72,
+    borderRadius: 12,
+    overflow: 'hidden',
     backgroundColor: '#000',
+    flexShrink: 0,
   },
   coverImg: {
     width: '100%',
@@ -208,42 +231,55 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   body: {
-    padding: 12,
+    flex: 1,
+    minWidth: 0, // allow text to shrink/truncate properly
   },
   name: {
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: '700',
+    letterSpacing: -0.1,
   },
   description: {
     fontSize: 13,
+    lineHeight: 18,
     marginTop: 2,
-    minHeight: 36,
   },
-  countsRow: {
+  descriptionMuted: {
+    fontSize: 13,
+    fontStyle: 'italic',
+    marginTop: 2,
+  },
+  footerRow: {
     flexDirection: 'row',
-    gap: 12,
-    marginTop: 6,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 8,
+    gap: 8,
   },
-  countItem: {
+  stats: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  statItem: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
   },
-  countText: {
-    fontSize: 11,
+  statText: {
+    fontSize: 12,
+    fontWeight: '500',
   },
   joinBtn: {
-    marginTop: 10,
+    paddingHorizontal: 14,
     paddingVertical: 6,
-    paddingHorizontal: 16,
     borderRadius: 999,
+    minWidth: 72,
     alignItems: 'center',
     justifyContent: 'center',
-    alignSelf: 'flex-start',
-    minWidth: 80,
   },
   joinText: {
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '700',
   },
 });
