@@ -97,17 +97,21 @@ export default function GroupCard({ group }: Props) {
   const cover = group.coverImage ? String(group.coverImage) : null;
   const postCount = Number(group.postCount) || 0;
 
+  // Low-opacity tinted background. In dark mode a soft white wash; in
+  // light mode a soft dark wash. No border.
+  const cardBg = isDark
+    ? 'rgba(255,255,255,0.04)'
+    : 'rgba(0,0,0,0.03)';
+
   const joinButtonStyle = isMember
     ? {
-        backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#f3f4f6',
-        borderColor: colors.border,
-        borderWidth: 1,
+        backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
       }
     : { backgroundColor: colors.primary };
 
   return (
     <TouchableOpacity
-      style={styles.card}
+      style={[styles.card, { backgroundColor: cardBg }]}
       onPress={openDetail}
       activeOpacity={0.75}
     >
@@ -205,8 +209,8 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    paddingHorizontal: 4,
-    paddingVertical: 10,
+    padding: 12,
+    borderRadius: 14,
     gap: 12,
   },
   coverWrap: {
