@@ -1,77 +1,82 @@
-import React, { useState, useEffect } from 'react';
-import { NavigationContainer } from '@react-navigation/native';
-import { createDrawerNavigator } from '@react-navigation/drawer';
-import { createStackNavigator, TransitionPresets } from '@react-navigation/stack';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Feather } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useAuth } from '../contexts/AuthContext';
-import { useTheme } from '../contexts/ThemeContext';
-import { TabBarProvider } from '../contexts/TabBarContext';
-import { GroupsProvider } from '../contexts/GroupsContext';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Platform, View, StyleSheet, Dimensions, Text } from 'react-native';
+import React, { useState, useEffect } from "react";
+import { NavigationContainer } from "@react-navigation/native";
+import { createDrawerNavigator } from "@react-navigation/drawer";
+import {
+  createStackNavigator,
+  TransitionPresets,
+} from "@react-navigation/stack";
+import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import { Feather } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useAuth } from "../contexts/AuthContext";
+import { useTheme } from "../contexts/ThemeContext";
+import { TabBarProvider } from "../contexts/TabBarContext";
+import { GroupsProvider } from "../contexts/GroupsContext";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Platform, View, StyleSheet, Dimensions, Text } from "react-native";
 
 // ----- Screens -----
-import WelcomeScreen from '../screens/WelcomeScreen';
-import LoginScreen from '../screens/LoginScreen';
-import SignUpScreen from '../screens/SignUpScreen';
-import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
-import EmailVerificationScreen from '../screens/EmailVerificationScreen';
-import FeedScreen from '../screens/FeedScreen';
-import ExploreScreen from '../screens/ExploreScreen';
-import TopicsScreen from '../screens/TopicsScreen';
-import TopicDetailScreen from '../screens/TopicDetailScreen';
-import MessagesScreen from '../screens/MessagesScreen';
-import ChatDetailScreen from '../screens/ChatDetailScreen';
-import CreatePostScreen from '../screens/CreatePostScreen';
-import NotificationsScreen from '../screens/NotificationsScreen';
-import ProfileScreen from '../screens/ProfileScreen';
-import FollowListScreen from '../screens/FollowListScreen';
-import SettingsScreen from '../screens/SettingsScreen';
-import EditProfileScreen from '../screens/EditProfileScreen';
-import EditProfileFieldScreen from '../screens/EditProfileFieldScreen';
-import ChangePasswordScreen from '../screens/ChangePasswordScreen';
-import BlockedUsersScreen from '../screens/BlockedUsersScreen';
-import PostDetailScreen from '../screens/PostDetailScreen';
-import CommentDetailScreen from '../screens/CommentDetailScreen';
-import EditPostScreen from '../screens/EditPostScreen';
-import NewMessageScreen from '../screens/NewMessageScreen';
-import WhisperInboxScreen from '../screens/WhisperInboxScreen';
-import DashboardScreen from '../screens/DashboardScreen';
-import GroupsScreen from '../screens/GroupsScreen';
-import GroupDetailScreen from '../screens/GroupDetailScreen';
+import WelcomeScreen from "../screens/WelcomeScreen";
+import LoginScreen from "../screens/LoginScreen";
+import SignUpScreen from "../screens/SignUpScreen";
+import ForgotPasswordScreen from "../screens/ForgotPasswordScreen";
+import EmailVerificationScreen from "../screens/EmailVerificationScreen";
+import FeedScreen from "../screens/FeedScreen";
+import ExploreScreen from "../screens/ExploreScreen";
+import TopicsScreen from "../screens/TopicsScreen";
+import TopicDetailScreen from "../screens/TopicDetailScreen";
+import MessagesScreen from "../screens/MessagesScreen";
+import ChatDetailScreen from "../screens/ChatDetailScreen";
+import CreatePostScreen from "../screens/CreatePostScreen";
+import NotificationsScreen from "../screens/NotificationsScreen";
+import ProfileScreen from "../screens/ProfileScreen";
+import FollowListScreen from "../screens/FollowListScreen";
+import SettingsScreen from "../screens/SettingsScreen";
+import EditProfileScreen from "../screens/EditProfileScreen";
+import EditProfileFieldScreen from "../screens/EditProfileFieldScreen";
+import ChangePasswordScreen from "../screens/ChangePasswordScreen";
+import BlockedUsersScreen from "../screens/BlockedUsersScreen";
+import PostDetailScreen from "../screens/PostDetailScreen";
+import CommentDetailScreen from "../screens/CommentDetailScreen";
+import EditPostScreen from "../screens/EditPostScreen";
+import NewMessageScreen from "../screens/NewMessageScreen";
+import WhisperInboxScreen from "../screens/WhisperInboxScreen";
+import DashboardScreen from "../screens/DashboardScreen";
+import GroupsScreen from "../screens/GroupsScreen";
+import GroupDetailScreen from "../screens/GroupDetailScreen";
+import VerificationRequestScreen from "../screens/VerificationRequestScreen";
 
 // ----- Components -----
-import SidebarContent from '../components/SidebarContent';
-import AnimatedTabBar from '../components/AnimatedTabBar';
-import NotificationsSync from '../components/NotificationsSync';
+import SidebarContent from "../components/SidebarContent";
+import AnimatedTabBar from "../components/AnimatedTabBar";
+import NotificationsSync from "../components/NotificationsSync";
 
 // ----- Hooks -----
-import { useUnreadCount } from '../hooks/useNotifications';
-import { useUnreadMessages } from '../hooks/useUnreadMessages';
+import { useUnreadCount } from "../hooks/useNotifications";
+import { useUnreadMessages } from "../hooks/useUnreadMessages";
 
 // ----- Shared layout -----
-import { TAB_BAR_CONTENT_HEIGHT } from '../constants/layout';
+import { TAB_BAR_CONTENT_HEIGHT } from "../constants/layout";
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 const Drawer = createDrawerNavigator();
 
-const isWeb = Platform.OS === 'web';
-const { width: screenWidth } = Dimensions.get('window');
+const isWeb = Platform.OS === "web";
+const { width: screenWidth } = Dimensions.get("window");
 const maxContentWidth = 600;
 
 // ── Small helper: coerce a possibly-object count to a number ──
 function toCount(v: any): number {
-  if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
-  if (v && typeof v === 'object' && 'count' in v) return Number((v as any).count) || 0;
+  if (typeof v === "number") return Number.isFinite(v) ? v : 0;
+  if (v && typeof v === "object" && "count" in v)
+    return Number((v as any).count) || 0;
   return Number(v) || 0;
 }
 
 function badgeLabel(n: number): string | undefined {
   if (n <= 0) return undefined;
-  return n > 99 ? '99+' : String(n);
+  return n > 99 ? "99+" : String(n);
 }
 
 // ── Email verified flag, tolerant of every field name we might get ──
@@ -83,9 +88,9 @@ function extractEmailVerified(u: any): boolean | undefined {
     u.isEmailVerified ??
     u.is_email_verified ??
     u.verifiedEmail;
-  if (typeof raw === 'boolean') return raw;
-  if (raw === 1 || raw === '1' || raw === 'true') return true;
-  if (raw === 0 || raw === '0' || raw === 'false') return false;
+  if (typeof raw === "boolean") return raw;
+  if (raw === 1 || raw === "1" || raw === "true") return true;
+  if (raw === 0 || raw === "0" || raw === "false") return false;
   return undefined;
 }
 
@@ -97,8 +102,8 @@ function MainTabs() {
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
   const { user } = useAuth();
-  const { data: rawUnreadNotifications } = useUnreadCount(user?.id || '');
-  const { data: rawUnreadMessages } = useUnreadMessages(user?.id || '');
+  const { data: rawUnreadNotifications } = useUnreadCount(user?.id || "");
+  const { data: rawUnreadMessages } = useUnreadMessages(user?.id || "");
 
   const unreadNotifications = toCount(rawUnreadNotifications);
   const unreadMessages = toCount(rawUnreadMessages);
@@ -110,9 +115,9 @@ function MainTabs() {
 
   const badgeStyle = {
     backgroundColor: colors.primary,
-    color: 'white',
+    color: "white",
     fontSize: 10,
-    fontWeight: '700' as const,
+    fontWeight: "700" as const,
     minWidth: 18,
     height: 18,
     lineHeight: 16,
@@ -126,24 +131,26 @@ function MainTabs() {
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarIcon: ({ focused, color, size }) => {
-          let iconName: keyof typeof Feather.glyphMap = 'home';
-          if (route.name === 'Feed') iconName = 'home';
-          else if (route.name === 'Explore') iconName = 'search';
-          else if (route.name === 'Messages') iconName = 'message-circle';
-          else if (route.name === 'Notifications') iconName = 'bell';
-          else if (route.name === 'MyProfile') iconName = 'user';
+          let iconName: keyof typeof Feather.glyphMap = "home";
+          if (route.name === "Feed") iconName = "home";
+          else if (route.name === "Explore") iconName = "search";
+          else if (route.name === "Messages") iconName = "message-circle";
+          else if (route.name === "Notifications") iconName = "bell";
+          else if (route.name === "MyProfile") iconName = "user";
           return <Feather name={iconName} size={size} color={color} />;
         },
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textSecondary,
         tabBarStyle: {
-          position: 'absolute',
-          bottom: 0, left: 0, right: 0,
+          position: "absolute",
+          bottom: 0,
+          left: 0,
+          right: 0,
           height: tabBarHeight,
           paddingTop: 8,
-          paddingBottom: Platform.OS === 'ios' ? bottomInset : 8,
+          paddingBottom: Platform.OS === "ios" ? bottomInset : 8,
           backgroundColor: colors.background,
-          shadowColor: isDark ? 'transparent' : '#000',
+          shadowColor: isDark ? "transparent" : "#000",
           shadowOffset: { width: 0, height: -2 },
           shadowOpacity: isDark ? 0 : 0.05,
           shadowRadius: 4,
@@ -151,8 +158,8 @@ function MainTabs() {
         },
         tabBarLabelStyle: {
           fontSize: 10,
-          fontWeight: '600',
-          paddingBottom: Platform.OS === 'ios' ? 0 : 4,
+          fontWeight: "600",
+          paddingBottom: Platform.OS === "ios" ? 0 : 4,
         },
       })}
     >
@@ -177,7 +184,7 @@ function MainTabs() {
       <Tab.Screen
         name="MyProfile"
         component={ProfileScreen}
-        options={{ tabBarLabel: 'Profile' }}
+        options={{ tabBarLabel: "Profile" }}
       />
     </Tab.Navigator>
   );
@@ -200,7 +207,11 @@ function WebNavigator() {
       <Stack.Screen name="Explore" component={ExploreScreen} />
       <Stack.Screen name="Messages" component={MessagesScreen} />
       <Stack.Screen name="Notifications" component={NotificationsScreen} />
-      <Stack.Screen name="MyProfile" component={ProfileScreen} options={{ title: 'Profile' }} />
+      <Stack.Screen
+        name="MyProfile"
+        component={ProfileScreen}
+        options={{ title: "Profile" }}
+      />
       <Stack.Screen name="Profile" component={ProfileScreen} />
       <Stack.Screen name="FollowList" component={FollowListScreen} />
       <Stack.Screen name="Settings" component={SettingsScreen} />
@@ -209,7 +220,10 @@ function WebNavigator() {
       <Stack.Screen name="PostDetail" component={PostDetailScreen} />
       <Stack.Screen name="CommentDetail" component={CommentDetailScreen} />
       <Stack.Screen name="EditProfile" component={EditProfileScreen} />
-      <Stack.Screen name="EditProfileField" component={EditProfileFieldScreen} />
+      <Stack.Screen
+        name="EditProfileField"
+        component={EditProfileFieldScreen}
+      />
       <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
       <Stack.Screen name="BlockedUsers" component={BlockedUsersScreen} />
       <Stack.Screen name="WhisperInbox" component={WhisperInboxScreen} />
@@ -233,12 +247,12 @@ function DrawerNavigator() {
       screenOptions={{
         headerShown: false,
         drawerStyle: { width: 280, backgroundColor: colors.background },
-        drawerType: isWeb ? 'permanent' : 'slide',
-        overlayColor: 'rgba(0,0,0,0.5)',
+        drawerType: isWeb ? "permanent" : "slide",
+        overlayColor: "rgba(0,0,0,0.5)",
         swipeEnabled: !isWeb,
         drawerActiveTintColor: colors.primary,
         drawerInactiveTintColor: colors.textSecondary,
-        drawerActiveBackgroundColor: 'transparent',
+        drawerActiveBackgroundColor: "transparent",
         drawerItemStyle: { borderRadius: 12, marginHorizontal: 8 },
       }}
       drawerContent={(props) => <SidebarContent {...props} />}
@@ -247,35 +261,73 @@ function DrawerNavigator() {
         name="MainTabs"
         component={isWeb ? WebNavigator : MainTabs}
         options={{
-          drawerLabel: 'Home',
-          drawerIcon: ({ color, size }) => <Feather name="home" size={size} color={color} />,
+          drawerLabel: "Home",
+          drawerIcon: ({ color, size }) => (
+            <Feather name="home" size={size} color={color} />
+          ),
         }}
       />
       <Drawer.Screen
         name="Groups"
         component={GroupsScreen}
         options={{
-          drawerLabel: 'Groups',
-          drawerIcon: ({ color, size }) => <Feather name="users" size={size} color={color} />,
+          drawerLabel: "Groups",
+          drawerIcon: ({ color, size }) => (
+            <Feather name="users" size={size} color={color} />
+          ),
         }}
       />
       <Drawer.Screen
         name="Topics"
         component={TopicsScreen}
         options={{
-          drawerIcon: ({ color, size }) => <Feather name="hash" size={size} color={color} />,
+          drawerIcon: ({ color, size }) => (
+            <Feather name="hash" size={size} color={color} />
+          ),
         }}
       />
 
       {/* Hidden screens — reachable via navigation.navigate */}
-      <Drawer.Screen name="Settings"         component={SettingsScreen}          options={{ drawerItemStyle: { display: 'none' } }} />
-      <Drawer.Screen name="FollowList"        component={FollowListScreen}        options={{ drawerItemStyle: { display: 'none' } }} />
-      <Drawer.Screen name="EditProfile"       component={EditProfileScreen}       options={{ drawerItemStyle: { display: 'none' } }} />
-      <Drawer.Screen name="EditProfileField"  component={EditProfileFieldScreen}  options={{ drawerItemStyle: { display: 'none' } }} />
-      <Drawer.Screen name="ChangePassword"    component={ChangePasswordScreen}    options={{ drawerItemStyle: { display: 'none' } }} />
-      <Drawer.Screen name="BlockedUsers"      component={BlockedUsersScreen}      options={{ drawerItemStyle: { display: 'none' } }} />
-      <Drawer.Screen name="WhisperInbox"      component={WhisperInboxScreen}      options={{ drawerItemStyle: { display: 'none' } }} />
-      <Drawer.Screen name="Dashboard"         component={DashboardScreen}         options={{ drawerItemStyle: { display: 'none' } }} />
+      <Drawer.Screen
+        name="Settings"
+        component={SettingsScreen}
+        options={{ drawerItemStyle: { display: "none" } }}
+      />
+      <Drawer.Screen
+        name="FollowList"
+        component={FollowListScreen}
+        options={{ drawerItemStyle: { display: "none" } }}
+      />
+      <Drawer.Screen
+        name="EditProfile"
+        component={EditProfileScreen}
+        options={{ drawerItemStyle: { display: "none" } }}
+      />
+      <Drawer.Screen
+        name="EditProfileField"
+        component={EditProfileFieldScreen}
+        options={{ drawerItemStyle: { display: "none" } }}
+      />
+      <Drawer.Screen
+        name="ChangePassword"
+        component={ChangePasswordScreen}
+        options={{ drawerItemStyle: { display: "none" } }}
+      />
+      <Drawer.Screen
+        name="BlockedUsers"
+        component={BlockedUsersScreen}
+        options={{ drawerItemStyle: { display: "none" } }}
+      />
+      <Drawer.Screen
+        name="WhisperInbox"
+        component={WhisperInboxScreen}
+        options={{ drawerItemStyle: { display: "none" } }}
+      />
+      <Drawer.Screen
+        name="Dashboard"
+        component={DashboardScreen}
+        options={{ drawerItemStyle: { display: "none" } }}
+      />
     </Drawer.Navigator>
   );
 }
@@ -287,7 +339,10 @@ function AuthStack() {
   const { colors } = useTheme();
   return (
     <Stack.Navigator
-      screenOptions={{ headerShown: false, cardStyle: { backgroundColor: colors.background } }}
+      screenOptions={{
+        headerShown: false,
+        cardStyle: { backgroundColor: colors.background },
+      }}
     >
       <Stack.Screen name="Login" component={LoginScreen} />
       <Stack.Screen name="SignUp" component={SignUpScreen} />
@@ -305,36 +360,62 @@ function MainStack() {
   const { colors } = useTheme();
   return (
     <Stack.Navigator
-      screenOptions={{ headerShown: false, cardStyle: { backgroundColor: colors.background } }}
+      screenOptions={{
+        headerShown: false,
+        cardStyle: { backgroundColor: colors.background },
+      }}
     >
       <Stack.Screen name="Drawer" component={DrawerNavigator} />
 
       <Stack.Screen
         name="Profile"
         component={ProfileScreen}
-        options={{ headerShown: false, cardStyle: { backgroundColor: colors.background } }}
+        options={{
+          headerShown: false,
+          cardStyle: { backgroundColor: colors.background },
+        }}
       />
 
       {/* ── Detail screens reachable from any authenticated screen ── */}
       <Stack.Screen
         name="PostDetail"
         component={PostDetailScreen}
-        options={{ headerShown: false, cardStyle: { backgroundColor: colors.background } }}
+        options={{
+          headerShown: false,
+          cardStyle: { backgroundColor: colors.background },
+        }}
       />
       <Stack.Screen
         name="CommentDetail"
         component={CommentDetailScreen}
-        options={{ headerShown: false, cardStyle: { backgroundColor: colors.background } }}
+        options={{
+          headerShown: false,
+          cardStyle: { backgroundColor: colors.background },
+        }}
       />
       <Stack.Screen
         name="TopicDetail"
         component={TopicDetailScreen}
-        options={{ headerShown: false, cardStyle: { backgroundColor: colors.background } }}
+        options={{
+          headerShown: false,
+          cardStyle: { backgroundColor: colors.background },
+        }}
       />
       <Stack.Screen
         name="GroupDetail"
         component={GroupDetailScreen}
-        options={{ headerShown: false, cardStyle: { backgroundColor: colors.background } }}
+        options={{
+          headerShown: false,
+          cardStyle: { backgroundColor: colors.background },
+        }}
+      />
+      <Stack.Screen
+        name="VerificationRequest"
+        component={VerificationRequestScreen}
+        options={{
+          headerShown: false,
+          cardStyle: { backgroundColor: colors.background },
+        }}
       />
 
       <Stack.Screen
@@ -342,7 +423,7 @@ function MainStack() {
         component={CreatePostScreen}
         options={{
           headerShown: false,
-          presentation: 'modal',
+          presentation: "modal",
           cardOverlayEnabled: true,
           cardStyle: { backgroundColor: colors.background },
           ...TransitionPresets.ModalSlideFromBottomIOS,
@@ -351,32 +432,51 @@ function MainStack() {
       <Stack.Screen
         name="EditPost"
         component={EditPostScreen}
-        options={{ title: 'Edit Post', presentation: 'modal', cardStyle: { backgroundColor: colors.background } }}
+        options={{
+          title: "Edit Post",
+          presentation: "modal",
+          cardStyle: { backgroundColor: colors.background },
+        }}
       />
       <Stack.Screen
         name="NewMessage"
         component={NewMessageScreen}
-        options={{ headerShown: false, cardStyle: { backgroundColor: colors.background } }}
+        options={{
+          headerShown: false,
+          cardStyle: { backgroundColor: colors.background },
+        }}
       />
       <Stack.Screen
         name="ChatDetail"
         component={ChatDetailScreen}
-        options={{ title: 'Chat', cardStyle: { backgroundColor: colors.background } }}
+        options={{
+          title: "Chat",
+          cardStyle: { backgroundColor: colors.background },
+        }}
       />
       <Stack.Screen
         name="WhisperInbox"
         component={WhisperInboxScreen}
-        options={{ headerShown: false, cardStyle: { backgroundColor: colors.background } }}
+        options={{
+          headerShown: false,
+          cardStyle: { backgroundColor: colors.background },
+        }}
       />
       <Stack.Screen
         name="Dashboard"
         component={DashboardScreen}
-        options={{ headerShown: false, cardStyle: { backgroundColor: colors.background } }}
+        options={{
+          headerShown: false,
+          cardStyle: { backgroundColor: colors.background },
+        }}
       />
       <Stack.Screen
         name="FollowList"
         component={FollowListScreen}
-        options={{ headerShown: false, cardStyle: { backgroundColor: colors.background } }}
+        options={{
+          headerShown: false,
+          cardStyle: { backgroundColor: colors.background },
+        }}
       />
     </Stack.Navigator>
   );
@@ -395,7 +495,7 @@ export default function AppNavigator() {
     const checkWelcome = async () => {
       try {
         if (user) {
-          const hasSeen = await AsyncStorage.getItem('hasSeenWelcome');
+          const hasSeen = await AsyncStorage.getItem("hasSeenWelcome");
           setShowWelcome(!hasSeen);
           setIsNewUser(!hasSeen);
         } else {
@@ -423,10 +523,10 @@ export default function AppNavigator() {
       notification: colors.primary,
     },
     fonts: {
-      regular: { fontFamily: 'System', fontWeight: '400' as const },
-      medium: { fontFamily: 'System', fontWeight: '500' as const },
-      bold: { fontFamily: 'System', fontWeight: '700' as const },
-      heavy: { fontFamily: 'System', fontWeight: '800' as const },
+      regular: { fontFamily: "System", fontWeight: "400" as const },
+      medium: { fontFamily: "System", fontWeight: "500" as const },
+      bold: { fontFamily: "System", fontWeight: "700" as const },
+      heavy: { fontFamily: "System", fontWeight: "800" as const },
     },
   };
 
@@ -434,13 +534,18 @@ export default function AppNavigator() {
   const needsEmailVerification = !!user && emailVerified === false;
 
   return (
-    <View style={[styles.rootContainer, { backgroundColor: colors.background }]}>
+    <View
+      style={[styles.rootContainer, { backgroundColor: colors.background }]}
+    >
       <NavigationContainer theme={customTheme}>
         <GroupsProvider>
           <TabBarProvider>
             <NotificationsSync />
             <Stack.Navigator
-              screenOptions={{ headerShown: false, cardStyle: { backgroundColor: colors.background } }}
+              screenOptions={{
+                headerShown: false,
+                cardStyle: { backgroundColor: colors.background },
+              }}
             >
               {!user ? (
                 <Stack.Screen name="Auth" component={AuthStack} />
@@ -477,9 +582,9 @@ const styles = StyleSheet.create({
     flex: 1,
     ...(isWeb && {
       maxWidth: maxContentWidth,
-      alignSelf: 'center',
-      width: '100%',
-      minHeight: '100%',
+      alignSelf: "center",
+      width: "100%",
+      minHeight: "100%",
     }),
   },
 });

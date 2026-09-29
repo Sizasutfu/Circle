@@ -34,6 +34,8 @@ export default function SettingsScreen() {
   const [privateAccount, setPrivateAccount] = useState(false);
   const [showOnlineStatus, setShowOnlineStatus] = useState(true);
 
+  const isVerified = !!user?.verified;
+
   const handleLogout = () => {
     Alert.alert(
       'Logout',
@@ -173,7 +175,19 @@ export default function SettingsScreen() {
         >
           <Avatar source={user?.avatar} size={56} />
           <View style={styles.profileInfo}>
-            <Text style={[styles.profileName, { color: colors.text }]}>{user?.name || 'User'}</Text>
+            <View style={styles.profileNameRow}>
+              <Text style={[styles.profileName, { color: colors.text }]} numberOfLines={1}>
+                {user?.name || 'User'}
+              </Text>
+              {isVerified ? (
+                <Feather
+                  name="check-circle"
+                  size={15}
+                  color={colors.primary}
+                  style={{ marginLeft: 5 }}
+                />
+              ) : null}
+            </View>
             <Text style={[styles.profileUsername, { color: colors.textSecondary }]}>
               @{user?.username || 'username'}
             </Text>
@@ -199,6 +213,16 @@ export default function SettingsScreen() {
             title="Email"
             subtitle={user?.email || 'Not set'}
             showArrow={false}
+          />
+          <MenuItem
+            icon={isVerified ? 'check-circle' : 'shield'}
+            title="Verification"
+            subtitle={
+              isVerified
+                ? 'Your account is verified'
+                : 'Request a verified badge for your account'
+            }
+            onPress={() => (navigation.navigate as any)('VerificationRequest')}
           />
         </View>
 
@@ -348,7 +372,8 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   profileInfo: { flex: 1, marginLeft: 12 },
-  profileName: { fontSize: 16, fontWeight: '600' },
+  profileNameRow: { flexDirection: 'row', alignItems: 'center' },
+  profileName: { fontSize: 16, fontWeight: '600', flexShrink: 1 },
   profileUsername: { fontSize: 14, marginTop: 2 },
   sectionHeader: {
     fontSize: 13,

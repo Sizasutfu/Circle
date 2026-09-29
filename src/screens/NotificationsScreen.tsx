@@ -112,7 +112,7 @@ export default function NotificationsScreen() {
         commentId: data.commentId || null,
         parentCommentId: data.parentCommentId ?? data.parent_comment_id ?? null,
         commentText: data.commentText || null,
-        text: data.text || '',
+        text: data.message || data.text || '',
         createdAt: data.createdAt || new Date().toISOString(),
         read: false,
       };
@@ -120,27 +120,30 @@ export default function NotificationsScreen() {
       setNewNotification(notification);
 
       const displayName = notification.user?.name || 'Someone';
+      const isSystem = notification.type === 'verified' || notification.type === 'unverified';
       let actionText = '';
       switch (notification.type) {
-        case 'like':     actionText = 'liked your post'; break;
-        case 'comment':  actionText = 'commented on your post'; break;
-        case 'reply':    actionText = 'replied to your comment'; break;
-        case 'repost':   actionText = 'reposted your post'; break;
-        case 'follow':   actionText = 'started following you'; break;
-        case 'mention':  actionText = 'mentioned you in a post'; break;
+        case 'like':       actionText = 'liked your post'; break;
+        case 'comment':    actionText = 'commented on your post'; break;
+        case 'reply':      actionText = 'replied to your comment'; break;
+        case 'repost':     actionText = 'reposted your post'; break;
+        case 'follow':     actionText = 'started following you'; break;
+        case 'mention':    actionText = 'mentioned you in a post'; break;
         case 'verified':   actionText = 'your account was verified'; break;
         case 'unverified': actionText = 'your verification was removed'; break;
-        default:         actionText = 'interacted with you';
+        default:           actionText = 'interacted with you';
       }
 
       Alert.alert(
         '🔔 New Notification',
-        `${displayName} ${actionText}`,
+        isSystem ? actionText.charAt(0).toUpperCase() + actionText.slice(1) : `${displayName} ${actionText}`,
         [
           {
             text: 'View',
             onPress: () => {
-              if (notification.type === 'reply' && notification.parentCommentId) {
+              if (notification.type === 'verified' || notification.type === 'unverified') {
+                (navigation.navigate as any)('VerificationRequest');
+              } else if (notification.type === 'reply' && notification.parentCommentId) {
                 (navigation.navigate as any)('CommentDetail', {
                   commentId: String(notification.parentCommentId),
                   postId: notification.postId ? String(notification.postId) : undefined,
@@ -187,6 +190,12 @@ export default function NotificationsScreen() {
 
     const type = notification.type;
 
+    // System notifications — navigate to the verification request screen.
+    if (type === 'verified' || type === 'unverified') {
+      (navigation.navigate as any)('VerificationRequest');
+      return;
+    }
+
     if (type === 'reply') {
       if (notification.parentCommentId) {
         (navigation.navigate as any)('CommentDetail', {
@@ -209,7 +218,6 @@ export default function NotificationsScreen() {
     } else if (type === 'mention' && notification.postId) {
       (navigation.navigate as any)('PostDetail', { postId: notification.postId });
     }
-    // verified / unverified → no navigation target; tap just marks read.
   };
 
   const handleMarkAllRead = () => {
@@ -280,7 +288,6 @@ export default function NotificationsScreen() {
         iconColor = '#f59e0b';
         break;
       case 'verified':
-        // The server puts the full message in `text` — use it directly.
         actionText = text || 'Your account has been verified.';
         iconName = 'check-circle';
         iconColor = '#22c55e';
@@ -309,8 +316,6 @@ export default function NotificationsScreen() {
       >
         <View style={styles.avatarContainer}>
           {isSystemType ? (
-            /* System notifications have no actor → render a themed icon
-               circle instead of an empty avatar. */
             <View
               style={[
                 styles.systemIconCircle,
@@ -331,8 +336,6 @@ export default function NotificationsScreen() {
 
         <View style={styles.content}>
           {isSystemType ? (
-            /* System notification layout: no "user + action" line, just
-               the message and a bolded subject line. */
             <>
               <Text style={[styles.systemTitle, { color: colors.text }]}>
                 {type === 'verified' ? 'Account Verified' : 'Verification Removed'}
