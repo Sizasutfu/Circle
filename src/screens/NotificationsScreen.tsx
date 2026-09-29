@@ -67,7 +67,6 @@ export default function NotificationsScreen() {
   // navigating to a detail screen, or unmounting).
   useFocusEffect(
     useCallback(() => {
-      // Reset the in-flight guard whenever the screen regains focus.
       isMarkingAllRef.current = false;
 
       return () => {
@@ -76,8 +75,6 @@ export default function NotificationsScreen() {
         if (isMarkingAllRef.current) return;
 
         isMarkingAllRef.current = true;
-        // Optimistically flip the local flag so a rapid focus/blur cycle
-        // doesn't fire a second mutation before the refetch lands.
         hasUnreadRef.current = false;
         markAllReadRef.current();
       };
@@ -125,26 +122,15 @@ export default function NotificationsScreen() {
       const displayName = notification.user?.name || 'Someone';
       let actionText = '';
       switch (notification.type) {
-        case 'like':
-          actionText = 'liked your post';
-          break;
-        case 'comment':
-          actionText = 'commented on your post';
-          break;
-        case 'reply':
-          actionText = 'replied to your comment';
-          break;
-        case 'repost':
-          actionText = 'reposted your post';
-          break;
-        case 'follow':
-          actionText = 'started following you';
-          break;
-        case 'mention':
-          actionText = 'mentioned you in a post';
-          break;
-        default:
-          actionText = 'interacted with you';
+        case 'like':     actionText = 'liked your post'; break;
+        case 'comment':  actionText = 'commented on your post'; break;
+        case 'reply':    actionText = 'replied to your comment'; break;
+        case 'repost':   actionText = 'reposted your post'; break;
+        case 'follow':   actionText = 'started following you'; break;
+        case 'mention':  actionText = 'mentioned you in a post'; break;
+        case 'verified':   actionText = 'your account was verified'; break;
+        case 'unverified': actionText = 'your verification was removed'; break;
+        default:         actionText = 'interacted with you';
       }
 
       Alert.alert(
@@ -167,29 +153,16 @@ export default function NotificationsScreen() {
               setNewNotification(null);
             },
           },
-          {
-            text: 'Dismiss',
-            onPress: () => setNewNotification(null),
-          },
+          { text: 'Dismiss', onPress: () => setNewNotification(null) },
         ]
       );
 
       refetch();
     });
 
-    const unregisterNotificationRead = registerHandler('notification-read', (data: any) => {
-      console.log('✅ Notification marked as read via WebSocket:', data);
-      refetch();
-    });
-
-    const unregisterAllRead = registerHandler('all-notifications-read', (data: any) => {
-      console.log('✅ All notifications marked as read via WebSocket:', data);
-      refetch();
-    });
-
-    const unregisterUnreadCount = registerHandler('unread-count-updated', (data: any) => {
-      console.log('📊 Unread count updated via WebSocket:', data);
-    });
+    const unregisterNotificationRead = registerHandler('notification-read', () => refetch());
+    const unregisterAllRead = registerHandler('all-notifications-read', () => refetch());
+    const unregisterUnreadCount = registerHandler('unread-count-updated', () => {});
 
     return () => {
       unregisterNewNotification();
@@ -206,21 +179,14 @@ export default function NotificationsScreen() {
   };
 
   const handleLoadMore = () => {
-    if (hasNextPage && !isFetchingNextPage) {
-      fetchNextPage();
-    }
+    if (hasNextPage && !isFetchingNextPage) fetchNextPage();
   };
 
   const handleNotificationPress = (notification: Notification) => {
-    if (!notification.read) {
-      markRead(notification.id);
-    }
+    if (!notification.read) markRead(notification.id);
 
     const type = notification.type;
 
-    // Replies open the parent comment's thread so the user sees their
-    // original comment plus the reply. Falls back to the post if we
-    // don't have a parent id.
     if (type === 'reply') {
       if (notification.parentCommentId) {
         (navigation.navigate as any)('CommentDetail', {
@@ -243,10 +209,10 @@ export default function NotificationsScreen() {
     } else if (type === 'mention' && notification.postId) {
       (navigation.navigate as any)('PostDetail', { postId: notification.postId });
     }
+    // verified / unverified → no navigation target; tap just marks read.
   };
 
   const handleMarkAllRead = () => {
-    // Keep the ref in sync so the blur handler doesn't fire a duplicate.
     hasUnreadRef.current = false;
     isMarkingAllRef.current = true;
     markAllRead();
@@ -259,12 +225,8 @@ export default function NotificationsScreen() {
         notification.user.name !== 'undefined') {
       return notification.user.name;
     }
-    if (notification.user?.username) {
-      return notification.user.username;
-    }
-    if (notification.userId) {
-      return 'User';
-    }
+    if (notification.user?.username) return notification.user.username;
+    if (notification.userId) return 'User';
     return 'Someone';
   };
 
@@ -275,6 +237,8 @@ export default function NotificationsScreen() {
   const renderNotification = ({ item }: { item: Notification }) => {
     const { type, postText, commentText, createdAt, read, text } = item;
     const time = timeAgo(createdAt);
+
+    const isSystemType = type === 'verified' || type === 'unverified';
 
     const displayName = getSafeDisplayName(item);
     const avatar = getSafeAvatar(item);
@@ -315,6 +279,17 @@ export default function NotificationsScreen() {
         iconName = 'at-sign';
         iconColor = '#f59e0b';
         break;
+      case 'verified':
+        // The server puts the full message in `text` — use it directly.
+        actionText = text || 'Your account has been verified.';
+        iconName = 'check-circle';
+        iconColor = '#22c55e';
+        break;
+      case 'unverified':
+        actionText = text || 'Your verification badge was removed.';
+        iconName = 'shield-off';
+        iconColor = '#ef4444';
+        break;
       default:
         actionText = text || 'interacted with you';
     }
@@ -324,45 +299,85 @@ export default function NotificationsScreen() {
         style={[
           styles.notificationItem,
           {
-            backgroundColor: read ? colors.background : (isDark ? '#1f2937' : '#f0f4ff'),
+            backgroundColor: read
+              ? colors.background
+              : (isDark ? '#1f2937' : '#f0f4ff'),
           },
         ]}
         onPress={() => handleNotificationPress(item)}
         activeOpacity={0.7}
       >
         <View style={styles.avatarContainer}>
-          <Avatar source={avatar} size={48} />
-          <View style={[styles.iconBadge, { backgroundColor: iconColor }]}>
-            <Feather name={iconName} size={12} color="white" />
-          </View>
+          {isSystemType ? (
+            /* System notifications have no actor → render a themed icon
+               circle instead of an empty avatar. */
+            <View
+              style={[
+                styles.systemIconCircle,
+                { backgroundColor: isDark ? '#374151' : '#f3f4f6' },
+              ]}
+            >
+              <Feather name={iconName} size={22} color={iconColor} />
+            </View>
+          ) : (
+            <>
+              <Avatar source={avatar} size={48} />
+              <View style={[styles.iconBadge, { backgroundColor: iconColor }]}>
+                <Feather name={iconName} size={12} color="white" />
+              </View>
+            </>
+          )}
         </View>
 
         <View style={styles.content}>
-          <Text style={[styles.text, { color: colors.text }]}>
-            <Text style={[styles.userName, { color: colors.text }]}>
-              {safeString(displayName)}
-            </Text>
-            {isVerified && (
-              <Text>{'  '}<VerificationBadge size={13} color={colors.primary} /></Text>
-            )}
-            {' '}
-            <Text style={[styles.actionText, { color: colors.textSecondary }]}>
-              {actionText}
-            </Text>
-          </Text>
+          {isSystemType ? (
+            /* System notification layout: no "user + action" line, just
+               the message and a bolded subject line. */
+            <>
+              <Text style={[styles.systemTitle, { color: colors.text }]}>
+                {type === 'verified' ? 'Account Verified' : 'Verification Removed'}
+              </Text>
+              <Text style={[styles.systemBody, { color: colors.textSecondary }]}>
+                {actionText}
+              </Text>
+            </>
+          ) : (
+            <>
+              <Text style={[styles.text, { color: colors.text }]}>
+                <Text style={[styles.userName, { color: colors.text }]}>
+                  {safeString(displayName)}
+                </Text>
+                {isVerified && (
+                  <Text>{'  '}<VerificationBadge size={13} color={colors.primary} /></Text>
+                )}
+                {' '}
+                <Text style={[styles.actionText, { color: colors.textSecondary }]}>
+                  {actionText}
+                </Text>
+              </Text>
 
-          {postText && type !== 'follow' && type !== 'reply' && (
-            <Text style={[styles.postPreview, { color: colors.textSecondary }]} numberOfLines={2}>
-              "{safeString(postText)}"
-            </Text>
-          )}
-          {commentText && (type === 'comment' || type === 'reply') && (
-            <Text style={[styles.commentText, {
-              color: colors.text,
-              backgroundColor: isDark ? '#374151' : '#f3f4f6',
-            }]}>
-              💬 {safeString(commentText)}
-            </Text>
+              {postText && type !== 'follow' && type !== 'reply' && (
+                <Text
+                  style={[styles.postPreview, { color: colors.textSecondary }]}
+                  numberOfLines={2}
+                >
+                  "{safeString(postText)}"
+                </Text>
+              )}
+              {commentText && (type === 'comment' || type === 'reply') && (
+                <Text
+                  style={[
+                    styles.commentText,
+                    {
+                      color: colors.text,
+                      backgroundColor: isDark ? '#374151' : '#f3f4f6',
+                    },
+                  ]}
+                >
+                  💬 {safeString(commentText)}
+                </Text>
+              )}
+            </>
           )}
 
           <View style={styles.metaRow}>
@@ -370,7 +385,9 @@ export default function NotificationsScreen() {
             {!isConnected && (
               <View style={styles.connectionStatus}>
                 <View style={styles.statusDot} />
-                <Text style={[styles.statusText, { color: colors.textMuted }]}>Reconnecting...</Text>
+                <Text style={[styles.statusText, { color: colors.textMuted }]}>
+                  Reconnecting...
+                </Text>
               </View>
             )}
           </View>
@@ -414,7 +431,10 @@ export default function NotificationsScreen() {
       <SafeAreaView style={[styles.errorContainer, { backgroundColor: colors.background }]} edges={['top']}>
         <Feather name="alert-circle" size={48} color="#ef4444" />
         <Text style={[styles.errorTitle, { color: colors.text }]}>Failed to load notifications</Text>
-        <TouchableOpacity style={[styles.retryButton, { backgroundColor: colors.primary }]} onPress={() => refetch()}>
+        <TouchableOpacity
+          style={[styles.retryButton, { backgroundColor: colors.primary }]}
+          onPress={() => refetch()}
+        >
           <Text style={styles.retryButtonText}>Retry</Text>
         </TouchableOpacity>
       </SafeAreaView>
@@ -435,7 +455,9 @@ export default function NotificationsScreen() {
           )}
           {hasUnread && (
             <TouchableOpacity onPress={handleMarkAllRead}>
-              <Text style={[styles.markAllRead, { color: colors.primary }]}>Mark all as read</Text>
+              <Text style={[styles.markAllRead, { color: colors.primary }]}>
+                Mark all as read
+              </Text>
             </TouchableOpacity>
           )}
         </View>
@@ -446,7 +468,11 @@ export default function NotificationsScreen() {
         keyExtractor={(item) => item.id}
         renderItem={renderNotification}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.primary}
+          />
         }
         ListEmptyComponent={renderEmpty}
         ListFooterComponent={renderFooter}
@@ -463,36 +489,17 @@ export default function NotificationsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
+  container: { flex: 1 },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 32,
   },
-  errorTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginTop: 12,
-  },
-  retryButton: {
-    marginTop: 20,
-    paddingHorizontal: 32,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  retryButtonText: {
-    color: 'white',
-    fontWeight: '600',
-    fontSize: 16,
-  },
+  errorTitle: { fontSize: 18, fontWeight: '600', marginTop: 12 },
+  retryButton: { marginTop: 20, paddingHorizontal: 32, paddingVertical: 10, borderRadius: 8 },
+  retryButtonText: { color: 'white', fontWeight: '600', fontSize: 16 },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -500,22 +507,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-  },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  markAllRead: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  connectionBadge: {
-    padding: 4,
-  },
+  headerTitle: { fontSize: 20, fontWeight: '700' },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  markAllRead: { fontSize: 14, fontWeight: '500' },
+  connectionBadge: { padding: 4 },
   greenDot: {
     width: 8,
     height: 8,
@@ -527,9 +522,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
-  avatarContainer: {
-    position: 'relative',
-    marginRight: 12,
+  avatarContainer: { position: 'relative', marginRight: 12 },
+  systemIconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   iconBadge: {
     position: 'absolute',
@@ -543,24 +542,20 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: 'white',
   },
-  content: {
-    flex: 1,
+  content: { flex: 1 },
+  text: { fontSize: 14, lineHeight: 20 },
+  userName: { fontWeight: '700' },
+  actionText: { color: '#4b5563' },
+  systemTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    marginBottom: 2,
   },
-  text: {
+  systemBody: {
     fontSize: 14,
     lineHeight: 20,
   },
-  userName: {
-    fontWeight: '700',
-  },
-  actionText: {
-    color: '#4b5563',
-  },
-  postPreview: {
-    fontSize: 13,
-    marginTop: 2,
-    fontStyle: 'italic',
-  },
+  postPreview: { fontSize: 13, marginTop: 2, fontStyle: 'italic' },
   commentText: {
     fontSize: 13,
     marginTop: 2,
@@ -573,39 +568,23 @@ const styles = StyleSheet.create({
     marginTop: 4,
     gap: 12,
   },
-  timestamp: {
-    fontSize: 12,
-  },
-  connectionStatus: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
+  timestamp: { fontSize: 12 },
+  connectionStatus: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   statusDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
     backgroundColor: '#f59e0b',
   },
-  statusText: {
-    fontSize: 10,
-  },
+  statusText: { fontSize: 10 },
   emptyContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 32,
   },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginTop: 16,
-  },
-  emptySubtitle: {
-    fontSize: 14,
-    textAlign: 'center',
-    marginTop: 8,
-  },
+  emptyTitle: { fontSize: 18, fontWeight: '600', marginTop: 16 },
+  emptySubtitle: { fontSize: 14, textAlign: 'center', marginTop: 8 },
   footerLoader: {
     paddingVertical: 20,
     alignItems: 'center',
@@ -613,7 +592,5 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
   },
-  footerText: {
-    fontSize: 14,
-  },
+  footerText: { fontSize: 14 },
 });

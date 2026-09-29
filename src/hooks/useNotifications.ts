@@ -2,9 +2,27 @@ import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tansta
 import api from '../api/client';
 import { resolveMediaUrl } from '../lib/media';
 
+// All notification types the backend can emit. Extend this union as
+// new system events are added server-side; every consumer of
+// Notification picks up the change automatically.
+export type NotificationType =
+  | 'like'
+  | 'comment'
+  | 'repost'
+  | 'follow'
+  | 'mention'
+  | 'reply'
+  | 'new_post'
+  | 'profile_pic'
+  | 'live'
+  | 'verified'
+  | 'unverified'
+  | 'report_resolved'
+  | 'report_ignored';
+
 export interface Notification {
   id: string;
-  type: 'like' | 'comment' | 'repost' | 'follow' | 'mention' | 'reply';
+  type: NotificationType;
   userId: string;
   user: {
     id: string;
@@ -64,7 +82,7 @@ function mapNotification(raw: any): Notification {
 
   return {
     id: raw.id || raw._id || '',
-    type: raw.notificationType || raw.type || 'like',
+    type: (raw.notificationType || raw.type || 'like') as NotificationType,
     userId: userId,
     user: {
       id: userId,
