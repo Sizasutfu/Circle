@@ -647,6 +647,26 @@ function PostCard({
       setFsIsPlaying(false);
       setFsShowControls(true);
     }
+
+    // Same 30% threshold as the inline player. Reuses the shared
+    // videoViewRecorded ref so a single view session doesn't POST twice
+    // when the user flips between inline and fullscreen. The backend's
+    // INSERT IGNORE on (post_id, viewer_key, date_only) makes it
+    // idempotent either way.
+    if (videoViewRecorded.current) return;
+    if (status.durationMillis && status.positionMillis / status.durationMillis > 0.3) {
+      videoViewRecorded.current = true;
+      const watchedSeconds = Math.round(status.positionMillis / 1000);
+      const duration = Math.round(status.durationMillis / 1000);
+      api.post(`/posts/${id}/video-view`, { watchedSeconds, duration })
+        .then((res) => {
+          const body = res.data?.data ?? res.data ?? {};
+          if (body?.counted && typeof body.views === 'number') {
+            setLocalVideoViews(body.views);
+          }
+        })
+        .catch(() => {});
+    }
   };
 
   const handleFullscreenVideoLoad = async () => {
