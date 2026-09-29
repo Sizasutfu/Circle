@@ -54,6 +54,34 @@ const SCROLL_THRESHOLD = 120;
 const ACTION_REVEAL_START = SCROLL_THRESHOLD + 100; // 220
 const ACTION_REVEAL_END = SCROLL_THRESHOLD + 160;   // 280
 
+// ── Robust "am I following this user?" parser ────────────────
+// The API may send the flag under any of these names, as a boolean,
+// a MySQL tinyint (0/1), or a string ('true'/'false'). This walks a
+// preferred order and returns the first recognisable value.
+function parseFollowedFlag(profileData: any): boolean {
+  if (!profileData) return false;
+
+  const fields = [
+    'isFollowed', 'is_followed',
+    'isFollowing', 'is_following',
+    'followedByMe', 'followed_by_me',
+    'amFollowing', 'am_following',
+    'viewerIsFollowing', 'viewer_is_following',
+    'viewerFollows', 'viewer_follows',
+    'following', 'followed',
+  ];
+
+  for (const key of fields) {
+    const v = profileData[key];
+    if (v === undefined || v === null) continue;
+    if (typeof v === 'boolean') return v;
+    if (v === 1 || v === '1' || v === 'true') return true;
+    if (v === 0 || v === '0' || v === 'false') return false;
+  }
+
+  return false;
+}
+
 export default function ProfileScreen() {
   const navigation = useNavigation();
   const route = useRoute();
@@ -79,7 +107,11 @@ export default function ProfileScreen() {
   const targetUserId = isNumeric ? targetIdentifier : '';
   const targetUsername = !isNumeric ? targetIdentifier : '';
 
-  const isCurrentUser = targetUserId ? targetUserId === user?.id : targetUsername === user?.username;
+  // Coerce both sides to strings — auth context may hold id as number,
+  // route params arrive as strings.
+  const isCurrentUser = targetUserId
+    ? String(targetUserId) === String(user?.id ?? '')
+    : targetUsername === user?.username;
 
   const getProfileEndpoint = () => `/users/${targetUserId || targetUsername}/profile`;
 
@@ -97,18 +129,7 @@ export default function ProfileScreen() {
       const data = response.data;
       const profileData = data.data || data;
 
-      const isFollowed = !!(
-        profileData.isFollowed ??
-        profileData.isFollowing ??
-        profileData.is_followed ??
-        profileData.is_following ??
-        profileData.following ??
-        profileData.followedByMe ??
-        profileData.followed_by_me ??
-        profileData.amFollowing ??
-        profileData.am_following ??
-        profileData.followed
-      );
+      const isFollowed = parseFollowedFlag(profileData);
 
       return {
         id: String(profileData.id || targetIdentifier),
@@ -247,14 +268,55 @@ export default function ProfileScreen() {
 
     try {
       if (wasFollowing) {
-        await api.delete(`/follow/${effectiveUserId}`);
+        await api.delete(`/unfollow/${effectiveUserId}`);
       } else {
         await api.post(`/follow/${effectiveUserId}`);
       }
-      refetchProfile();
+
+      // Pull the authoritative state back from the server so counts and
+      // the flag are never out of sync with reality.
+      await refetchProfile();
       queryClient.invalidateQueries({ queryKey: ['explore', 'trending'] });
       queryClient.invalidateQueries({ queryKey: ['user-posts'] });
-    } catch (error) {
+      queryClient.invalidateQueries({ queryKey: ['follow-list'] });
+    } catch (error: any) {
+      const status = error.response?.status;
+      const rawMsg =
+        error.response?.data?.message ||
+        error.response?.data?.error ||
+        '';
+      const msg = String(rawMsg).toLowerCase();
+
+      // The server thinks we already follow (or don't) → our cached
+      // isFollowed was stale. Treat the operation as already done,
+      // snap the local state to the server's truth, and refetch.
+      const alreadyFollowing =
+        (status === 409 || status === 400) && /already follow/.test(msg);
+      const alreadyNotFollowing =
+        (status === 404 || status === 409 || status === 400) &&
+        /not follow/.test(msg);
+
+      if (alreadyFollowing) {
+        queryClient.setQueryData(['profile', targetIdentifier], (old: ProfileData | undefined) => {
+          if (!old) return old;
+          return { ...old, isFollowed: true };
+        });
+        await refetchProfile();
+        setFollowPending(false);
+        return;
+      }
+
+      if (alreadyNotFollowing) {
+        queryClient.setQueryData(['profile', targetIdentifier], (old: ProfileData | undefined) => {
+          if (!old) return old;
+          return { ...old, isFollowed: false };
+        });
+        await refetchProfile();
+        setFollowPending(false);
+        return;
+      }
+
+      // Any other error: revert the optimistic update
       queryClient.setQueryData(['profile', targetIdentifier], (old: ProfileData | undefined) => {
         if (!old) return old;
         return { ...old, isFollowed: wasFollowing, followersCount: prevFollowers };
