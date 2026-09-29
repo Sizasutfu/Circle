@@ -22,7 +22,7 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { Feather } from '@expo/vector-icons';
 import { Video, ResizeMode, AVPlaybackStatus } from 'expo-av';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
 import { usePostActions } from '../hooks/useFeed';
 import { useTheme } from '../contexts/ThemeContext';
@@ -319,6 +319,7 @@ function PostCard({
   isVisible = true,
 }: PostCardProps) {
   const navigation = useNavigation();
+  const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
   const { user: currentUser } = useAuth();
   const { colors, isDark } = useTheme();
@@ -499,13 +500,18 @@ function PostCard({
     };
   }, [id, text, image, video, isVisible]);
 
+  // ── Pause when scrolled off-screen OR when the screen loses focus ──
+  // `isVisible` handles scroll position within the list; `isFocused`
+  // handles navigating away (the screen stays mounted in the stack
+  // but is no longer on top). Pausing on either condition stops the
+  // video from playing under a new screen.
   useEffect(() => {
-    if (!isVisible) {
+    if (!isVisible || !isFocused) {
       videoRef.current?.pauseAsync?.().catch(() => {});
       setIsPlaying(false);
       setShowVideoOverlay(true);
     }
-  }, [isVisible]);
+  }, [isVisible, isFocused]);
 
   useEffect(() => {
     return () => {
@@ -648,11 +654,6 @@ function PostCard({
       setFsShowControls(true);
     }
 
-    // Same 30% threshold as the inline player. Reuses the shared
-    // videoViewRecorded ref so a single view session doesn't POST twice
-    // when the user flips between inline and fullscreen. The backend's
-    // INSERT IGNORE on (post_id, viewer_key, date_only) makes it
-    // idempotent either way.
     if (videoViewRecorded.current) return;
     if (status.durationMillis && status.positionMillis / status.durationMillis > 0.3) {
       videoViewRecorded.current = true;
