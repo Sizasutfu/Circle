@@ -1,3 +1,4 @@
+// src/screens/CreatePostScreen.tsx
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
@@ -27,6 +28,23 @@ import api from '../api/client';
 
 const { width, height } = Dimensions.get('window');
 
+const MAX_AUDIO_SIZE = 50 * 1024 * 1024; // 50 MB
+
+type Mode = 'post' | 'music';
+type TrackStatus = 'ready' | 'uploading' | 'done' | 'error';
+
+interface TrackItem {
+  id: string;
+  uri: string;
+  filename: string;
+  size?: number;
+  title: string;
+  artist: string;
+  status: TrackStatus;
+  progress: number;
+  error: string | null;
+}
+
 interface MentionUser {
   id: string;
   name: string;
@@ -40,8 +58,36 @@ interface TopicSuggestion {
   post_count: number;
 }
 
-// Extract "@username" tokens from a body of text. Used for the
-// "mentioned users" preview row under the composer.
+// ── Music helpers ────────────────────────────────────────────
+function formatBytes(bytes?: number): string {
+  if (!bytes) return '—';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function parseFilename(filename: string): { title: string; artist: string } {
+  let s = filename.replace(/\.[^/.]+$/, '');
+  s = s.replace(/_/g, ' ').trim();
+  s = s.replace(/\s*[\(\[]\s*\d{1,4}\s*k(?:bps)?\s*[\)\]]/gi, '');
+  s = s.replace(
+    /\s*[\(\[]\s*official\s*(music\s*)?(audio|video|lyric[s]?\s*video)\s*[\)\]]/gi,
+    ''
+  );
+  s = s.replace(/\s+/g, ' ').trim();
+
+  const m = s.match(/^(.+?)\s+[-–—]\s+(.+)$/);
+  if (
+    m &&
+    m[1].length >= 2 &&
+    m[1].length <= 40 &&
+    !/^[\d\s\-–—.]+$/.test(m[1])
+  ) {
+    return { artist: m[1].trim(), title: m[2].trim() };
+  }
+  return { artist: '', title: s };
+}
+
 function extractMentionedUsernames(text: string): string[] {
   if (!text) return [];
   const re = /(^|\s)@([A-Za-z0-9_]{1,30})/g;
@@ -53,7 +99,6 @@ function extractMentionedUsernames(text: string): string[] {
   return [...found];
 }
 
-// Extract "#tag" tokens from a body of text.
 function extractHashtags(text: string): string[] {
   if (!text) return [];
   const re = /(^|\s)#([A-Za-z0-9_]{1,50})/g;
@@ -65,11 +110,142 @@ function extractHashtags(text: string): string[] {
   return [...found];
 }
 
+// ── Track row ────────────────────────────────────────────────
+function TrackRow({
+  item,
+  onUpdate,
+  onRemove,
+  disabled,
+  colors,
+  isDark,
+}: {
+  item: TrackItem;
+  onUpdate: (patch: Partial<TrackItem>) => void;
+  onRemove: () => void;
+  disabled: boolean;
+  colors: any;
+  isDark: boolean;
+}) {
+  return (
+    <View
+      style={[
+        styles.trackRow,
+        {
+          backgroundColor: isDark ? '#1f2937' : '#f9fafb',
+          borderColor: colors.border,
+        },
+      ]}
+    >
+      <View style={styles.trackRowTop}>
+        <View
+          style={[
+            styles.trackIconWrap,
+            { backgroundColor: isDark ? '#374151' : '#eef2ff' },
+          ]}
+        >
+          <Feather name="music" size={18} color={colors.primary} />
+        </View>
+        <View style={styles.trackMeta}>
+          <Text
+            numberOfLines={1}
+            style={[styles.trackFilename, { color: colors.textMuted }]}
+          >
+            {item.filename}
+          </Text>
+          <Text style={[styles.trackSize, { color: colors.textMuted }]}>
+            {item.size ? formatBytes(item.size) : '—'}
+          </Text>
+        </View>
+        {item.status !== 'done' && (
+          <TouchableOpacity
+            onPress={onRemove}
+            disabled={disabled}
+            style={styles.trackRemoveBtn}
+            hitSlop={8}
+          >
+            <Feather name="x" size={16} color={colors.textMuted} />
+          </TouchableOpacity>
+        )}
+      </View>
+
+      <TextInput
+        value={item.title}
+        onChangeText={(v) => onUpdate({ title: v })}
+        placeholder="Title"
+        placeholderTextColor={colors.placeholder}
+        editable={!disabled}
+        style={[
+          styles.trackInput,
+          {
+            color: colors.text,
+            backgroundColor: colors.background,
+            borderColor: colors.border,
+          },
+        ]}
+      />
+      <TextInput
+        value={item.artist}
+        onChangeText={(v) => onUpdate({ artist: v })}
+        placeholder="Artist (optional)"
+        placeholderTextColor={colors.placeholder}
+        editable={!disabled}
+        style={[
+          styles.trackInput,
+          {
+            color: colors.text,
+            backgroundColor: colors.background,
+            borderColor: colors.border,
+          },
+        ]}
+      />
+
+      {item.status === 'uploading' && (
+        <View style={styles.trackProgressRow}>
+          <View
+            style={[styles.trackProgressBar, { backgroundColor: colors.border }]}
+          >
+            <View
+              style={[
+                styles.trackProgressFill,
+                { backgroundColor: colors.primary, width: `${item.progress}%` },
+              ]}
+            />
+          </View>
+          <Text style={[styles.trackProgressText, { color: colors.textMuted }]}>
+            {item.progress}%
+          </Text>
+        </View>
+      )}
+
+      {item.status === 'done' && (
+        <View style={styles.trackStatusRow}>
+          <Feather name="check-circle" size={14} color="#10b981" />
+          <Text style={[styles.trackStatusText, { color: '#10b981' }]}>
+            Uploaded
+          </Text>
+        </View>
+      )}
+
+      {item.status === 'error' && (
+        <View style={styles.trackStatusRow}>
+          <Feather name="alert-circle" size={14} color="#ef4444" />
+          <Text style={[styles.trackStatusText, { color: '#ef4444' }]}>
+            {item.error || 'Upload failed'}
+          </Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+// ── Main screen ──────────────────────────────────────────────
 export default function CreatePostScreen() {
   const navigation = useNavigation();
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const { colors, isDark } = useTheme();
+
+  const [mode, setMode] = useState<Mode>('post');
 
   const [text, setText] = useState('');
   const [imageUri, setImageUri] = useState<string | null>(null);
@@ -77,9 +253,16 @@ export default function CreatePostScreen() {
   const [loading, setLoading] = useState(false);
   const [showLoader, setShowLoader] = useState(false);
 
-  // ─── Autocomplete state (shared for mentions and hashtags) ──
+  // Music state
+  const [tracks, setTracks] = useState<TrackItem[]>([]);
+
+  // Autocomplete state
   const [cursorPosition, setCursorPosition] = useState(0);
-  const [activeQuery, setActiveQuery] = useState<{ kind: 'mention' | 'hashtag'; start: number; query: string } | null>(null);
+  const [activeQuery, setActiveQuery] = useState<{
+    kind: 'mention' | 'hashtag';
+    start: number;
+    query: string;
+  } | null>(null);
   const [mentionSuggestions, setMentionSuggestions] = useState<MentionUser[]>([]);
   const [hashtagSuggestions, setHashtagSuggestions] = useState<TopicSuggestion[]>([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
@@ -90,15 +273,12 @@ export default function CreatePostScreen() {
   const mentionedUsernames = extractMentionedUsernames(text);
   const usedHashtags = extractHashtags(text);
 
-  // ─── Detect an active @mention or #hashtag at the cursor ────
   const detectAutocomplete = useCallback((value: string, cursor: number) => {
     if (cursor <= 0) {
       setActiveQuery(null);
       return;
     }
     const before = value.slice(0, cursor);
-
-    // Look for the last @ or # before the cursor. Whichever is later wins.
     const lastAt = before.lastIndexOf('@');
     const lastHash = before.lastIndexOf('#');
     const lastTriggerIdx = Math.max(lastAt, lastHash);
@@ -106,24 +286,16 @@ export default function CreatePostScreen() {
       setActiveQuery(null);
       return;
     }
-
     const trigger = before[lastTriggerIdx];
     const afterTrigger = before.slice(lastTriggerIdx + 1);
-
-    // If any whitespace between trigger and cursor, the token has ended.
     if (/\s/.test(afterTrigger)) {
       setActiveQuery(null);
       return;
     }
-
-    // The trigger must be at start of string or preceded by whitespace.
     if (lastTriggerIdx > 0 && !/[\s\n]/.test(before[lastTriggerIdx - 1])) {
       setActiveQuery(null);
       return;
     }
-
-    // Mention text allows [A-Za-z0-9_] and up to 30 chars.
-    // Hashtag text allows [A-Za-z0-9_] and up to 50 chars.
     const kind: 'mention' | 'hashtag' = trigger === '@' ? 'mention' : 'hashtag';
     const maxLen = kind === 'mention' ? 30 : 50;
     if (afterTrigger.length > maxLen) {
@@ -134,11 +306,9 @@ export default function CreatePostScreen() {
       setActiveQuery(null);
       return;
     }
-
     setActiveQuery({ kind, start: lastTriggerIdx, query: afterTrigger });
   }, []);
 
-  // ─── Fetch suggestions with debounce ────────────────────────
   useEffect(() => {
     if (!activeQuery) {
       setMentionSuggestions([]);
@@ -148,8 +318,8 @@ export default function CreatePostScreen() {
     }
 
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-
     setSuggestionsLoading(true);
+
     searchTimerRef.current = setTimeout(async () => {
       try {
         if (activeQuery.kind === 'mention') {
@@ -178,9 +348,6 @@ export default function CreatePostScreen() {
           setMentionSuggestions(mapped);
           setHashtagSuggestions([]);
         } else {
-          // Fetch trending topics once, filter locally. The endpoint
-          // doesn't support a search query, so we pull a larger page
-          // and filter client-side — cheap and works offline-ish.
           const res = await api.get('/topics', { params: { limit: 50 } });
           const data = res.data;
           let raw: any[] = [];
@@ -201,7 +368,6 @@ export default function CreatePostScreen() {
           setMentionSuggestions([]);
         }
       } catch {
-        // Silent — dropdown just shows nothing on error
         setMentionSuggestions([]);
         setHashtagSuggestions([]);
       } finally {
@@ -214,7 +380,6 @@ export default function CreatePostScreen() {
     };
   }, [activeQuery, user?.id]);
 
-  // ─── Handle typing ──────────────────────────────────────────
   const handleChangeText = (value: string) => {
     setText(value);
     detectAutocomplete(value, cursorPosition);
@@ -227,7 +392,6 @@ export default function CreatePostScreen() {
     detectAutocomplete(text, pos);
   };
 
-  // ─── Insert a suggestion ───────────────────────────────────
   const insertToken = (insertion: string) => {
     if (!activeQuery) return;
     const before = text.slice(0, activeQuery.start);
@@ -252,7 +416,6 @@ export default function CreatePostScreen() {
   const insertMention = (u: MentionUser) => insertToken(`@${u.username} `);
   const insertHashtag = (t: TopicSuggestion) => insertToken(`#${t.topic} `);
 
-  // ─── Open a mention / hashtag picker without typing the trigger ──
   const openMentionPicker = () => {
     const pos = cursorPosition;
     const before = text.slice(0, pos);
@@ -279,28 +442,121 @@ export default function CreatePostScreen() {
     setTimeout(() => inputRef.current?.focus(), 60);
   };
 
-  // ---- Check if logged in ----
+  // Music: file picking is stubbed until the next native build.
+  // The full pipeline (parse → queue → upload) is intact below; only
+  // the file picker is missing.
+  const showMusicComingSoon = () => {
+    Alert.alert(
+      'Coming soon',
+      'Music upload will be available in the next app build.'
+    );
+  };
+
+  const handlePickedAudio = (_files: any[]) => {
+    showMusicComingSoon();
+  };
+
+  const updateTrack = (id: string, patch: Partial<TrackItem>) => {
+    setTracks((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+  };
+
+  const removeTrack = (id: string) => {
+    setTracks((prev) => prev.filter((t) => t.id !== id));
+  };
+
+  const handleUploadTracks = async () => {
+    const ready = tracks.filter((t) => t.status === 'ready');
+    if (!ready.length) {
+      Alert.alert('Nothing to upload', 'Add at least one audio file.');
+      return;
+    }
+    if (!ready.every((t) => t.title.trim())) {
+      Alert.alert('Missing title', 'Every track needs a title.');
+      return;
+    }
+
+    setLoading(true);
+    let successCount = 0;
+    let lastError: string | null = null;
+
+    for (const item of ready) {
+      updateTrack(item.id, { status: 'uploading', progress: 0, error: null });
+
+      const formData = new FormData();
+      formData.append('audio', {
+        uri: item.uri,
+        name: item.filename,
+        type: 'audio/mpeg',
+      } as any);
+      formData.append('title', item.title.trim());
+      if (item.artist.trim()) formData.append('artist', item.artist.trim());
+
+      try {
+        await api.post('/tracks', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+          onUploadProgress: (e: any) => {
+            const pct = e.total ? Math.round((e.loaded / e.total) * 100) : 0;
+            updateTrack(item.id, { progress: pct });
+          },
+        });
+        updateTrack(item.id, { status: 'done', progress: 100 });
+        successCount += 1;
+      } catch (err: any) {
+        const msg = err?.response?.data?.message || err?.message || 'Upload failed';
+        lastError = msg;
+        updateTrack(item.id, { status: 'error', error: msg });
+      }
+    }
+
+    setLoading(false);
+
+    if (successCount > 0) {
+      queryClient.invalidateQueries({ queryKey: ['circle-tracks'] });
+      queryClient.invalidateQueries({ queryKey: ['tracks'] });
+      Alert.alert(
+        'Done',
+        `${successCount} track${successCount === 1 ? '' : 's'} uploaded.`,
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              setTracks([]);
+              navigation.goBack();
+            },
+          },
+        ]
+      );
+    } else if (lastError) {
+      Alert.alert('Upload failed', lastError);
+    }
+  };
+
+  // Not logged in
   if (!user) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+      <SafeAreaView
+        style={[styles.container, { backgroundColor: colors.background }]}
+        edges={['top']}
+      >
         <View
           style={[
             styles.header,
-            {
-              backgroundColor: colors.background,
-              borderBottomColor: colors.border,
-            },
+            { backgroundColor: colors.background, borderBottomColor: colors.border },
           ]}
         >
           <TouchableOpacity onPress={() => (navigation.navigate as any)('Login')}>
-            <Text style={[styles.cancelButton, { color: colors.textSecondary }]}>Cancel</Text>
+            <Text style={[styles.cancelButton, { color: colors.textSecondary }]}>
+              Cancel
+            </Text>
           </TouchableOpacity>
           <Text style={[styles.headerTitle, { color: colors.text }]}>New Post</Text>
           <View style={{ width: 60 }} />
         </View>
         <View style={styles.notLoggedInContainer}>
           <Feather name="lock" size={48} color={colors.textMuted} />
-          <Text style={[styles.notLoggedInTitle, { color: colors.text }]}>Please sign in</Text>
+          <Text style={[styles.notLoggedInTitle, { color: colors.text }]}>
+            Please sign in
+          </Text>
           <Text style={[styles.notLoggedInSubtitle, { color: colors.textSecondary }]}>
             You need to be logged in to create a post.
           </Text>
@@ -315,52 +571,46 @@ export default function CreatePostScreen() {
     );
   }
 
-  // ---- Pick Image ----
+  // Pick image
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert('Permission needed', 'Please grant gallery access to pick images.');
       return;
     }
-
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       quality: 0.8,
     });
-
     if (!result.canceled && result.assets[0]) {
       setImageUri(result.assets[0].uri);
       setVideoUri(null);
     }
   };
 
-  // ---- Pick Video ----
+  // Pick video
   const pickVideo = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert('Permission needed', 'Please grant gallery access to pick videos.');
       return;
     }
-
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Videos,
       allowsEditing: false,
     });
-
     if (!result.canceled && result.assets[0]) {
       setVideoUri(result.assets[0].uri);
       setImageUri(null);
     }
   };
 
-  // ---- Remove Media ----
   const removeMedia = () => {
     setImageUri(null);
     setVideoUri(null);
   };
 
-  // ---- Navigate to Feed ----
   const navigateToFeed = () => {
     navigation.dispatch(
       CommonActions.reset({
@@ -371,13 +621,7 @@ export default function CreatePostScreen() {
             state: {
               index: 0,
               routes: [
-                {
-                  name: 'Main',
-                  state: {
-                    index: 0,
-                    routes: [{ name: 'Feed' }],
-                  },
-                },
+                { name: 'Main', state: { index: 0, routes: [{ name: 'Feed' }] } },
               ],
             },
           },
@@ -386,8 +630,12 @@ export default function CreatePostScreen() {
     );
   };
 
-  // ---- Submit Post ----
   const handleSubmit = async () => {
+    if (mode === 'music') {
+      await handleUploadTracks();
+      return;
+    }
+
     if (!text.trim() && !imageUri && !videoUri) {
       Alert.alert('Empty post', 'Please write something or add a photo/video.');
       return;
@@ -398,7 +646,6 @@ export default function CreatePostScreen() {
 
     try {
       const formData = new FormData();
-
       formData.append('text', text.trim());
 
       if (imageUri) {
@@ -421,9 +668,7 @@ export default function CreatePostScreen() {
       }
 
       await api.post('/posts', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
+        headers: { 'Content-Type': 'multipart/form-data' },
       });
 
       setText('');
@@ -435,7 +680,6 @@ export default function CreatePostScreen() {
 
       setShowLoader(false);
       setLoading(false);
-
       navigateToFeed();
     } catch (error: any) {
       console.error('Post creation error:', error);
@@ -448,10 +692,12 @@ export default function CreatePostScreen() {
     }
   };
 
-  // ---- Cancel ----
   const handleCancel = () => {
-    if (text.trim() || imageUri || videoUri) {
-      Alert.alert('Discard post?', 'Your draft will be lost.', [
+    const hasPostContent = text.trim() || imageUri || videoUri;
+    const hasTrackContent = tracks.length > 0;
+
+    if (hasPostContent || hasTrackContent) {
+      Alert.alert('Discard?', 'Your work will be lost.', [
         { text: 'Keep editing', style: 'cancel' },
         {
           text: 'Discard',
@@ -460,6 +706,7 @@ export default function CreatePostScreen() {
             setText('');
             setImageUri(null);
             setVideoUri(null);
+            setTracks([]);
             navigation.goBack();
           },
         },
@@ -469,7 +716,6 @@ export default function CreatePostScreen() {
     }
   };
 
-  // ---- Render Loader Modal ----
   const renderLoader = () => (
     <Modal transparent visible={showLoader} animationType="fade" statusBarTranslucent>
       <View style={[styles.loaderOverlay, { backgroundColor: 'rgba(0,0,0,0.7)' }]}>
@@ -484,26 +730,35 @@ export default function CreatePostScreen() {
     </Modal>
   );
 
-  const showDropdown = !!activeQuery;
+  const showDropdown = !!activeQuery && mode === 'post';
   const dropdownKind = activeQuery?.kind;
+  const readyCount = tracks.filter((t) => t.status === 'ready').length;
+
+  const submitLabel =
+    mode === 'post' ? 'Post' : readyCount > 0 ? `Upload ${readyCount}` : 'Upload';
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: colors.background }]}
+      edges={['top']}
+    >
       {renderLoader()}
 
+      {/* Header */}
       <View
         style={[
           styles.header,
-          {
-            backgroundColor: colors.background,
-            borderBottomColor: colors.border,
-          },
+          { backgroundColor: colors.background, borderBottomColor: colors.border },
         ]}
       >
         <TouchableOpacity onPress={handleCancel} disabled={loading}>
-          <Text style={[styles.cancelButton, { color: colors.textSecondary }]}>Cancel</Text>
+          <Text style={[styles.cancelButton, { color: colors.textSecondary }]}>
+            Cancel
+          </Text>
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>New Post</Text>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>
+          {mode === 'post' ? 'New Post' : 'Upload Music'}
+        </Text>
         <TouchableOpacity
           onPress={handleSubmit}
           disabled={loading}
@@ -516,8 +771,61 @@ export default function CreatePostScreen() {
           {loading ? (
             <ActivityIndicator size="small" color="white" />
           ) : (
-            <Text style={styles.postButtonText}>Post</Text>
+            <Text style={styles.postButtonText}>{submitLabel}</Text>
           )}
+        </TouchableOpacity>
+      </View>
+
+      {/* Mode toggle */}
+      <View
+        style={[
+          styles.modeToggle,
+          { backgroundColor: isDark ? '#374151' : '#f3f4f6' },
+        ]}
+      >
+        <TouchableOpacity
+          onPress={() => setMode('post')}
+          disabled={loading}
+          style={[
+            styles.modeButton,
+            mode === 'post' && { backgroundColor: colors.primary },
+          ]}
+        >
+          <Feather
+            name="edit-3"
+            size={14}
+            color={mode === 'post' ? '#fff' : colors.textSecondary}
+          />
+          <Text
+            style={[
+              styles.modeButtonText,
+              { color: mode === 'post' ? '#fff' : colors.textSecondary },
+            ]}
+          >
+            Post
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => setMode('music')}
+          disabled={loading}
+          style={[
+            styles.modeButton,
+            mode === 'music' && { backgroundColor: colors.primary },
+          ]}
+        >
+          <Feather
+            name="music"
+            size={14}
+            color={mode === 'music' ? '#fff' : colors.textSecondary}
+          />
+          <Text
+            style={[
+              styles.modeButtonText,
+              { color: mode === 'music' ? '#fff' : colors.textSecondary },
+            ]}
+          >
+            Music
+          </Text>
         </TouchableOpacity>
       </View>
 
@@ -526,266 +834,387 @@ export default function CreatePostScreen() {
         keyboardShouldPersistTaps="handled"
         onScrollBeginDrag={Keyboard.dismiss}
       >
-        <TextInput
-          ref={inputRef}
-          style={[
-            styles.textInput,
-            {
-              color: colors.text,
-              backgroundColor: colors.background,
-            },
-          ]}
-          placeholder="What's on your mind?"
-          placeholderTextColor={colors.placeholder}
-          multiline
-          numberOfLines={6}
-          value={text}
-          onChangeText={handleChangeText}
-          onSelectionChange={handleSelectionChange}
-          editable={!loading}
-        />
+        {/* POST MODE */}
+        {mode === 'post' && (
+          <>
+            <TextInput
+              ref={inputRef}
+              style={[
+                styles.textInput,
+                { color: colors.text, backgroundColor: colors.background },
+              ]}
+              placeholder="What's on your mind?"
+              placeholderTextColor={colors.placeholder}
+              multiline
+              numberOfLines={6}
+              value={text}
+              onChangeText={handleChangeText}
+              onSelectionChange={handleSelectionChange}
+              editable={!loading}
+            />
 
-        {/* ─── Autocomplete dropdown (mentions OR hashtags) ─── */}
-        {showDropdown && (
-          <View
-            style={[
-              styles.autocompleteDropdown,
-              {
-                backgroundColor: colors.surface || colors.background,
-                borderColor: colors.border,
-                shadowColor: isDark ? 'transparent' : '#000',
-              },
-            ]}
-          >
-            <View style={[styles.autocompleteHeader, { borderBottomColor: colors.border }]}>
-              <Feather
-                name={dropdownKind === 'mention' ? 'at-sign' : 'hash'}
-                size={12}
-                color={colors.textMuted}
-              />
-              <Text style={[styles.autocompleteHeaderText, { color: colors.textMuted }]}>
-                {activeQuery && activeQuery.query
-                  ? `${dropdownKind === 'mention' ? 'Searching' : 'Tag'} "${activeQuery.query}"`
-                  : dropdownKind === 'mention'
-                  ? 'Type a name'
-                  : 'Popular tags'}
-              </Text>
-              {suggestionsLoading && (
-                <ActivityIndicator size="small" color={colors.primary} style={{ marginLeft: 6 }} />
-              )}
-            </View>
-
-            {/* ── Mention suggestions ── */}
-            {dropdownKind === 'mention' && (
-              mentionSuggestions.length === 0 && !suggestionsLoading ? (
-                <View style={styles.autocompleteEmpty}>
-                  <Text style={[styles.autocompleteEmptyText, { color: colors.textMuted }]}>
-                    {activeQuery?.query ? 'No users found' : 'Start typing to search'}
+            {showDropdown && (
+              <View
+                style={[
+                  styles.autocompleteDropdown,
+                  {
+                    backgroundColor: colors.surface || colors.background,
+                    borderColor: colors.border,
+                    shadowColor: isDark ? 'transparent' : '#000',
+                  },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.autocompleteHeader,
+                    { borderBottomColor: colors.border },
+                  ]}
+                >
+                  <Feather
+                    name={dropdownKind === 'mention' ? 'at-sign' : 'hash'}
+                    size={12}
+                    color={colors.textMuted}
+                  />
+                  <Text
+                    style={[
+                      styles.autocompleteHeaderText,
+                      { color: colors.textMuted },
+                    ]}
+                  >
+                    {activeQuery && activeQuery.query
+                      ? `${
+                          dropdownKind === 'mention' ? 'Searching' : 'Tag'
+                        } "${activeQuery.query}"`
+                      : dropdownKind === 'mention'
+                      ? 'Type a name'
+                      : 'Popular tags'}
                   </Text>
+                  {suggestionsLoading && (
+                    <ActivityIndicator
+                      size="small"
+                      color={colors.primary}
+                      style={{ marginLeft: 6 }}
+                    />
+                  )}
                 </View>
-              ) : (
-                <FlatList
-                  data={mentionSuggestions}
-                  keyExtractor={(u) => u.id}
-                  keyboardShouldPersistTaps="handled"
-                  scrollEnabled={mentionSuggestions.length > 4}
-                  style={{ maxHeight: 220 }}
-                  renderItem={({ item }) => (
-                    <TouchableOpacity
-                      style={styles.autocompleteRow}
-                      activeOpacity={0.7}
-                      onPress={() => insertMention(item)}
-                    >
-                      <Avatar source={item.avatar || undefined} size={34} fallback={item.name} />
-                      <View style={styles.autocompleteRowText}>
-                        <View style={styles.autocompleteNameRow}>
-                          <Text
-                            style={[styles.autocompleteName, { color: colors.text }]}
-                            numberOfLines={1}
+
+                {dropdownKind === 'mention' &&
+                  (mentionSuggestions.length === 0 && !suggestionsLoading ? (
+                    <View style={styles.autocompleteEmpty}>
+                      <Text
+                        style={[
+                          styles.autocompleteEmptyText,
+                          { color: colors.textMuted },
+                        ]}
+                      >
+                        {activeQuery?.query
+                          ? 'No users found'
+                          : 'Start typing to search'}
+                      </Text>
+                    </View>
+                  ) : (
+                    <FlatList
+                      data={mentionSuggestions}
+                      keyExtractor={(u) => u.id}
+                      keyboardShouldPersistTaps="handled"
+                      scrollEnabled={mentionSuggestions.length > 4}
+                      style={{ maxHeight: 220 }}
+                      renderItem={({ item }) => (
+                        <TouchableOpacity
+                          style={styles.autocompleteRow}
+                          activeOpacity={0.7}
+                          onPress={() => insertMention(item)}
+                        >
+                          <Avatar
+                            source={item.avatar || undefined}
+                            size={34}
+                            fallback={item.name}
+                          />
+                          <View style={styles.autocompleteRowText}>
+                            <View style={styles.autocompleteNameRow}>
+                              <Text
+                                style={[
+                                  styles.autocompleteName,
+                                  { color: colors.text },
+                                ]}
+                                numberOfLines={1}
+                              >
+                                {item.name}
+                              </Text>
+                              {item.verified && (
+                                <VerificationBadge
+                                  size={12}
+                                  style={{ marginLeft: 4 }}
+                                />
+                              )}
+                            </View>
+                            <Text
+                              style={[
+                                styles.autocompleteUsername,
+                                { color: colors.textSecondary },
+                              ]}
+                              numberOfLines={1}
+                            >
+                              @{item.username}
+                            </Text>
+                          </View>
+                        </TouchableOpacity>
+                      )}
+                    />
+                  ))}
+
+                {dropdownKind === 'hashtag' &&
+                  (hashtagSuggestions.length === 0 && !suggestionsLoading ? (
+                    <View style={styles.autocompleteEmpty}>
+                      <Text
+                        style={[
+                          styles.autocompleteEmptyText,
+                          { color: colors.textMuted },
+                        ]}
+                      >
+                        {activeQuery?.query
+                          ? 'No tags match'
+                          : 'No trending tags right now'}
+                      </Text>
+                    </View>
+                  ) : (
+                    <FlatList
+                      data={hashtagSuggestions}
+                      keyExtractor={(t) => t.topic}
+                      keyboardShouldPersistTaps="handled"
+                      scrollEnabled={hashtagSuggestions.length > 4}
+                      style={{ maxHeight: 220 }}
+                      renderItem={({ item }) => (
+                        <TouchableOpacity
+                          style={styles.autocompleteRow}
+                          activeOpacity={0.7}
+                          onPress={() => insertHashtag(item)}
+                        >
+                          <View
+                            style={[
+                              styles.hashtagIconWrap,
+                              {
+                                backgroundColor: isDark ? '#374151' : '#eef2ff',
+                              },
+                            ]}
                           >
-                            {item.name}
-                          </Text>
-                          {item.verified && (
-                            <VerificationBadge size={12} style={{ marginLeft: 4 }} />
-                          )}
-                        </View>
-                        <Text
-                          style={[styles.autocompleteUsername, { color: colors.textSecondary }]}
-                          numberOfLines={1}
-                        >
-                          @{item.username}
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-                  )}
-                />
-              )
-            )}
-
-            {/* ── Hashtag suggestions ── */}
-            {dropdownKind === 'hashtag' && (
-              hashtagSuggestions.length === 0 && !suggestionsLoading ? (
-                <View style={styles.autocompleteEmpty}>
-                  <Text style={[styles.autocompleteEmptyText, { color: colors.textMuted }]}>
-                    {activeQuery?.query ? 'No tags match' : 'No trending tags right now'}
-                  </Text>
-                </View>
-              ) : (
-                <FlatList
-                  data={hashtagSuggestions}
-                  keyExtractor={(t) => t.topic}
-                  keyboardShouldPersistTaps="handled"
-                  scrollEnabled={hashtagSuggestions.length > 4}
-                  style={{ maxHeight: 220 }}
-                  renderItem={({ item }) => (
-                    <TouchableOpacity
-                      style={styles.autocompleteRow}
-                      activeOpacity={0.7}
-                      onPress={() => insertHashtag(item)}
-                    >
-                      <View style={[styles.hashtagIconWrap, { backgroundColor: isDark ? '#374151' : '#eef2ff' }]}>
-                        <Feather name="hash" size={16} color={colors.primary} />
-                      </View>
-                      <View style={styles.autocompleteRowText}>
-                        <Text
-                          style={[styles.autocompleteName, { color: colors.text }]}
-                          numberOfLines={1}
-                        >
-                          #{item.topic}
-                        </Text>
-                        <Text
-                          style={[styles.autocompleteUsername, { color: colors.textSecondary }]}
-                          numberOfLines={1}
-                        >
-                          {item.post_count} {item.post_count === 1 ? 'post' : 'posts'}
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-                  )}
-                />
-              )
-            )}
-          </View>
-        )}
-
-        {/* ─── Mentioned users preview ─── */}
-        {mentionedUsernames.length > 0 && (
-          <View style={styles.previewRow}>
-            <Feather name="at-sign" size={12} color={colors.textMuted} />
-            <Text style={[styles.previewText, { color: colors.textSecondary }]}>
-              Mentioning{' '}
-              {mentionedUsernames.slice(0, 3).map((u, i) => (
-                <Text key={u}>
-                  <Text style={{ color: colors.primary }}>@{u}</Text>
-                  {i < Math.min(mentionedUsernames.length, 3) - 1 ? ', ' : ''}
-                </Text>
-              ))}
-              {mentionedUsernames.length > 3
-                ? ` and ${mentionedUsernames.length - 3} more`
-                : ''}
-            </Text>
-          </View>
-        )}
-
-        {/* ─── Hashtags preview ─── */}
-        {usedHashtags.length > 0 && (
-          <View style={styles.previewRow}>
-            <Feather name="hash" size={12} color={colors.textMuted} />
-            <Text style={[styles.previewText, { color: colors.textSecondary }]}>
-              Tagged{' '}
-              {usedHashtags.slice(0, 3).map((t, i) => (
-                <Text key={t}>
-                  <Text style={{ color: colors.primary }}>#{t}</Text>
-                  {i < Math.min(usedHashtags.length, 3) - 1 ? ', ' : ''}
-                </Text>
-              ))}
-              {usedHashtags.length > 3
-                ? ` and ${usedHashtags.length - 3} more`
-                : ''}
-            </Text>
-          </View>
-        )}
-
-        {(imageUri || videoUri) && (
-          <View style={[styles.mediaPreview, { backgroundColor: isDark ? '#1f2937' : '#f3f4f6' }]}>
-            {imageUri && (
-              <Image source={{ uri: imageUri }} style={styles.mediaImage} resizeMode="cover" />
-            )}
-            {videoUri && (
-              <View style={[styles.videoPreview, { backgroundColor: '#000' }]}>
-                <Feather name="play-circle" size={48} color="white" />
-                <Text style={styles.videoLabel}>Video</Text>
+                            <Feather name="hash" size={16} color={colors.primary} />
+                          </View>
+                          <View style={styles.autocompleteRowText}>
+                            <Text
+                              style={[
+                                styles.autocompleteName,
+                                { color: colors.text },
+                              ]}
+                              numberOfLines={1}
+                            >
+                              #{item.topic}
+                            </Text>
+                            <Text
+                              style={[
+                                styles.autocompleteUsername,
+                                { color: colors.textSecondary },
+                              ]}
+                              numberOfLines={1}
+                            >
+                              {item.post_count}{' '}
+                              {item.post_count === 1 ? 'post' : 'posts'}
+                            </Text>
+                          </View>
+                        </TouchableOpacity>
+                      )}
+                    />
+                  ))}
               </View>
             )}
-            <TouchableOpacity style={styles.removeMedia} onPress={removeMedia} disabled={loading}>
-              <Feather name="x" size={20} color="white" />
-            </TouchableOpacity>
-          </View>
+
+            {mentionedUsernames.length > 0 && (
+              <View style={styles.previewRow}>
+                <Feather name="at-sign" size={12} color={colors.textMuted} />
+                <Text style={[styles.previewText, { color: colors.textSecondary }]}>
+                  Mentioning{' '}
+                  {mentionedUsernames.slice(0, 3).map((u, i) => (
+                    <Text key={u}>
+                      <Text style={{ color: colors.primary }}>@{u}</Text>
+                      {i < Math.min(mentionedUsernames.length, 3) - 1 ? ', ' : ''}
+                    </Text>
+                  ))}
+                  {mentionedUsernames.length > 3
+                    ? ` and ${mentionedUsernames.length - 3} more`
+                    : ''}
+                </Text>
+              </View>
+            )}
+
+            {usedHashtags.length > 0 && (
+              <View style={styles.previewRow}>
+                <Feather name="hash" size={12} color={colors.textMuted} />
+                <Text style={[styles.previewText, { color: colors.textSecondary }]}>
+                  Tagged{' '}
+                  {usedHashtags.slice(0, 3).map((t, i) => (
+                    <Text key={t}>
+                      <Text style={{ color: colors.primary }}>#{t}</Text>
+                      {i < Math.min(usedHashtags.length, 3) - 1 ? ', ' : ''}
+                    </Text>
+                  ))}
+                  {usedHashtags.length > 3
+                    ? ` and ${usedHashtags.length - 3} more`
+                    : ''}
+                </Text>
+              </View>
+            )}
+
+            {(imageUri || videoUri) && (
+              <View
+                style={[
+                  styles.mediaPreview,
+                  { backgroundColor: isDark ? '#1f2937' : '#f3f4f6' },
+                ]}
+              >
+                {imageUri && (
+                  <Image
+                    source={{ uri: imageUri }}
+                    style={styles.mediaImage}
+                    resizeMode="cover"
+                  />
+                )}
+                {videoUri && (
+                  <View style={[styles.videoPreview, { backgroundColor: '#000' }]}>
+                    <Feather name="play-circle" size={48} color="white" />
+                    <Text style={styles.videoLabel}>Video</Text>
+                  </View>
+                )}
+                <TouchableOpacity
+                  style={styles.removeMedia}
+                  onPress={removeMedia}
+                  disabled={loading}
+                >
+                  <Feather name="x" size={20} color="white" />
+                </TouchableOpacity>
+              </View>
+            )}
+
+            <View style={styles.mediaButtons}>
+              <TouchableOpacity
+                style={[
+                  styles.mediaButton,
+                  { backgroundColor: isDark ? '#374151' : '#f3f4f6' },
+                ]}
+                onPress={pickImage}
+                disabled={loading || !!videoUri}
+              >
+                <Feather name="image" size={24} color={colors.textSecondary} />
+                <Text
+                  style={[styles.mediaButtonText, { color: colors.textSecondary }]}
+                >
+                  Photo
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.mediaButton,
+                  { backgroundColor: isDark ? '#374151' : '#f3f4f6' },
+                ]}
+                onPress={pickVideo}
+                disabled={loading || !!imageUri}
+              >
+                <Feather name="video" size={24} color={colors.textSecondary} />
+                <Text
+                  style={[styles.mediaButtonText, { color: colors.textSecondary }]}
+                >
+                  Video
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.mediaButton,
+                  { backgroundColor: isDark ? '#374151' : '#f3f4f6' },
+                ]}
+                onPress={openMentionPicker}
+                disabled={loading}
+              >
+                <Feather name="at-sign" size={24} color={colors.textSecondary} />
+                <Text
+                  style={[styles.mediaButtonText, { color: colors.textSecondary }]}
+                >
+                  Mention
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.mediaButton,
+                  { backgroundColor: isDark ? '#374151' : '#f3f4f6' },
+                ]}
+                onPress={openHashtagPicker}
+                disabled={loading}
+              >
+                <Feather name="hash" size={24} color={colors.textSecondary} />
+                <Text
+                  style={[styles.mediaButtonText, { color: colors.textSecondary }]}
+                >
+                  Tag
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </>
         )}
 
-        <View style={styles.mediaButtons}>
-          <TouchableOpacity
-            style={[
-              styles.mediaButton,
-              {
-                backgroundColor: isDark ? '#374151' : '#f3f4f6',
-              },
-            ]}
-            onPress={pickImage}
-            disabled={loading || !!videoUri}
-          >
-            <Feather name="image" size={24} color={colors.textSecondary} />
-            <Text style={[styles.mediaButtonText, { color: colors.textSecondary }]}>Photo</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.mediaButton,
-              {
-                backgroundColor: isDark ? '#374151' : '#f3f4f6',
-              },
-            ]}
-            onPress={pickVideo}
-            disabled={loading || !!imageUri}
-          >
-            <Feather name="video" size={24} color={colors.textSecondary} />
-            <Text style={[styles.mediaButtonText, { color: colors.textSecondary }]}>Video</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.mediaButton,
-              {
-                backgroundColor: isDark ? '#374151' : '#f3f4f6',
-              },
-            ]}
-            onPress={openMentionPicker}
-            disabled={loading}
-          >
-            <Feather name="at-sign" size={24} color={colors.textSecondary} />
-            <Text style={[styles.mediaButtonText, { color: colors.textSecondary }]}>Mention</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.mediaButton,
-              {
-                backgroundColor: isDark ? '#374151' : '#f3f4f6',
-              },
-            ]}
-            onPress={openHashtagPicker}
-            disabled={loading}
-          >
-            <Feather name="hash" size={24} color={colors.textSecondary} />
-            <Text style={[styles.mediaButtonText, { color: colors.textSecondary }]}>Tag</Text>
-          </TouchableOpacity>
-        </View>
+        {/* MUSIC MODE */}
+        {mode === 'music' && (
+          <>
+            <TouchableOpacity
+              onPress={showMusicComingSoon}
+              disabled={loading}
+              style={[
+                styles.musicDropZone,
+                { borderColor: colors.border, backgroundColor: colors.background },
+              ]}
+            >
+              <Feather name="plus-circle" size={32} color={colors.textMuted} />
+              <Text style={[styles.musicDropTitle, { color: colors.text }]}>
+                Pick from your device
+              </Text>
+              <Text style={[styles.musicDropSubtitle, { color: colors.textMuted }]}>
+                Available in the next app build
+              </Text>
+            </TouchableOpacity>
+
+            {tracks.length > 0 && (
+              <View style={styles.trackList}>
+                {tracks.map((item) => (
+                  <TrackRow
+                    key={item.id}
+                    item={item}
+                    onUpdate={(patch) => updateTrack(item.id, patch)}
+                    onRemove={() => removeTrack(item.id)}
+                    disabled={loading}
+                    colors={colors}
+                    isDark={isDark}
+                  />
+                ))}
+              </View>
+            )}
+
+            {tracks.length === 0 && (
+              <View style={styles.musicEmptyHint}>
+                <Feather name="info" size={14} color={colors.textMuted} />
+                <Text
+                  style={[styles.musicEmptyHintText, { color: colors.textMuted }]}
+                >
+                  File picking needs a native rebuild. The rest of the upload
+                  pipeline is ready — it just needs a picker to feed it.
+                </Text>
+              </View>
+            )}
+          </>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
+  container: { flex: 1 },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -794,13 +1223,8 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
   },
-  cancelButton: {
-    fontSize: 16,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-  },
+  cancelButton: { fontSize: 16 },
+  headerTitle: { fontSize: 18, fontWeight: '700' },
   postButton: {
     paddingHorizontal: 20,
     paddingVertical: 8,
@@ -808,19 +1232,29 @@ const styles = StyleSheet.create({
     minWidth: 60,
     alignItems: 'center',
   },
-  postButtonDisabled: {
-    opacity: 0.6,
+  postButtonDisabled: { opacity: 0.6 },
+  postButtonText: { color: 'white', fontWeight: '600', fontSize: 16 },
+
+  modeToggle: {
+    flexDirection: 'row',
+    marginHorizontal: 16,
+    marginTop: 12,
+    padding: 4,
+    borderRadius: 12,
+    gap: 4,
   },
-  postButtonText: {
-    color: 'white',
-    fontWeight: '600',
-    fontSize: 16,
-  },
-  body: {
+  modeButton: {
     flex: 1,
-    paddingHorizontal: 16,
-    paddingTop: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    borderRadius: 8,
   },
+  modeButtonText: { fontSize: 13, fontWeight: '600' },
+
+  body: { flex: 1, paddingHorizontal: 16, paddingTop: 16 },
   textInput: {
     fontSize: 16,
     lineHeight: 24,
@@ -828,7 +1262,6 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
 
-  // ─── Autocomplete ───
   autocompleteDropdown: {
     marginTop: 8,
     borderWidth: 1,
@@ -854,13 +1287,8 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     flex: 1,
   },
-  autocompleteEmpty: {
-    padding: 16,
-    alignItems: 'center',
-  },
-  autocompleteEmptyText: {
-    fontSize: 13,
-  },
+  autocompleteEmpty: { padding: 16, alignItems: 'center' },
+  autocompleteEmptyText: { fontSize: 13 },
   autocompleteRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -868,23 +1296,10 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     gap: 10,
   },
-  autocompleteRowText: {
-    flex: 1,
-    minWidth: 0,
-  },
-  autocompleteNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  autocompleteName: {
-    fontSize: 14,
-    fontWeight: '600',
-    flexShrink: 1,
-  },
-  autocompleteUsername: {
-    fontSize: 12,
-    marginTop: 1,
-  },
+  autocompleteRowText: { flex: 1, minWidth: 0 },
+  autocompleteNameRow: { flexDirection: 'row', alignItems: 'center' },
+  autocompleteName: { fontSize: 14, fontWeight: '600', flexShrink: 1 },
+  autocompleteUsername: { fontSize: 12, marginTop: 1 },
   hashtagIconWrap: {
     width: 34,
     height: 34,
@@ -893,7 +1308,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  // ─── Preview rows ───
   previewRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -901,10 +1315,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingHorizontal: 4,
   },
-  previewText: {
-    fontSize: 12,
-    flex: 1,
-  },
+  previewText: { fontSize: 12, flex: 1 },
 
   mediaPreview: {
     marginTop: 16,
@@ -913,21 +1324,14 @@ const styles = StyleSheet.create({
     position: 'relative',
     minHeight: 100,
   },
-  mediaImage: {
-    width: '100%',
-    height: 200,
-  },
+  mediaImage: { width: '100%', height: 200 },
   videoPreview: {
     width: '100%',
     height: 200,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  videoLabel: {
-    color: 'white',
-    marginTop: 8,
-    fontSize: 14,
-  },
+  videoLabel: { color: 'white', marginTop: 8, fontSize: 14 },
   removeMedia: {
     position: 'absolute',
     top: 8,
@@ -950,9 +1354,79 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     gap: 8,
   },
-  mediaButtonText: {
+  mediaButtonText: { fontSize: 14 },
+
+  musicDropZone: {
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    borderRadius: 16,
+    paddingVertical: 40,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    gap: 8,
+  },
+  musicDropTitle: { fontSize: 15, fontWeight: '600', marginTop: 4 },
+  musicDropSubtitle: { fontSize: 12, textAlign: 'center' },
+  trackList: { marginTop: 20, gap: 12 },
+  trackRow: { borderRadius: 12, borderWidth: 1, padding: 12, gap: 8 },
+  trackRowTop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  trackIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  trackMeta: { flex: 1, minWidth: 0 },
+  trackFilename: { fontSize: 11, fontWeight: '500' },
+  trackSize: { fontSize: 11, marginTop: 1 },
+  trackRemoveBtn: { padding: 4 },
+  trackInput: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     fontSize: 14,
   },
+  trackProgressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+  },
+  trackProgressBar: { flex: 1, height: 4, borderRadius: 2, overflow: 'hidden' },
+  trackProgressFill: { height: '100%', borderRadius: 2 },
+  trackProgressText: {
+    fontSize: 11,
+    fontVariant: ['tabular-nums'],
+    minWidth: 32,
+    textAlign: 'right',
+  },
+  trackStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 4,
+  },
+  trackStatusText: { fontSize: 12, fontWeight: '500' },
+  musicHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 12,
+    borderRadius: 10,
+    marginTop: 16,
+  },
+  musicHintText: { flex: 1, fontSize: 13 },
+  musicEmptyHint: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginTop: 20,
+    paddingHorizontal: 4,
+  },
+  musicEmptyHintText: { flex: 1, fontSize: 12, lineHeight: 18 },
+
   loaderOverlay: {
     flex: 1,
     justifyContent: 'center',
@@ -969,40 +1443,22 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 8,
   },
-  loaderTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    marginTop: 16,
-  },
-  loaderSubtitle: {
-    fontSize: 14,
-    marginTop: 4,
-  },
+  loaderTitle: { fontSize: 18, fontWeight: '700', marginTop: 16 },
+  loaderSubtitle: { fontSize: 14, marginTop: 4 },
+
   notLoggedInContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 32,
   },
-  notLoggedInTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    marginTop: 16,
-  },
-  notLoggedInSubtitle: {
-    fontSize: 14,
-    textAlign: 'center',
-    marginTop: 8,
-  },
+  notLoggedInTitle: { fontSize: 20, fontWeight: '600', marginTop: 16 },
+  notLoggedInSubtitle: { fontSize: 14, textAlign: 'center', marginTop: 8 },
   signInButton: {
     marginTop: 24,
     paddingHorizontal: 32,
     paddingVertical: 12,
     borderRadius: 8,
   },
-  signInButtonText: {
-    color: 'white',
-    fontWeight: '600',
-    fontSize: 16,
-  },
+  signInButtonText: { color: 'white', fontWeight: '600', fontSize: 16 },
 });
