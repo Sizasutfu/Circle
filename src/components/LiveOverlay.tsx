@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo, memo } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { RTCView } from 'react-native-webrtc';
 import { Feather } from '@expo/vector-icons';
 import { useLive } from '../contexts/LiveContext';
+import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 
 const REACTIONS = ['❤️', '🔥', '👏', '😂'];
@@ -97,18 +98,74 @@ function FloatingEmoji({ emoji, x, onComplete }: { emoji: string; x: number; onC
   );
 }
 
+// ── Broadcaster tile ──
+// Memoised so the RTCView of a tile whose stream hasn't changed is never
+// re-rendered (let alone remounted) when the broadcasters array churns.
+// The local tile uses the URL cached by LiveContext; remote tiles resolve
+// their URL once per stream reference.
+interface BroadcasterTileProps {
+  name: string;
+  stream: any;
+  isLocal: boolean;
+  localUrl: string | null;
+  tileStyle: any;
+}
+
+const BroadcasterTile = memo(function BroadcasterTile({
+  name,
+  stream,
+  isLocal,
+  localUrl,
+  tileStyle,
+}: BroadcasterTileProps) {
+  const remoteUrl = useMemo(() => {
+    if (isLocal) return null; // local tile never calls toURL() here
+    return stream && typeof stream.toURL === 'function' ? stream.toURL() : null;
+  }, [isLocal, stream]);
+
+  const url = isLocal ? localUrl : remoteUrl;
+
+  // Diagnostic (temporary): log the local tile's resolved URL whenever it changes.
+  useEffect(() => {
+    if (isLocal) console.log('[LiveOverlay] local tile URL ->', url);
+  }, [isLocal, url]);
+
+  return (
+    <View style={[styles.tile, tileStyle]}>
+      {url ? (
+        <RTCView
+          streamURL={url}
+          style={styles.rtcView}
+          objectFit="cover"
+          mirror={false}
+        />
+      ) : (
+        <View style={styles.tileLoading}>
+          <Text style={styles.tileLoadingText}>Connecting…</Text>
+        </View>
+      )}
+      <View style={styles.tileName}>
+        <Text style={styles.tileNameText}>{name || 'Unknown'}</Text>
+      </View>
+    </View>
+  );
+});
+
 export default function LiveOverlay() {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
   const {
     role,
     sessionId,
+    hostId,
     title,
     broadcasterName,
     broadcasterAvatar,
     viewerCount,
     chatMessages,
     localStream,
+    localPreviewUrl,
     broadcasters,
     isBroadcaster,
     requestingToBroadcast,
@@ -138,6 +195,18 @@ export default function LiveOverlay() {
 
   const isViewer = role === 'viewer';
 
+  // ── Order broadcasters so the session host is always tile #0 ──
+  // This is what makes it impossible for a collaborator to visually
+  // "override" the main broadcaster: the host always owns position 0.
+  const orderedBroadcasters = useMemo(() => {
+    if (!hostId || broadcasters.length === 0) return broadcasters;
+    const hostKey = String(hostId);
+    const host = broadcasters.find((b) => String(b.userId) === hostKey);
+    if (!host) return broadcasters;
+    const rest = broadcasters.filter((b) => String(b.userId) !== hostKey);
+    return [host, ...rest];
+  }, [broadcasters, hostId]);
+
   // Auto-scroll chat
   useEffect(() => {
     setTimeout(() => chatScrollRef.current?.scrollToEnd({ animated: true }), 80);
@@ -145,12 +214,12 @@ export default function LiveOverlay() {
 
   // Timeout for viewer waiting for stream
   useEffect(() => {
-    if (isViewer && broadcasters.length === 0) {
+    if (isViewer && orderedBroadcasters.length === 0) {
       const t = setTimeout(() => setLoadingTimeout(true), 5000);
       return () => clearTimeout(t);
     }
     setLoadingTimeout(false);
-  }, [isViewer, broadcasters]);
+  }, [isViewer, orderedBroadcasters]);
 
   // Reset local overlay state when overlay toggles
   useEffect(() => {
@@ -181,10 +250,10 @@ export default function LiveOverlay() {
     setHearts((prev) => prev.filter((h) => h.id !== id));
 
   const hasStream =
-    broadcasters.some((b) => b.stream) || (isBroadcaster && localStream);
+    orderedBroadcasters.some((b) => b.stream) ||
+    (isBroadcaster && localStream);
 
-  // Grid layout: 1, 2, or 4 tiles
-  const numTiles = broadcasters.length;
+  const numTiles = orderedBroadcasters.length;
 
   return (
     <View style={styles.root}>
@@ -213,13 +282,7 @@ export default function LiveOverlay() {
           </View>
         ) : (
           <View style={styles.gridWrap}>
-            {broadcasters.map((b, idx) => {
-              const url =
-                b.stream && typeof (b.stream as any).toURL === 'function'
-                  ? (b.stream as any).toURL()
-                  : null;
-
-              // Grid geometry
+            {orderedBroadcasters.map((b) => {
               const isSingle = numTiles === 1;
               const isDouble = numTiles === 2;
               const tileStyle = isSingle
@@ -228,26 +291,16 @@ export default function LiveOverlay() {
                 ? styles.tileHalf
                 : styles.tileQuarter;
 
+              // key is ALWAYS the userId as a string — never an array index.
               return (
-                <View key={String(b.userId)} style={[styles.tile, tileStyle]}>
-                  {url ? (
-                    <RTCView
-                      streamURL={url}
-                      style={styles.rtcView}
-                      objectFit="cover"
-                      mirror={String(b.userId) === String(useLiveUserIdFallback())}
-                    />
-                  ) : (
-                    <View style={styles.tileLoading}>
-                      <Text style={styles.tileLoadingText}>Connecting…</Text>
-                    </View>
-                  )}
-                  <View style={styles.tileName}>
-                    <Text style={styles.tileNameText}>
-                      {b.name || 'Unknown'}
-                    </Text>
-                  </View>
-                </View>
+                <BroadcasterTile
+                  key={String(b.userId)}
+                  name={b.name}
+                  stream={b.stream}
+                  isLocal={!!user && String(b.userId) === String(user.id)}
+                  localUrl={localPreviewUrl}
+                  tileStyle={tileStyle}
+                />
               );
             })}
           </View>
@@ -274,7 +327,7 @@ export default function LiveOverlay() {
         ))}
       </TouchableOpacity>
 
-      {/* ── Like counter (top-right) ── */}
+      {/* ── Top bar ── */}
       <SafeAreaView style={styles.topSafe} edges={['top']} pointerEvents="box-none">
         <View style={styles.topBar}>
           <View style={styles.authorWrap}>
@@ -478,13 +531,6 @@ export default function LiveOverlay() {
       </KeyboardAvoidingView>
     </View>
   );
-}
-
-// Small helper so the mirror prop works even though useLive doesn't expose the current user id directly
-function useLiveUserIdFallback() {
-  // Avoid importing useAuth here to keep the file self-contained.
-  // Mirror isn't critical — returning null just means "don't mirror".
-  return null;
 }
 
 const styles = StyleSheet.create({

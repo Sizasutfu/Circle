@@ -63,12 +63,14 @@ interface LiveContextValue {
   isLoadingSessions: boolean;
   role: Role;
   sessionId: string | null;
+  hostId: string | number | null;
   title: string;
   broadcasterName: string;
   broadcasterAvatar: string;
   viewerCount: number;
   chatMessages: ChatMessage[];
   localStream: MediaStream | null;
+  localPreviewUrl: string | null;
   broadcasters: Broadcaster[];
   isBroadcaster: boolean;
   requestingToBroadcast: boolean;
@@ -100,11 +102,121 @@ interface LiveContextValue {
 
 const LiveContext = createContext<LiveContextValue | null>(null);
 
-// ✅ STUN only for now — see "TURN" note at bottom of this message.
-//    Without TURN, some mobile-to-mobile connections will fail to establish.
 const RTC_CONFIG = {
   iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
 };
+
+const MEDIA_CONSTRAINTS: any = {
+  video: { width: 1280, height: 720, frameRate: 30, facingMode: 'user' },
+  audio: true,
+};
+
+// A second getUserMedia() on the same camera can steal it from the first
+// capture and black out the local preview. Keep this false unless you have
+// verified (preview tracks stay readyState=live) that your device allows it.
+const ALLOW_SECOND_CAPTURE = false;
+
+// One entry per remote peer. `sendStream` is whatever we handed to
+// pc.addTrack for that peer. `ownsSendTracks` is true only when those tracks
+// are per-peer clones (safe to stop when the peer closes). The shared
+// "second getUserMedia" send stream is never stopped per peer.
+interface PeerEntry {
+  pc: RTCPeerConnection;
+  sendStream: MediaStream | null;
+  ownsSendTracks: boolean;
+}
+
+// ─── Diagnostics (temporary — remove once the fix is verified) ──
+function logStream(label: string, stream: MediaStream | null) {
+  if (!stream) {
+    console.log(`[Live] getUserMedia stream (${label}): null`);
+    return;
+  }
+  console.log(`[Live] getUserMedia stream (${label}) id=${stream.id}`);
+  stream.getTracks().forEach((t: any) =>
+    console.log(
+      `[Live]   track id=${t.id} kind=${t.kind} enabled=${t.enabled} readyState=${t.readyState}`
+    )
+  );
+}
+
+function logSdpDirections(label: string, sdp?: string | null) {
+  if (!sdp) return;
+  sdp
+    .split(/\r?\nm=/)
+    .slice(1)
+    .forEach((section) => {
+      const kind = section.split(' ')[0];
+      const dir =
+        section.match(/a=(sendrecv|sendonly|recvonly|inactive)/)?.[1] ?? 'unspecified';
+      console.log(`[Live] ${label} SDP m=${kind} direction=${dir}`);
+      if (kind === 'video' && dir === 'sendonly') {
+        console.warn(`[Live] ${label}: video m-line is sendonly`);
+      }
+    });
+}
+
+// Offerer must never declare sendonly, or the answerer can't send back.
+function forceSendRecv(pc: any) {
+  try {
+    const transceivers = typeof pc.getTransceivers === 'function' ? pc.getTransceivers() : [];
+    transceivers.forEach((t: any) => {
+      if (t.direction === 'sendonly') {
+        console.warn('[Live] transceiver was sendonly — switching to sendrecv');
+        t.direction = 'sendrecv';
+      }
+    });
+  } catch (err) {
+    console.warn('[Live] forceSendRecv failed', err);
+  }
+}
+
+// Does this react-native-webrtc build implement MediaStreamTrack.clone()?
+// (Older builds throw "Not implemented".) Probed once per acquired stream.
+function probeCloneSupport(stream: MediaStream): boolean {
+  const track: any = stream.getTracks()[0];
+  if (!track || typeof track.clone !== 'function') return false;
+  try {
+    const probe = track.clone();
+    if (!probe || probe.id === track.id) return false; // not a real clone
+    if (typeof probe.stop === 'function') probe.stop();
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+// ─── Broadcaster list helpers ─────────────────────────────
+// Every list mutation goes through these helpers so a tile can never
+// be duplicated, dropped, or have its stream clobbered by an unrelated
+// update. This is what prevents a collaborator from "replacing" the host.
+function upsertBroadcaster(
+  list: Broadcaster[],
+  entry: Partial<Broadcaster> & { userId: string | number }
+): Broadcaster[] {
+  const id = String(entry.userId);
+  const idx = list.findIndex((b) => String(b.userId) === id);
+  if (idx === -1) {
+    return [
+      ...list,
+      {
+        userId: entry.userId,
+        name: entry.name ?? 'Broadcaster',
+        avatar: entry.avatar ?? '',
+        stream: entry.stream ?? null,
+      },
+    ];
+  }
+  const next = list.slice();
+  next[idx] = {
+    ...next[idx],
+    // Only overwrite fields that were actually provided.
+    ...(entry.name !== undefined ? { name: entry.name } : {}),
+    ...(entry.avatar !== undefined ? { avatar: entry.avatar } : {}),
+    ...(entry.stream !== undefined ? { stream: entry.stream } : {}),
+  };
+  return next;
+}
 
 export function LiveProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
@@ -114,6 +226,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
   const [isLoadingSessions, setIsLoadingSessions] = useState(false);
   const [role, setRole] = useState<Role>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [hostId, setHostId] = useState<string | number | null>(null);
   const [title, setTitle] = useState('');
   const [broadcasterName, setBroadcasterName] = useState('');
   const [broadcasterAvatar, setBroadcasterAvatar] = useState('');
@@ -131,14 +244,195 @@ export function LiveProvider({ children }: { children: ReactNode }) {
   const [floatingReactions, setFloatingReactions] = useState<FloatingReaction[]>([]);
   const [likeCount, setLikeCount] = useState(0);
   const [collaborationEnabled, setCollaborationEnabled] = useState(false);
+  // Cached once per preview stream so the local tile's RTCView gets a frozen URL.
+  const [localPreviewUrl, setLocalPreviewUrl] = useState<string | null>(null);
 
+  // Synchronous mirrors of role / isBroadcaster for callbacks that can run on stale state.
+  const roleRef = useRef<Role>(null);
+  const isBroadcasterRef = useRef(false);
+
+  // localStreamRef  = preview only (what RTCView renders; never handed to a peer connection)
+  // sendStreamRef   = independent capture used for sending when track.clone() is unavailable
   const localStreamRef = useRef<MediaStream | null>(null);
-  const peersRef = useRef<Record<string, { pc: RTCPeerConnection; stream: MediaStream | null }>>({});
+  const sendStreamRef = useRef<MediaStream | null>(null);
+  const cloneSupportedRef = useRef(false);
+  const peersRef = useRef<Record<string, PeerEntry>>({});
   const reactionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const livePostIdRef = useRef<string | number | null>(null);
+  const pendingPeersRef = useRef<Set<string>>(new Set());
 
   const log = (msg: string, data?: any) =>
     console.log(`[Live:${role || 'none'}] ${msg}`, data || '');
+
+  const applyRole = useCallback((r: Role) => {
+    roleRef.current = r;
+    setRole(r);
+  }, []);
+
+  const applyIsBroadcaster = useCallback((v: boolean) => {
+    isBroadcasterRef.current = v;
+    setIsBroadcaster(v);
+  }, []);
+
+  // Resolve + cache the preview URL ONCE per preview stream.
+  const publishPreviewUrl = useCallback((stream: MediaStream | null) => {
+    const url =
+      stream && typeof (stream as any).toURL === 'function' ? (stream as any).toURL() : null;
+    console.log('[Live] preview URL cached:', url);
+    setLocalPreviewUrl(url);
+  }, []);
+
+  // ── Peer lifecycle ──
+  const closePeer = useCallback((key: string) => {
+    const entry = peersRef.current[key];
+    if (!entry) return;
+    try {
+      entry.pc.close();
+    } catch (err) {
+      console.warn('[Live] pc.close failed for', key, err);
+    }
+    // Only per-peer CLONES are stopped here — never the preview or shared send stream.
+    if (entry.ownsSendTracks) {
+      entry.sendStream?.getTracks().forEach((t: any) => {
+        try {
+          t.stop();
+        } catch (_) {}
+      });
+    }
+    delete peersRef.current[key];
+  }, []);
+
+  const closeAllPeers = useCallback(() => {
+    Object.keys(peersRef.current).forEach(closePeer);
+  }, [closePeer]);
+
+  // ── Local media lifecycle ──
+  // The ONLY places that stop preview / send tracks: closeSetup (when not live),
+  // closeLive, and the unmount effect — all via this function.
+  const releaseLocalMedia = useCallback(
+    (updateState = true) => {
+      closeAllPeers();
+      localStreamRef.current?.getTracks().forEach((t: any) => t.stop());
+      localStreamRef.current = null;
+      sendStreamRef.current?.getTracks().forEach((t: any) => t.stop());
+      sendStreamRef.current = null;
+      cloneSupportedRef.current = false;
+      if (updateState) setLocalPreviewUrl(null);
+    },
+    [closeAllPeers]
+  );
+
+  // Acquire the preview stream and make sure we have an independent way to send.
+  const acquireLocalMedia = useCallback(async (): Promise<MediaStream> => {
+    const preview = (await mediaDevices.getUserMedia(MEDIA_CONSTRAINTS)) as MediaStream;
+    localStreamRef.current = preview;
+    logStream('preview', preview);
+
+    cloneSupportedRef.current = probeCloneSupport(preview);
+    console.log('[Live] track.clone() supported:', cloneSupportedRef.current);
+
+    if (!cloneSupportedRef.current && ALLOW_SECOND_CAPTURE) {
+      try {
+        const send = (await mediaDevices.getUserMedia(MEDIA_CONSTRAINTS)) as MediaStream;
+        sendStreamRef.current = send;
+        logStream('send (second getUserMedia)', send);
+        // If the second capture stole the camera, the preview tracks will say 'ended' here.
+        preview.getTracks().forEach((t: any) =>
+          console.log(`[Live] preview track after 2nd capture id=${t.id} kind=${t.kind} readyState=${t.readyState}`)
+        );
+      } catch (err) {
+        releaseLocalMedia();
+        throw err;
+      }
+    }
+
+    publishPreviewUrl(preview);
+    return preview;
+  }, [publishPreviewUrl, releaseLocalMedia]);
+
+  // Fresh stream for a peer connection. NEVER returns the preview tracks.
+  const buildSendableStream = useCallback((): { stream: MediaStream | null; ownsTracks: boolean } => {
+    const preview = localStreamRef.current;
+    if (!preview) return { stream: null, ownsTracks: false };
+
+    if (cloneSupportedRef.current) {
+      const cloned: any[] = [];
+      try {
+        preview.getTracks().forEach((t: any) => cloned.push(t.clone()));
+        const stream = new (MediaStream as any)(cloned) as MediaStream;
+        console.log(
+          `[Live] sendable stream (clone) id=${stream.id} tracks=`,
+          cloned.map((t) => `${t.kind}:${t.id}`).join(', ')
+        );
+        return { stream, ownsTracks: true };
+      } catch (err) {
+        console.error('[Live] track.clone() failed', err);
+        cloned.forEach((t) => {
+          try {
+            t.stop();
+          } catch (_) {}
+        });
+        return { stream: null, ownsTracks: false };
+      }
+    }
+
+    // No clone support. Use the second capture if enabled, otherwise share the
+    // original stream (single camera open — the pre-collaboration behaviour).
+    const shared = sendStreamRef.current ?? (ALLOW_SECOND_CAPTURE ? null : preview);
+    if (!shared) {
+      console.warn('[Live] no send stream available — sending nothing');
+      return { stream: null, ownsTracks: false };
+    }
+    console.log(
+      `[Live] sendable stream (${sendStreamRef.current ? 'second capture' : 'shared original'}) id=${shared.id} tracks=`,
+      shared.getTracks().map((t: any) => `${t.kind}:${t.id}`).join(', ')
+    );
+    return { stream: shared, ownsTracks: false };
+  }, []);
+
+  const addSendableTracksTo = useCallback(
+    (pc: RTCPeerConnection) => {
+      const { stream, ownsTracks } = buildSendableStream();
+      if (stream) {
+        stream.getTracks().forEach((track: any) => pc.addTrack(track, stream));
+      }
+      return { sendStream: stream, ownsTracks };
+    },
+    [buildSendableStream]
+  );
+
+  const attachOnTrack = useCallback(
+    (
+      pc: RTCPeerConnection,
+      remoteUserId: string | number,
+      label: string,
+      renderTile = true
+    ) => {
+      (pc as any).ontrack = (event: any) => {
+        const remoteStream = event.streams && event.streams[0];
+        console.log(
+          `[Live] ontrack(${label}) from user=${remoteUserId} track=${event.track?.id} kind=${event.track?.kind} stream=${remoteStream?.id}`
+        );
+        if (!remoteStream || !renderTile) return;
+        setBroadcasters((prev) =>
+          upsertBroadcaster(prev, { userId: remoteUserId, stream: remoteStream })
+        );
+      };
+    },
+    []
+  );
+
+  // Flip `enabled` on every outgoing track of a kind: preview, shared send stream, per-peer clones.
+  const setOutgoingEnabled = useCallback((kind: 'audio' | 'video', enabled: boolean) => {
+    const flip = (t: any) => {
+      if (t.kind === kind) t.enabled = enabled;
+    };
+    localStreamRef.current?.getTracks().forEach(flip);
+    sendStreamRef.current?.getTracks().forEach(flip);
+    Object.values(peersRef.current).forEach((p) => {
+      if (p.ownsSendTracks) p.sendStream?.getTracks().forEach(flip);
+    });
+  }, []);
 
   // ── Floating reactions ──
   const addFloatingReaction = useCallback((emoji: string) => {
@@ -178,21 +472,14 @@ export function LiveProvider({ children }: { children: ReactNode }) {
       Alert.alert('Sign In Required', 'Please log in to go live.');
       return;
     }
+    // Already hosting / broadcasting: never replace the live capture.
+    if (roleRef.current === 'host' || isBroadcasterRef.current) return;
+
     setSetupError(null);
     setIsSetupOpen(true);
     try {
-      const stream = (await mediaDevices.getUserMedia({
-        video: {
-          width: 1280,
-          height: 720,
-          frameRate: 30,
-          facingMode: 'user',
-        },
-        audio: true,
-      })) as MediaStream;
-      localStreamRef.current = stream;
-      // Small delay so UI shows the stream attached
-      setTimeout(() => setIsSetupOpen((prev) => prev), 0);
+      if (localStreamRef.current) releaseLocalMedia(); // leftover from an abandoned setup
+      await acquireLocalMedia();
       log('Media stream acquired');
     } catch (err: any) {
       console.error('[Live] Camera/mic error:', err);
@@ -200,17 +487,24 @@ export function LiveProvider({ children }: { children: ReactNode }) {
         'Could not access camera/microphone: ' + (err?.message || 'unknown error')
       );
     }
-  }, [user]);
+  }, [user, acquireLocalMedia, releaseLocalMedia]);
 
   // ── Close setup ──
+  // Guarded by refs (not React state) so a stale closure can never stop the
+  // tracks of an active host or broadcaster.
   const closeSetup = useCallback(() => {
     setIsSetupOpen(false);
     setSetupError(null);
-    if (localStreamRef.current && role !== 'host' && !isBroadcaster) {
-      localStreamRef.current.getTracks().forEach((t) => t.stop());
-      localStreamRef.current = null;
+    const live =
+      roleRef.current === 'host' ||
+      roleRef.current === 'broadcaster' ||
+      isBroadcasterRef.current;
+    if (live) {
+      console.log('[Live] closeSetup: active host/broadcaster — leaving tracks running');
+      return;
     }
-  }, [role, isBroadcaster]);
+    if (localStreamRef.current) releaseLocalMedia();
+  }, [releaseLocalMedia]);
 
   // ── Start live ──
   const startLive = useCallback(
@@ -227,9 +521,11 @@ export function LiveProvider({ children }: { children: ReactNode }) {
         const data = res.data?.data ?? res.data;
         const sid: string = data.sessionId;
         setSessionId(sid);
+        setHostId(user!.id);
         setTitle(data.title || titleText);
-        setRole('host');
-        setIsBroadcaster(true);
+        applyRole('host');
+        applyIsBroadcaster(true);
+        publishPreviewUrl(localStreamRef.current);
         setBroadcasterName(data.broadcasterName || user?.name || user?.username || '');
         setBroadcasterAvatar(data.broadcasterAvatar || (user as any)?.avatar || '');
         setBroadcasters([
@@ -243,8 +539,8 @@ export function LiveProvider({ children }: { children: ReactNode }) {
         setIsSetupOpen(false);
         setIsOverlayOpen(true);
         setCamOff(false);
+        setMicMuted(false);
 
-        // Create the live post
         try {
           const postRes = await api.post('/posts', {
             text: `🔴 I'm live now! ${titleText}`,
@@ -273,7 +569,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
         Alert.alert('Error', err?.response?.data?.message || 'Could not start stream.');
       }
     },
-    [user, wsSend, collaborationEnabled]
+    [user, wsSend, collaborationEnabled, applyRole, applyIsBroadcaster, publishPreviewUrl]
   );
 
   // ── Watch session ──
@@ -285,14 +581,15 @@ export function LiveProvider({ children }: { children: ReactNode }) {
       }
       log('Attempting to watch', sid);
       setSessionId(sid);
-      setRole('viewer');
-      setIsBroadcaster(false);
+      applyRole('viewer');
+      applyIsBroadcaster(false);
       setIsOverlayOpen(true);
       setLikeCount(0);
       setBroadcasters([]);
+      setHostId(null);
       setPendingRequests([]);
-      Object.values(peersRef.current).forEach((p) => p.pc.close());
-      peersRef.current = {};
+      pendingPeersRef.current.clear();
+      closeAllPeers();
 
       try {
         const res = await api.get(`/live/${sid}`);
@@ -300,6 +597,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
         setBroadcasterName(data.broadcasterName || '');
         setBroadcasterAvatar(data.broadcasterAvatar || '');
         setTitle(data.title || '');
+        setHostId(data.hostId ?? null);
       } catch (_) {}
 
       wsSend({
@@ -309,17 +607,16 @@ export function LiveProvider({ children }: { children: ReactNode }) {
         viewerName: user.username || user.name || null,
       });
     },
-    [user, wsSend]
+    [user, wsSend, applyRole, applyIsBroadcaster, closeAllPeers]
   );
 
   // ── Close live ──
   const closeLive = useCallback(async () => {
-    if (role === 'host') {
+    if (roleRef.current === 'host') {
       try {
         await api.post('/live/end', { sessionId });
       } catch (_) {}
-      Object.values(peersRef.current).forEach((p) => p.pc.close());
-      peersRef.current = {};
+      closeAllPeers();
       wsSend({ type: 'live:ended', sessionId });
 
       if (livePostIdRef.current) {
@@ -330,11 +627,6 @@ export function LiveProvider({ children }: { children: ReactNode }) {
         livePostIdRef.current = null;
       }
     } else if (sessionId) {
-      const entry = peersRef.current[sessionId];
-      if (entry) {
-        entry.pc.close();
-        delete peersRef.current[sessionId];
-      }
       wsSend({
         type: 'live:viewer_leave',
         sessionId,
@@ -342,10 +634,15 @@ export function LiveProvider({ children }: { children: ReactNode }) {
       });
     }
 
+    closeAllPeers();
+    pendingPeersRef.current.clear();
+
     setIsOverlayOpen(false);
-    setRole(null);
-    setIsBroadcaster(false);
+    applyRole(null);
+    applyIsBroadcaster(false);
+    setRequestingToBroadcast(false);
     setSessionId(null);
+    setHostId(null);
     setTitle('');
     setBroadcasterName('');
     setBroadcasterAvatar('');
@@ -355,32 +652,26 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     setPendingRequests([]);
     setFloatingReactions([]);
     setLikeCount(0);
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((t) => t.stop());
-      localStreamRef.current = null;
-    }
+    // Legitimate stop point #1: tears down preview + send tracks.
+    releaseLocalMedia();
     setMicMuted(false);
     setCamOff(false);
-  }, [role, sessionId, user, wsSend]);
+  }, [sessionId, user, wsSend, closeAllPeers, releaseLocalMedia, applyRole, applyIsBroadcaster]);
 
-  // ── Toggles ──
+  // ── Toggles ── (flip the preview AND every outgoing track)
   const toggleMic = useCallback(() => {
     if (!localStreamRef.current) return;
     const newState = !micMuted;
     setMicMuted(newState);
-    localStreamRef.current.getAudioTracks().forEach((t) => {
-      (t as any).enabled = !newState;
-    });
-  }, [micMuted]);
+    setOutgoingEnabled('audio', !newState);
+  }, [micMuted, setOutgoingEnabled]);
 
   const toggleCam = useCallback(() => {
     if (!localStreamRef.current) return;
     const newState = !camOff;
     setCamOff(newState);
-    localStreamRef.current.getVideoTracks().forEach((t) => {
-      (t as any).enabled = !newState;
-    });
-  }, [camOff]);
+    setOutgoingEnabled('video', !newState);
+  }, [camOff, setOutgoingEnabled]);
 
   // ── Chat ──
   const sendChat = useCallback(
@@ -444,29 +735,19 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     [sessionId, user, wsSend]
   );
 
-  // ── Peer to peer: broadcaster ↔ broadcaster ──
+  // ── Peer to peer ──
   const createPeerToBroadcaster = useCallback(
     (targetUserId: string | number) => {
       if (!sessionId || !user) return;
       const key = String(targetUserId);
-      if (peersRef.current[key]) return;
+      closePeer(key);
 
       const pc = new RTCPeerConnection(RTC_CONFIG);
 
-      if (localStreamRef.current) {
-        localStreamRef.current
-          .getTracks()
-          .forEach((track: any) => pc.addTrack(track, localStreamRef.current!));
-      }
+      // Fresh, independent tracks — never the ones RTCView is rendering.
+      const { sendStream, ownsTracks } = addSendableTracksTo(pc);
 
-      (pc as any).ontrack = (event: any) => {
-        log(`Received track from broadcaster ${targetUserId}`);
-        setBroadcasters((prev) =>
-          prev.map((b) =>
-            String(b.userId) === key ? { ...b, stream: event.streams[0] } : b
-          )
-        );
-      };
+      attachOnTrack(pc, targetUserId, 'createPeer');
 
       (pc as any).onicecandidate = (event: any) => {
         if (event.candidate) {
@@ -480,10 +761,14 @@ export function LiveProvider({ children }: { children: ReactNode }) {
         }
       };
 
-      peersRef.current[key] = { pc, stream: null };
+      peersRef.current[key] = { pc, sendStream, ownsSendTracks: ownsTracks };
 
+      forceSendRecv(pc);
       pc.createOffer()
-        .then((offer: any) => pc.setLocalDescription(offer))
+        .then((offer: any) => {
+          logSdpDirections(`offer->${targetUserId}`, offer?.sdp);
+          return pc.setLocalDescription(offer);
+        })
         .then(() => {
           wsSend({
             type: 'live:offer',
@@ -492,13 +777,13 @@ export function LiveProvider({ children }: { children: ReactNode }) {
             from: user.id,
             to: targetUserId,
           });
-          log(`Offer sent to broadcaster ${targetUserId}`);
+          log(`Offer sent to ${targetUserId}`);
         })
         .catch((err: any) =>
           console.error(`[Live] Offer error to ${targetUserId}:`, err)
         );
     },
-    [sessionId, user, wsSend]
+    [sessionId, user, wsSend, closePeer, addSendableTracksTo, attachOnTrack]
   );
 
   // ── WebSocket message handler ──
@@ -526,19 +811,17 @@ export function LiveProvider({ children }: { children: ReactNode }) {
           const { viewerId, viewerCount: count } = msg;
           setViewerCount(count);
           if (
-            isBroadcaster &&
+            isBroadcasterRef.current &&
             sessionId === msg.sessionId &&
             viewerId !== user?.id
           ) {
+            const key = String(viewerId);
+            closePeer(key);
+
             const pc = new RTCPeerConnection(RTC_CONFIG);
-            if (localStreamRef.current) {
-              localStreamRef.current
-                .getTracks()
-                .forEach((track: any) =>
-                  pc.addTrack(track, localStreamRef.current!)
-                );
-            }
-            (pc as any).ontrack = () => {};
+            const { sendStream, ownsTracks } = addSendableTracksTo(pc);
+            // Viewers only receive from us; log but don't render a tile.
+            attachOnTrack(pc, viewerId, 'viewer_joined', false);
             (pc as any).onicecandidate = (event: any) => {
               if (event.candidate) {
                 wsSend({
@@ -550,9 +833,13 @@ export function LiveProvider({ children }: { children: ReactNode }) {
                 });
               }
             };
-            peersRef.current[String(viewerId)] = { pc, stream: null };
+            peersRef.current[key] = { pc, sendStream, ownsSendTracks: ownsTracks };
+            forceSendRecv(pc);
             pc.createOffer()
-              .then((offer: any) => pc.setLocalDescription(offer))
+              .then((offer: any) => {
+                logSdpDirections(`offer->viewer ${viewerId}`, offer?.sdp);
+                return pc.setLocalDescription(offer);
+              })
               .then(() => {
                 wsSend({
                   type: 'live:offer',
@@ -571,12 +858,8 @@ export function LiveProvider({ children }: { children: ReactNode }) {
 
         case 'live:viewer_left': {
           setViewerCount(msg.viewerCount);
-          if (isBroadcaster && sessionId === msg.sessionId) {
-            const peer = peersRef.current[String(msg.viewerId)];
-            if (peer) {
-              peer.pc.close();
-              delete peersRef.current[String(msg.viewerId)];
-            }
+          if (isBroadcasterRef.current && sessionId === msg.sessionId) {
+            closePeer(String(msg.viewerId));
           }
           break;
         }
@@ -589,62 +872,155 @@ export function LiveProvider({ children }: { children: ReactNode }) {
           if (sessionId === msg.sessionId) setLikeCount(msg.count);
           break;
 
+        // A collaborator joined the room. Add them to the roster but DO NOT
+        // dial — the collaborator is responsible for dialing everyone
+        // after they acquire their own local stream.
         case 'live:new_broadcaster': {
-          const { broadcasterId, broadcasterName: bn, broadcasterAvatar: ba } = msg;
-          if (broadcasterId === user?.id) break;
-          setBroadcasters((prev) => [
-            ...prev,
-            { userId: broadcasterId, name: bn, avatar: ba, stream: null },
-          ]);
-          if (isBroadcaster && sessionId === msg.sessionId) {
-            createPeerToBroadcaster(broadcasterId);
-          }
+          const {
+            broadcasterId,
+            broadcasterName: bn,
+            broadcasterAvatar: ba,
+          } = msg;
+          if (String(broadcasterId) === String(user?.id)) break;
+          setBroadcasters((prev) =>
+            upsertBroadcaster(prev, {
+              userId: broadcasterId,
+              name: bn || 'Broadcaster',
+              avatar: ba || '',
+            })
+          );
           break;
         }
 
+        // Roster sent to the just-approved collaborator. Merge (never replace)
+        // so we never drop a tile we already have.
         case 'live:existing_broadcasters': {
           const { broadcasters: existing } = msg;
-          const filtered = existing.filter((b: any) => b.userId !== user?.id);
+          const filtered = (existing || []).filter(
+            (b: any) => String(b.userId) !== String(user?.id)
+          );
           setBroadcasters((prev) => {
-            const existingIds = new Set(prev.map((b) => String(b.userId)));
-            const toAdd = filtered.filter(
-              (b: any) => !existingIds.has(String(b.userId))
-            );
-            return [...prev, ...toAdd];
+            let next = prev;
+            for (const b of filtered) {
+              next = upsertBroadcaster(next, {
+                userId: b.userId,
+                name: b.name,
+                avatar: b.avatar,
+              });
+            }
+            return next;
           });
-          if (isBroadcaster && sessionId === msg.sessionId) {
-            filtered.forEach((b: any) => {
-              if (b.userId !== user?.id) createPeerToBroadcaster(b.userId);
-            });
-          }
+          filtered.forEach((b: any) =>
+            pendingPeersRef.current.add(String(b.userId))
+          );
+          break;
+        }
+
+        case 'live:existing_viewers': {
+          const { viewers } = msg;
+          (viewers || []).forEach((v: any) => {
+            if (String(v.userId) !== String(user?.id)) {
+              pendingPeersRef.current.add(String(v.userId));
+            }
+          });
+          break;
+        }
+
+        case 'live:peer_reset': {
+          if (msg.sessionId !== sessionId) break;
+          closePeer(String(msg.from));
           break;
         }
 
         case 'live:current_broadcasters': {
           const { broadcasters: current } = msg;
-          setBroadcasters(
-            current.map((b: any) => ({ ...b, stream: null }))
-          );
+          // Merge, don't replace: preserve any streams we already have.
+          setBroadcasters((prev) => {
+            let next = prev;
+            for (const b of current || []) {
+              next = upsertBroadcaster(next, {
+                userId: b.userId,
+                name: b.name,
+                avatar: b.avatar,
+              });
+            }
+            return next;
+          });
           break;
         }
 
         case 'live:request_broadcast': {
           const { userId: requesterId, userName, userAvatar } = msg;
           if (isBroadcaster && sessionId === msg.sessionId) {
-            setPendingRequests((prev) => [
-              ...prev,
-              { userId: requesterId, name: userName, avatar: userAvatar },
-            ]);
+            setPendingRequests((prev) => {
+              if (prev.some((r) => String(r.userId) === String(requesterId))) {
+                return prev;
+              }
+              return [
+                ...prev,
+                { userId: requesterId, name: userName, avatar: userAvatar },
+              ];
+            });
           }
           break;
         }
 
+        // The viewer was approved. Acquire a stream, flip role, reset
+        // every stale peer, and dial everyone. Crucially: merge — never
+        // replace — so the host's tile is never dropped.
         case 'live:request_approved': {
-          if (role === 'viewer' && sessionId === msg.sessionId) {
-            setIsBroadcaster(true);
-            setRole('broadcaster');
-            setRequestingToBroadcast(false);
-          }
+          if (roleRef.current !== 'viewer' || sessionId !== msg.sessionId) break;
+
+          (async () => {
+            try {
+              let stream = localStreamRef.current;
+              if (!stream) {
+                stream = await acquireLocalMedia(); // also caches localPreviewUrl
+              } else {
+                logStream('preview (reused)', stream);
+                publishPreviewUrl(stream);
+              }
+
+              const selfId = user?.id;
+              const selfName = user?.username || user?.name || 'You';
+              const selfAvatar = (user as any)?.avatar || '';
+
+              applyIsBroadcaster(true);
+              applyRole('broadcaster');
+              setRequestingToBroadcast(false);
+              setMicMuted(false);
+              setCamOff(false);
+
+              // Merge our own tile in — DO NOT rebuild the list.
+              setBroadcasters((prev) =>
+                upsertBroadcaster(prev, {
+                  userId: selfId!,
+                  name: selfName,
+                  avatar: selfAvatar,
+                  stream,
+                })
+              );
+
+              closeAllPeers();
+
+              const targets = Array.from(pendingPeersRef.current);
+              pendingPeersRef.current.clear();
+
+              targets.forEach((id) =>
+                wsSend({ type: 'live:peer_reset', sessionId, targetId: id })
+              );
+
+              targets.forEach((id) => createPeerToBroadcaster(id));
+            } catch (err) {
+              console.error(
+                '[Live] Failed to acquire stream on approval:',
+                err
+              );
+              Alert.alert('Error', 'Could not access camera/microphone.');
+              setRequestingToBroadcast(false);
+            }
+          })();
+
           break;
         }
 
@@ -660,48 +1036,44 @@ export function LiveProvider({ children }: { children: ReactNode }) {
           const { from, offer } = msg;
           if (from === user?.id) break;
           const key = String(from);
-          let peer = peersRef.current[key];
-          if (!peer) {
-            const pc = new RTCPeerConnection(RTC_CONFIG);
-            if (localStreamRef.current && isBroadcaster) {
-              localStreamRef.current
-                .getTracks()
-                .forEach((track: any) =>
-                  pc.addTrack(track, localStreamRef.current!)
-                );
+          closePeer(key);
+          logSdpDirections(`offer<-${from}`, offer?.sdp);
+
+          const pc = new RTCPeerConnection(RTC_CONFIG);
+          const sendable =
+            localStreamRef.current && isBroadcasterRef.current
+              ? addSendableTracksTo(pc)
+              : { sendStream: null as MediaStream | null, ownsTracks: false };
+
+          attachOnTrack(pc, from, 'offer');
+          (pc as any).onicecandidate = (event: any) => {
+            if (event.candidate) {
+              wsSend({
+                type: 'live:ice_candidate',
+                sessionId,
+                candidate: event.candidate,
+                from: user!.id,
+                to: from,
+              });
             }
-            (pc as any).ontrack = (event: any) => {
-              setBroadcasters((prev) =>
-                prev.map((b) =>
-                  String(b.userId) === key
-                    ? { ...b, stream: event.streams[0] }
-                    : b
-                )
-              );
-            };
-            (pc as any).onicecandidate = (event: any) => {
-              if (event.candidate) {
-                wsSend({
-                  type: 'live:ice_candidate',
-                  sessionId,
-                  candidate: event.candidate,
-                  from: user!.id,
-                  to: from,
-                });
-              }
-            };
-            peer = { pc, stream: null };
-            peersRef.current[key] = peer;
-          }
-          peer.pc
-            .setRemoteDescription(new RTCSessionDescription(offer))
-            .then(() => peer!.pc.createAnswer())
-            .then((answer: any) => peer!.pc.setLocalDescription(answer))
+          };
+          peersRef.current[key] = {
+            pc,
+            sendStream: sendable.sendStream,
+            ownsSendTracks: sendable.ownsTracks,
+          };
+
+          pc.setRemoteDescription(new RTCSessionDescription(offer))
+            .then(() => pc.createAnswer())
+            .then((answer: any) => {
+              logSdpDirections(`answer->${from}`, answer?.sdp);
+              return pc.setLocalDescription(answer);
+            })
             .then(() => {
               wsSend({
                 type: 'live:answer',
                 sessionId,
-                answer: peer!.pc.localDescription,
+                answer: pc.localDescription,
                 from: user!.id,
                 to: from,
               });
@@ -766,11 +1138,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
           setBroadcasters((prev) =>
             prev.filter((b) => String(b.userId) !== String(broadcasterId))
           );
-          const peer = peersRef.current[String(broadcasterId)];
-          if (peer) {
-            peer.pc.close();
-            delete peersRef.current[String(broadcasterId)];
-          }
+          closePeer(String(broadcasterId));
           break;
         }
 
@@ -792,6 +1160,14 @@ export function LiveProvider({ children }: { children: ReactNode }) {
       addFloatingReaction,
       isBroadcaster,
       createPeerToBroadcaster,
+      closePeer,
+      closeAllPeers,
+      addSendableTracksTo,
+      attachOnTrack,
+      acquireLocalMedia,
+      publishPreviewUrl,
+      applyRole,
+      applyIsBroadcaster,
     ]
   );
 
@@ -811,8 +1187,10 @@ export function LiveProvider({ children }: { children: ReactNode }) {
       'live:ice_candidate',
       'live:new_broadcaster',
       'live:existing_broadcasters',
+      'live:existing_viewers',
       'live:current_broadcasters',
       'live:broadcaster_left',
+      'live:peer_reset',
       'live:request_broadcast',
       'live:request_approved',
       'live:request_rejected',
@@ -830,27 +1208,28 @@ export function LiveProvider({ children }: { children: ReactNode }) {
   }, [loadActiveSessions]);
 
   // ── Cleanup ──
+  // Legitimate stop point #2: provider unmount.
   useEffect(() => {
     return () => {
-      Object.values(peersRef.current).forEach((p) => p.pc.close());
-      if (localStreamRef.current) {
-        localStreamRef.current.getTracks().forEach((t) => t.stop());
-      }
+      closeAllPeers();
+      releaseLocalMedia(false); // no setState during unmount
       if (reactionTimerRef.current) clearTimeout(reactionTimerRef.current);
     };
-  }, []);
+  }, [closeAllPeers, releaseLocalMedia]);
 
   const value: LiveContextValue = {
     activeSessions,
     isLoadingSessions,
     role,
     sessionId,
+    hostId,
     title,
     broadcasterName,
     broadcasterAvatar,
     viewerCount,
     chatMessages,
     localStream: localStreamRef.current,
+    localPreviewUrl,
     broadcasters,
     isBroadcaster,
     requestingToBroadcast,
