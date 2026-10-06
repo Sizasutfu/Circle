@@ -14,6 +14,7 @@ import {
   mediaDevices,
   MediaStream,
 } from 'react-native-webrtc';
+import InCallManager from 'react-native-incall-manager';
 import { Alert } from 'react-native';
 import { useAuth } from './AuthContext';
 import { useWs } from './WsContext';
@@ -274,6 +275,29 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     setIsBroadcaster(v);
   }, []);
 
+  // ── Audio routing (loudspeaker for the whole live session) ──
+  const startAudioRouting = useCallback(() => {
+    try {
+      InCallManager.start({ media: 'video' });
+      InCallManager.setForceSpeakerphoneOn(true);
+      InCallManager.setSpeakerphoneOn(true);
+      console.log('[Live] audio routed to loudspeaker');
+    } catch (e) {
+      console.warn('[Live] InCallManager start failed', e);
+    }
+  }, []);
+
+  const stopAudioRouting = useCallback(() => {
+    try {
+      InCallManager.setForceSpeakerphoneOn(false);
+      InCallManager.setSpeakerphoneOn(false);
+      InCallManager.stop();
+      console.log('[Live] audio routing stopped');
+    } catch (e) {
+      console.warn('[Live] InCallManager stop failed', e);
+    }
+  }, []);
+
   // Resolve + cache the preview URL ONCE per preview stream.
   const publishPreviewUrl = useCallback((stream: MediaStream | null) => {
     const url =
@@ -480,6 +504,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     try {
       if (localStreamRef.current) releaseLocalMedia(); // leftover from an abandoned setup
       await acquireLocalMedia();
+      startAudioRouting();
       log('Media stream acquired');
     } catch (err: any) {
       console.error('[Live] Camera/mic error:', err);
@@ -487,7 +512,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
         'Could not access camera/microphone: ' + (err?.message || 'unknown error')
       );
     }
-  }, [user, acquireLocalMedia, releaseLocalMedia]);
+  }, [user, acquireLocalMedia, releaseLocalMedia, startAudioRouting]);
 
   // ── Close setup ──
   // Guarded by refs (not React state) so a stale closure can never stop the
@@ -504,7 +529,8 @@ export function LiveProvider({ children }: { children: ReactNode }) {
       return;
     }
     if (localStreamRef.current) releaseLocalMedia();
-  }, [releaseLocalMedia]);
+    stopAudioRouting();
+  }, [releaseLocalMedia, stopAudioRouting]);
 
   // ── Start live ──
   const startLive = useCallback(
@@ -563,13 +589,14 @@ export function LiveProvider({ children }: { children: ReactNode }) {
           hostId: user!.id,
           collaborationEnabled,
         });
+        startAudioRouting();
         log('Live started', sid);
       } catch (err: any) {
         console.error('[Live] Failed to start:', err);
         Alert.alert('Error', err?.response?.data?.message || 'Could not start stream.');
       }
     },
-    [user, wsSend, collaborationEnabled, applyRole, applyIsBroadcaster, publishPreviewUrl]
+    [user, wsSend, collaborationEnabled, applyRole, applyIsBroadcaster, publishPreviewUrl, startAudioRouting]
   );
 
   // ── Watch session ──
@@ -606,8 +633,9 @@ export function LiveProvider({ children }: { children: ReactNode }) {
         viewerId: user.id,
         viewerName: user.username || user.name || null,
       });
+      startAudioRouting();
     },
-    [user, wsSend, applyRole, applyIsBroadcaster, closeAllPeers]
+    [user, wsSend, applyRole, applyIsBroadcaster, closeAllPeers, startAudioRouting]
   );
 
   // ── Close live ──
@@ -637,6 +665,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     closeAllPeers();
     pendingPeersRef.current.clear();
 
+    stopAudioRouting();
     setIsOverlayOpen(false);
     applyRole(null);
     applyIsBroadcaster(false);
@@ -656,7 +685,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     releaseLocalMedia();
     setMicMuted(false);
     setCamOff(false);
-  }, [sessionId, user, wsSend, closeAllPeers, releaseLocalMedia, applyRole, applyIsBroadcaster]);
+  }, [sessionId, user, wsSend, closeAllPeers, releaseLocalMedia, applyRole, applyIsBroadcaster, stopAudioRouting]);
 
   // ── Toggles ── (flip the preview AND every outgoing track)
   const toggleMic = useCallback(() => {
@@ -987,6 +1016,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
 
               applyIsBroadcaster(true);
               applyRole('broadcaster');
+              startAudioRouting();
               setRequestingToBroadcast(false);
               setMicMuted(false);
               setCamOff(false);
@@ -1168,6 +1198,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
       publishPreviewUrl,
       applyRole,
       applyIsBroadcaster,
+      startAudioRouting,
     ]
   );
 
@@ -1213,9 +1244,10 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     return () => {
       closeAllPeers();
       releaseLocalMedia(false); // no setState during unmount
+      stopAudioRouting();
       if (reactionTimerRef.current) clearTimeout(reactionTimerRef.current);
     };
-  }, [closeAllPeers, releaseLocalMedia]);
+  }, [closeAllPeers, releaseLocalMedia, stopAudioRouting]);
 
   const value: LiveContextValue = {
     activeSessions,
