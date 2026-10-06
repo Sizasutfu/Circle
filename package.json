@@ -20,6 +20,7 @@
     "@tanstack/react-query": "^5.101.4",
     "axios": "^1.19.0",
     "expo": "~54.0.36",
+    "expo-asset": "~12.0.13",
     "expo-audio": "~1.1.1",
     "expo-auth-session": "~7.0.11",
     "expo-av": "~16.0.8",
@@ -73,6 +74,20 @@
     "babel-preset-expo": "~54.0.10",
     "tailwindcss": "^3.4.0",
     "typescript": "~5.9.2"
+  },
+  "overrides": {
+    "expo-asset": "~12.0.13",
+    "expo-constants": "~18.0.14"
+  },
+  "expo": {
+    "doctor": {
+      "reactNativeDirectoryCheck": {
+        "exclude": [
+          "react-native-incall-manager",
+          "react-native-webrtc"
+        ]
+      }
+    }
   },
   "private": true
 }
