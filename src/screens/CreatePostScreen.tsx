@@ -18,6 +18,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
 import { useNavigation, CommonActions } from '@react-navigation/native';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
@@ -38,6 +39,7 @@ interface TrackItem {
   uri: string;
   filename: string;
   size?: number;
+  mimeType?: string;
   title: string;
   artist: string;
   status: TrackStatus;
@@ -442,18 +444,75 @@ export default function CreatePostScreen() {
     setTimeout(() => inputRef.current?.focus(), 60);
   };
 
-  // Music: file picking is stubbed until the next native build.
-  // The full pipeline (parse → queue → upload) is intact below; only
-  // the file picker is missing.
-  const showMusicComingSoon = () => {
-    Alert.alert(
-      'Coming soon',
-      'Music upload will be available in the next app build.'
-    );
-  };
+  // ── Music: file picking ─────────────────────────────────────
+  const pickAudioFiles = async () => {
+    if (loading) return;
 
-  const handlePickedAudio = (_files: any[]) => {
-    showMusicComingSoon();
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'audio/*',
+        multiple: true,
+        copyToCacheDirectory: true,
+      });
+
+      // Handle both old & new API shapes defensively
+      const canceled =
+        (result as any).canceled ?? (result as any).type === 'cancel';
+      if (canceled) return;
+
+      const assets: any[] =
+        (result as any).assets ??
+        ((result as any).type === 'success' ? [result] : []);
+
+      if (!assets.length) return;
+
+      const picked: TrackItem[] = [];
+      const rejected: string[] = [];
+
+      for (const asset of assets) {
+        const uri: string = asset.uri;
+        const filename: string =
+          asset.name || uri.split('/').pop() || `track-${Date.now()}.mp3`;
+        const size: number | undefined =
+          typeof asset.size === 'number' ? asset.size : undefined;
+
+        if (size && size > MAX_AUDIO_SIZE) {
+          rejected.push(filename);
+          continue;
+        }
+
+        const { title, artist } = parseFilename(filename);
+
+        picked.push({
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          uri,
+          filename,
+          size,
+          mimeType: asset.mimeType,
+          title,
+          artist,
+          status: 'ready',
+          progress: 0,
+          error: null,
+        });
+      }
+
+      if (picked.length) {
+        setTracks((prev) => [...prev, ...picked]);
+      }
+
+      if (rejected.length) {
+        Alert.alert(
+          'Some files skipped',
+          `These exceed the ${formatBytes(MAX_AUDIO_SIZE)} limit:\n\n${rejected.join(
+            '\n'
+          )}`
+        );
+      }
+    } catch (err: any) {
+      console.error('Audio pick error:', err);
+      Alert.alert('Error', 'Could not open the file picker.');
+    }
   };
 
   const updateTrack = (id: string, patch: Partial<TrackItem>) => {
@@ -486,7 +545,7 @@ export default function CreatePostScreen() {
       formData.append('audio', {
         uri: item.uri,
         name: item.filename,
-        type: 'audio/mpeg',
+        type: item.mimeType || 'audio/mpeg',
       } as any);
       formData.append('title', item.title.trim());
       if (item.artist.trim()) formData.append('artist', item.artist.trim());
@@ -1163,19 +1222,20 @@ export default function CreatePostScreen() {
         {mode === 'music' && (
           <>
             <TouchableOpacity
-              onPress={showMusicComingSoon}
+              onPress={pickAudioFiles}
               disabled={loading}
+              activeOpacity={0.8}
               style={[
                 styles.musicDropZone,
                 { borderColor: colors.border, backgroundColor: colors.background },
               ]}
             >
-              <Feather name="plus-circle" size={32} color={colors.textMuted} />
+              <Feather name="plus-circle" size={32} color={colors.primary} />
               <Text style={[styles.musicDropTitle, { color: colors.text }]}>
                 Pick from your device
               </Text>
               <Text style={[styles.musicDropSubtitle, { color: colors.textMuted }]}>
-                Available in the next app build
+                MP3, M4A, WAV — up to {formatBytes(MAX_AUDIO_SIZE)} per file
               </Text>
             </TouchableOpacity>
 
@@ -1201,8 +1261,8 @@ export default function CreatePostScreen() {
                 <Text
                   style={[styles.musicEmptyHintText, { color: colors.textMuted }]}
                 >
-                  File picking needs a native rebuild. The rest of the upload
-                  pipeline is ready — it just needs a picker to feed it.
+                  Add one or more audio files. Titles are auto-filled from the
+                  filename, and you can edit them before uploading.
                 </Text>
               </View>
             )}
