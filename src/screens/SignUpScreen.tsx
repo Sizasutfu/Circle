@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,11 @@ import {
   Platform,
   ScrollView,
   Alert,
+  BackHandler,
+  Keyboard,
+  Animated,
   StyleSheet,
+  TextInputProps,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -17,89 +21,260 @@ import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 
+const TOTAL_STEPS = 5;
+
+// Define the shape of a single step
+type Step = {
+  key: string;
+  label: string;
+  icon: React.ComponentProps<typeof Feather>['name'];
+  placeholder: string;
+  value: string;
+  setValue: React.Dispatch<React.SetStateAction<string>>;
+  autoCapitalize?: TextInputProps['autoCapitalize'];
+  keyboardType?: TextInputProps['keyboardType'];
+  helper: string | null;
+  isPassword: boolean;
+};
+
 export default function SignUpScreen() {
   const navigation = useNavigation();
   const { register } = useAuth();
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
 
+  // Field values
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+
+  // Wizard state
+  const [step, setStep] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [focused, setFocused] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const [nameFocused, setNameFocused] = useState(false);
-  const [usernameFocused, setUsernameFocused] = useState(false);
-  const [emailFocused, setEmailFocused] = useState(false);
-  const [passwordFocused, setPasswordFocused] = useState(false);
-  const [confirmFocused, setConfirmFocused] = useState(false);
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const slideAnim = useRef(new Animated.Value(0)).current;
 
+  const steps: Step[] = [
+    {
+      key: 'name',
+      label: 'Full Name',
+      icon: 'user',
+      placeholder: 'John Doe',
+      value: name,
+      setValue: setName,
+      autoCapitalize: 'words',
+      keyboardType: 'default',
+      helper: null,
+      isPassword: false,
+    },
+    {
+      key: 'username',
+      label: 'Username',
+      icon: 'at-sign',
+      placeholder: 'johndoe',
+      value: username,
+      setValue: setUsername,
+      autoCapitalize: 'none',
+      keyboardType: 'default',
+      helper: 'Letters, numbers, and underscores only.',
+      isPassword: false,
+    },
+    {
+      key: 'email',
+      label: 'Email',
+      icon: 'mail',
+      placeholder: 'you@example.com',
+      value: email,
+      setValue: setEmail,
+      autoCapitalize: 'none',
+      keyboardType: 'email-address',
+      helper: null,
+      isPassword: false,
+    },
+    {
+      key: 'password',
+      label: 'Password',
+      icon: 'lock',
+      placeholder: '••••••••',
+      value: password,
+      setValue: setPassword,
+      autoCapitalize: 'none',
+      keyboardType: 'default',
+      helper: 'Must be at least 8 characters.',
+      isPassword: true,
+    },
+    {
+      key: 'confirmPassword',
+      label: 'Confirm Password',
+      icon: 'lock',
+      placeholder: '••••••••',
+      value: confirmPassword,
+      setValue: setConfirmPassword,
+      autoCapitalize: 'none',
+      keyboardType: 'default',
+      helper: null,
+      isPassword: true,
+    },
+  ];
+
+  const current = steps[step];
+  const isLastStep = step === TOTAL_STEPS - 1;
+
+  /* ------------------------------------------------------------------ */
+  /* Validation                                                          */
+  /* ------------------------------------------------------------------ */
+  const validateStep = (index: number): string | null => {
+    switch (index) {
+      case 0:
+        if (!name.trim()) return 'Please enter your full name.';
+        return null;
+
+      case 1: {
+        const value = username.trim();
+        if (!value) return 'Please choose a username.';
+        if (value.length < 3) return 'Username must be at least 3 characters.';
+        if (!/^[a-zA-Z0-9_]+$/.test(value))
+          return 'Username can only contain letters, numbers, and underscores.';
+        return null;
+      }
+
+      case 2: {
+        const value = email.trim();
+        if (!value) return 'Please enter your email address.';
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value))
+          return 'Please enter a valid email address.';
+        return null;
+      }
+
+      case 3:
+        if (!password) return 'Please create a password.';
+        if (password.length < 8) return 'Password must be at least 8 characters.';
+        return null;
+
+      case 4:
+        if (!confirmPassword) return 'Please confirm your password.';
+        if (confirmPassword !== password) return 'Passwords do not match.';
+        return null;
+
+      default:
+        return null;
+    }
+  };
+
+  /* ------------------------------------------------------------------ */
+  /* Navigation between steps                                            */
+  /* ------------------------------------------------------------------ */
+  const handleNext = () => {
+    const message = validateStep(step);
+    if (message) {
+      setError(message);
+      return;
+    }
+    setError(null);
+    if (step < TOTAL_STEPS - 1) setStep(step + 1);
+  };
+
+  const handleBack = () => {
+    if (loading) return;
+    if (step > 0) {
+      setError(null);
+      setStep(step - 1);
+    } else {
+      navigation.goBack();
+    }
+  };
+
+  const handlePrimaryAction = () => {
+    if (isLastStep) {
+      handleSignUp();
+    } else {
+      handleNext();
+    }
+  };
+
+  /* ------------------------------------------------------------------ */
+  /* Submit                                                              */
+  /* ------------------------------------------------------------------ */
   const handleSignUp = async () => {
-    const trimmedName = name.trim();
-    const trimmedUsername = username.trim();
-    const trimmedEmail = email.trim();
-    const trimmedPassword = password.trim();
-
-    if (!trimmedName) {
-      Alert.alert('Error', 'Please enter your full name.');
-      return;
-    }
-    if (!trimmedUsername) {
-      Alert.alert('Error', 'Please choose a username.');
-      return;
-    }
-    if (trimmedUsername.length < 3) {
-      Alert.alert('Error', 'Username must be at least 3 characters.');
-      return;
-    }
-    if (!/^[a-zA-Z0-9_]+$/.test(trimmedUsername)) {
-      Alert.alert('Error', 'Username can only contain letters, numbers, and underscores.');
-      return;
-    }
-    if (!trimmedEmail) {
-      Alert.alert('Error', 'Please enter your email address.');
-      return;
-    }
-    if (!trimmedEmail.includes('@') || !trimmedEmail.includes('.')) {
-      Alert.alert('Error', 'Please enter a valid email address.');
-      return;
-    }
-    if (!trimmedPassword) {
-      Alert.alert('Error', 'Please create a password.');
-      return;
-    }
-    if (trimmedPassword.length < 8) {
-      Alert.alert('Error', 'Password must be at least 8 characters.');
-      return;
-    }
-    if (trimmedPassword !== confirmPassword.trim()) {
-      Alert.alert('Error', 'Passwords do not match.');
-      return;
+    // Safety net: re-validate every step (handles "back then forward" edits)
+    for (let i = 0; i < TOTAL_STEPS; i++) {
+      const message = validateStep(i);
+      if (message) {
+        setStep(i);
+        setError(message);
+        return;
+      }
     }
 
+    setError(null);
+    Keyboard.dismiss();
     setLoading(true);
+
     try {
       await register({
-        name: trimmedName,
-        username: trimmedUsername,
-        email: trimmedEmail,
-        password: trimmedPassword,
+        name: name.trim(),
+        username: username.trim(),
+        email: email.trim(),
+        password,
       });
-    } catch (error: any) {
-      const message = error.response?.data?.message || 'Registration failed. Please try again.';
+    } catch (err: any) {
+      const message =
+        err.response?.data?.message || 'Registration failed. Please try again.';
       Alert.alert('Sign Up Failed', message);
     } finally {
       setLoading(false);
     }
   };
 
-  const goToLogin = () => {
-    navigation.goBack();
-  };
+  /* ------------------------------------------------------------------ */
+  /* Effects                                                             */
+  /* ------------------------------------------------------------------ */
 
+  // Animate + reset per-step UI state whenever the step changes
+  useEffect(() => {
+    setShowPassword(false);
+    setError(null);
+
+    fadeAnim.setValue(0);
+    slideAnim.setValue(16);
+
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 220,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 220,
+        useNativeDriver: true,
+      }),
+    ]).start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
+
+  // Android hardware back goes to the previous step instead of leaving the screen
+  useEffect(() => {
+    const onBackPress = () => {
+      if (step > 0) {
+        setError(null);
+        setStep(step - 1);
+        return true;
+      }
+      return false;
+    };
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => sub.remove();
+  }, [step]);
+
+  /* ------------------------------------------------------------------ */
+  /* Render                                                              */
+  /* ------------------------------------------------------------------ */
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <KeyboardAvoidingView
@@ -111,9 +286,32 @@ export default function SignUpScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          <TouchableOpacity style={styles.backButton} onPress={goToLogin}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={handleBack}
+            disabled={loading}
+          >
             <Feather name="arrow-left" size={24} color={colors.text} />
           </TouchableOpacity>
+
+          {/* Progress */}
+          <View style={styles.progressRow}>
+            {steps.map((s, i) => (
+              <View
+                key={s.key}
+                style={[
+                  styles.progressSegment,
+                  {
+                    backgroundColor:
+                      i <= step ? colors.primary : colors.inputBorder,
+                  },
+                ]}
+              />
+            ))}
+          </View>
+          <Text style={[styles.stepText, { color: colors.textMuted }]}>
+            Step {step + 1} of {TOTAL_STEPS}
+          </Text>
 
           <View style={styles.headerContainer}>
             <Text style={[styles.title, { color: colors.text }]}>Create Account</Text>
@@ -123,176 +321,128 @@ export default function SignUpScreen() {
           </View>
 
           <View style={styles.formContainer}>
-            {/* Full Name */}
-            <View style={styles.inputWrapper}>
-              <Text style={[styles.inputLabel, { color: colors.text }]}>Full Name</Text>
-              <View style={[
-                styles.inputContainer, 
-                { 
-                  backgroundColor: colors.input, 
-                  borderColor: nameFocused ? colors.primary : colors.inputBorder 
-                },
-                nameFocused && styles.inputFocused
-              ]}>
-                <Feather name="user" size={20} color={colors.textMuted} style={styles.inputIcon} />
-                <TextInput
-                  style={[styles.input, { color: colors.text }]}
-                  placeholder="John Doe"
-                  placeholderTextColor={colors.placeholder}
-                  value={name}
-                  onChangeText={setName}
-                  onFocus={() => setNameFocused(true)}
-                  onBlur={() => setNameFocused(false)}
-                  autoCapitalize="words"
-                  editable={!loading}
-                />
-              </View>
-            </View>
+            {/* Current step input */}
+            <Animated.View
+              key={current.key}
+              style={{
+                opacity: fadeAnim,
+                transform: [{ translateX: slideAnim }],
+              }}
+            >
+              <View style={styles.inputWrapper}>
+                <Text style={[styles.inputLabel, { color: colors.text }]}>
+                  {current.label}
+                </Text>
 
-            {/* Username */}
-            <View style={styles.inputWrapper}>
-              <Text style={[styles.inputLabel, { color: colors.text }]}>Username</Text>
-              <View style={[
-                styles.inputContainer, 
-                { 
-                  backgroundColor: colors.input, 
-                  borderColor: usernameFocused ? colors.primary : colors.inputBorder 
-                },
-                usernameFocused && styles.inputFocused
-              ]}>
-                <Feather name="at-sign" size={20} color={colors.textMuted} style={styles.inputIcon} />
-                <TextInput
-                  style={[styles.input, { color: colors.text }]}
-                  placeholder="johndoe"
-                  placeholderTextColor={colors.placeholder}
-                  value={username}
-                  onChangeText={setUsername}
-                  onFocus={() => setUsernameFocused(true)}
-                  onBlur={() => setUsernameFocused(false)}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  editable={!loading}
-                />
-              </View>
-              <Text style={[styles.helperText, { color: colors.textMuted }]}>Letters, numbers, and underscores only.</Text>
-            </View>
+                <View
+                  style={[
+                    styles.inputContainer,
+                    {
+                      backgroundColor: colors.input,
+                      borderColor: error
+                        ? '#EF4444'
+                        : focused
+                        ? colors.primary
+                        : colors.inputBorder,
+                    },
+                  ]}
+                >
+                  <Feather
+                    name={current.icon}
+                    size={20}
+                    color={colors.textMuted}
+                    style={styles.inputIcon}
+                  />
+                  <TextInput
+                    style={[styles.input, { color: colors.text }]}
+                    placeholder={current.placeholder}
+                    placeholderTextColor={colors.placeholder}
+                    value={current.value}
+                    onChangeText={(text) => {
+                      current.setValue(text);
+                      if (error) setError(null);
+                    }}
+                    onFocus={() => setFocused(true)}
+                    onBlur={() => setFocused(false)}
+                    autoFocus
+                    autoCapitalize={current.autoCapitalize}
+                    autoCorrect={false}
+                    keyboardType={current.keyboardType}
+                    secureTextEntry={current.isPassword && !showPassword}
+                    editable={!loading}
+                    returnKeyType={isLastStep ? 'done' : 'next'}
+                    onSubmitEditing={handlePrimaryAction}
+                    blurOnSubmit={false}
+                  />
+                  {current.isPassword && (
+                    <TouchableOpacity
+                      onPress={() => setShowPassword((v) => !v)}
+                      style={styles.eyeButton}
+                    >
+                      <Feather
+                        name={showPassword ? 'eye' : 'eye-off'}
+                        size={20}
+                        color={colors.textMuted}
+                      />
+                    </TouchableOpacity>
+                  )}
+                </View>
 
-            {/* Email */}
-            <View style={styles.inputWrapper}>
-              <Text style={[styles.inputLabel, { color: colors.text }]}>Email</Text>
-              <View style={[
-                styles.inputContainer, 
-                { 
-                  backgroundColor: colors.input, 
-                  borderColor: emailFocused ? colors.primary : colors.inputBorder 
-                },
-                emailFocused && styles.inputFocused
-              ]}>
-                <Feather name="mail" size={20} color={colors.textMuted} style={styles.inputIcon} />
-                <TextInput
-                  style={[styles.input, { color: colors.text }]}
-                  placeholder="you@example.com"
-                  placeholderTextColor={colors.placeholder}
-                  value={email}
-                  onChangeText={setEmail}
-                  onFocus={() => setEmailFocused(true)}
-                  onBlur={() => setEmailFocused(false)}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  editable={!loading}
-                />
+                {error ? (
+                  <Text style={styles.errorText}>{error}</Text>
+                ) : current.helper ? (
+                  <Text style={[styles.helperText, { color: colors.textMuted }]}>
+                    {current.helper}
+                  </Text>
+                ) : null}
               </View>
-            </View>
+            </Animated.View>
 
-            {/* Password */}
-            <View style={styles.inputWrapper}>
-              <Text style={[styles.inputLabel, { color: colors.text }]}>Password</Text>
-              <View style={[
-                styles.inputContainer, 
-                { 
-                  backgroundColor: colors.input, 
-                  borderColor: passwordFocused ? colors.primary : colors.inputBorder 
-                },
-                passwordFocused && styles.inputFocused
-              ]}>
-                <Feather name="lock" size={20} color={colors.textMuted} style={styles.inputIcon} />
-                <TextInput
-                  style={[styles.input, { color: colors.text }]}
-                  placeholder="••••••••"
-                  placeholderTextColor={colors.placeholder}
-                  value={password}
-                  onChangeText={setPassword}
-                  onFocus={() => setPasswordFocused(true)}
-                  onBlur={() => setPasswordFocused(false)}
-                  secureTextEntry={!showPassword}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  editable={!loading}
-                />
-                <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeButton}>
-                  <Feather name={showPassword ? 'eye' : 'eye-off'} size={20} color={colors.textMuted} />
-                </TouchableOpacity>
-              </View>
-              <Text style={[styles.helperText, { color: colors.textMuted }]}>Must be at least 8 characters.</Text>
-            </View>
-
-            {/* Confirm Password */}
-            <View style={styles.inputWrapper}>
-              <Text style={[styles.inputLabel, { color: colors.text }]}>Confirm Password</Text>
-              <View style={[
-                styles.inputContainer, 
-                { 
-                  backgroundColor: colors.input, 
-                  borderColor: confirmFocused ? colors.primary : colors.inputBorder 
-                },
-                confirmFocused && styles.inputFocused
-              ]}>
-                <Feather name="lock" size={20} color={colors.textMuted} style={styles.inputIcon} />
-                <TextInput
-                  style={[styles.input, { color: colors.text }]}
-                  placeholder="••••••••"
-                  placeholderTextColor={colors.placeholder}
-                  value={confirmPassword}
-                  onChangeText={setConfirmPassword}
-                  onFocus={() => setConfirmFocused(true)}
-                  onBlur={() => setConfirmFocused(false)}
-                  secureTextEntry={!showConfirmPassword}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  editable={!loading}
-                />
-                <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)} style={styles.eyeButton}>
-                  <Feather name={showConfirmPassword ? 'eye' : 'eye-off'} size={20} color={colors.textMuted} />
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {/* Sign Up Button */}
+            {/* Primary action: Next → Create Account */}
             <TouchableOpacity
-              style={[styles.signUpButton, { backgroundColor: colors.primary }, loading && styles.signUpButtonDisabled]}
-              onPress={handleSignUp}
+              style={[
+                styles.signUpButton,
+                { backgroundColor: colors.primary },
+                loading && styles.signUpButtonDisabled,
+              ]}
+              onPress={handlePrimaryAction}
               disabled={loading}
               activeOpacity={0.8}
             >
               {loading ? (
                 <ActivityIndicator color="white" size="small" />
               ) : (
-                <Text style={styles.signUpButtonText}>Create Account</Text>
+                <Text style={styles.signUpButtonText}>
+                  {isLastStep ? 'Create Account' : 'Next'}
+                </Text>
               )}
             </TouchableOpacity>
 
-            {/* Terms */}
-            <Text style={[styles.termsText, { color: colors.textSecondary }]}>
-              By signing up, you agree to our{' '}
-              <Text style={[styles.termsLink, { color: colors.primary }]}>Terms of Service</Text> and{' '}
-              <Text style={[styles.termsLink, { color: colors.primary }]}>Privacy Policy</Text>.
-            </Text>
+            {/* Terms — only on the final step */}
+            {isLastStep && (
+              <Text style={[styles.termsText, { color: colors.textSecondary }]}>
+                By signing up, you agree to our{' '}
+                <Text style={[styles.termsLink, { color: colors.primary }]}>
+                  Terms of Service
+                </Text>{' '}
+                and{' '}
+                <Text style={[styles.termsLink, { color: colors.primary }]}>
+                  Privacy Policy
+                </Text>
+                .
+              </Text>
+            )}
 
-            {/* Login Link */}
-            <TouchableOpacity style={styles.loginLink} onPress={goToLogin} disabled={loading}>
+            <TouchableOpacity
+              style={styles.loginLink}
+              onPress={() => navigation.goBack()}
+              disabled={loading}
+            >
               <Text style={[styles.loginLinkText, { color: colors.textSecondary }]}>
-                Already have an account? <Text style={[styles.loginLinkHighlight, { color: colors.primary }]}>Log In</Text>
+                Already have an account?{' '}
+                <Text style={[styles.loginLinkHighlight, { color: colors.primary }]}>
+                  Log In
+                </Text>
               </Text>
             </TouchableOpacity>
           </View>
@@ -319,8 +469,25 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     alignSelf: 'flex-start',
   },
+  progressRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 4,
+    marginBottom: 8,
+  },
+  progressSegment: {
+    flex: 1,
+    height: 4,
+    borderRadius: 2,
+  },
+  stepText: {
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    marginBottom: 20,
+  },
   headerContainer: {
-    marginTop: 16,
     marginBottom: 24,
   },
   title: {
@@ -368,6 +535,11 @@ const styles = StyleSheet.create({
   helperText: {
     fontSize: 12,
     marginTop: 4,
+  },
+  errorText: {
+    fontSize: 12,
+    marginTop: 4,
+    color: '#EF4444',
   },
   signUpButton: {
     borderRadius: 12,
