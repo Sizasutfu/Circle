@@ -19,7 +19,7 @@ import { useWhisper, WhisperMessage } from '../contexts/WhisperContext';
 import { timeAgo } from '../utils/helpers';
 
 // Public base URL for shareable links (your web app)
-const PUBLIC_WEB_URL = 'https://your-web-app.com'; // ← change to your real URL
+const PUBLIC_WEB_URL = process.env.EXPO_PUBLIC_WEB_URL // ← change to your real URL
 
 export default function WhisperInboxScreen() {
   const navigation = useNavigation();
