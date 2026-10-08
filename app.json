@@ -23,7 +23,8 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "com.sizacode.circle",
-      "permissions": ["POST_NOTIFICATIONS"],
+      "softwareKeyboardLayoutMode": "resize",
+      "permissions": ["POST_NOTIFICATIONS", "android.permission.RECORD_AUDIO", "android.permission.MODIFY_AUDIO_SETTINGS"],
       "googleServicesFile": "./google-services.json"
     },
     "web": {
@@ -34,7 +35,6 @@
       "expo-secure-store",
       "expo-video",
       "expo-audio",
-     
       [
         "expo-notifications",
         {
