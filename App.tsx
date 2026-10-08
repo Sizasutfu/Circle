@@ -8,7 +8,7 @@ import { WhisperProvider } from './src/contexts/WhisperContext';
 import { LiveProvider } from './src/contexts/LiveContext';
 import { GroupsProvider } from './src/contexts/GroupsContext';
 import AppNavigator from './src/navigation/AppNavigator';
-import { usePushNotifications } from './src/hooks/usePushNotifications';
+//import { usePushNotifications } from './src/hooks/usePushNotifications';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -21,10 +21,10 @@ const queryClient = new QueryClient({
 
 // Must be inside AuthProvider (needs useAuth) and after AppNavigator
 // has mounted so navigationRef is attached.
-function PushBootstrap() {
-  usePushNotifications();
-  return null;
-}
+// function PushBootstrap() {
+//   usePushNotifications();
+//   return null;
+// }
 
 export default function App() {
   return (
@@ -37,7 +37,7 @@ export default function App() {
                 <LiveProvider>
                   <GroupsProvider>
                     <AppNavigator />
-                    <PushBootstrap />
+                    {/* <PushBootstrap /> */}
                   </GroupsProvider>
                 </LiveProvider>
               </WhisperProvider>
