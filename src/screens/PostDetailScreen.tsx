@@ -25,6 +25,7 @@ import VerificationBadge from '../components/VerificationBadge';
 import api from '../api/client';
 import { timeAgo } from '../utils/helpers';
 import { resolveMediaUrl } from '../lib/media';
+import { usePostEngagementTracking } from '../hooks/usePostEngagementTracking';
 
 // ===== TYPES =====
 interface RouteParams {
@@ -59,6 +60,9 @@ export default function PostDetailScreen() {
   const { colors, isDark } = useTheme();
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
+
+  // Track views / skips / dwell time on this post
+  usePostEngagementTracking(postId);
 
   const [commentText, setCommentText] = useState('');
   const [isSendingComment, setIsSendingComment] = useState(false);

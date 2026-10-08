@@ -20,6 +20,7 @@ import { useFeed } from '../hooks/useFeed';
 import { useTabBarHeight } from '../hooks/useTabBarHeight';
 import { useTabBarHideOnScroll } from '../hooks/useTabBarHideOnScroll';
 import { useVisibleItems } from '../hooks/useVisibleItems';
+import { useFeedEngagementTracking } from '../hooks/useFeedEngagementTracking';
 import PostCard, { Post } from '../components/PostCard';
 import PostCardSkeleton, { PostCardSkeletonList } from '../components/PostCardSkeleton';
 import { useWs } from '../contexts/WsContext';
@@ -55,7 +56,14 @@ export default function FeedScreen() {
   const queryClient = useQueryClient();
 
   // ✅ Track which posts are actually on screen so videos can pause
-  const { visibleIds, viewabilityConfig, onViewableItemsChanged } = useVisibleItems();
+  const {
+    visibleIds,
+    viewabilityConfig,
+    onViewableItemsChanged: onVisibleItemsChanged,
+  } = useVisibleItems();
+
+  // ✅ Feed-level view / skip tracking
+  const { onViewableItemsChanged: onEngagementChanged } = useFeedEngagementTracking();
 
   // ✅ Live context
   const { openSetup } = useLive();
@@ -93,6 +101,27 @@ export default function FeedScreen() {
       _key: `${p.id}-${index}`,
     }));
   }, [data]);
+
+  // ── Merged viewability callback ──
+  // FlatList accepts only one onViewableItemsChanged. This chains the
+  // existing isVisible tracker with the engagement tracker. Stable via
+  // useRef so FlatList doesn't throw.
+  const mergedViewabilityCallback = useRef((info: any) => {
+    if (typeof onVisibleItemsChanged === 'function') {
+      try {
+        onVisibleItemsChanged(info);
+      } catch (err) {
+        console.warn('[FeedScreen] visibleItems callback error:', err);
+      }
+    }
+    if (typeof onEngagementChanged === 'function') {
+      try {
+        onEngagementChanged(info);
+      } catch (err) {
+        console.warn('[FeedScreen] engagement callback error:', err);
+      }
+    }
+  }).current;
 
   // ── WebSocket handlers for real-time updates ──
   useEffect(() => {
@@ -198,7 +227,6 @@ export default function FeedScreen() {
     }
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
-  // Pass a real isVisible flag so PostCard can pause off-screen videos.
   const renderItem = useCallback(
     ({ item }: { item: FeedPost }) => (
       <PostCard post={item} isVisible={visibleIds.has(String(item.id))} />
@@ -251,7 +279,6 @@ export default function FeedScreen() {
           lastScrollY.current = currentScrollY;
         }
 
-        // ✅ Hide / show tab bar based on scroll direction
         handleTabBarScroll(event);
       },
     }
@@ -424,7 +451,7 @@ export default function FeedScreen() {
         onScroll={handleScroll}
         scrollEventThrottle={16}
         viewabilityConfig={viewabilityConfig}
-        onViewableItemsChanged={onViewableItemsChanged}
+        onViewableItemsChanged={mergedViewabilityCallback}
       />
 
       <Animated.View
@@ -449,9 +476,7 @@ export default function FeedScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
+  container: { flex: 1 },
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
