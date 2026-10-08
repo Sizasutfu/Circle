@@ -21,10 +21,10 @@ import {
 } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Feather } from '@expo/vector-icons';
-import { Video, ResizeMode, AVPlaybackStatus } from 'expo-av';
+import { VideoView, useVideoPlayer } from 'expo-video';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
-import { usePostActions } from '../hooks/useFeed';
+import { usePostActions, useDeletePost } from '../hooks/useFeed';
 import { useTheme } from '../contexts/ThemeContext';
 import { useLive } from '../contexts/LiveContext';
 import { Avatar } from './Avatar';
@@ -35,7 +35,6 @@ import api from '../api/client';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-// X uses this exact red for destructive actions
 const DESTRUCTIVE = '#f4212e';
 
 // ─── Helpers ─────────────────────────────────────────────────
@@ -131,7 +130,7 @@ function throttle(fn: Function, limit: number) {
   };
 }
 
-// ─── Rich text tokenizer for mentions / hashtags / URLs ──────
+// ─── Rich text tokenizer ─────────────────────────────────────
 type RichToken =
   | { type: 'text'; value: string }
   | { type: 'mention'; value: string; username: string }
@@ -303,6 +302,7 @@ interface PostCardProps {
   isFollowing?: boolean;
   onFollowToggle?: () => void;
   isVisible?: boolean;
+  onDeleteSuccess?: () => void;
 }
 
 const throttleLinkPreview = throttle((fn: Function) => fn(), 500);
@@ -317,6 +317,7 @@ function PostCard({
   isFollowing = false,
   onFollowToggle,
   isVisible = true,
+  onDeleteSuccess,
 }: PostCardProps) {
   const navigation = useNavigation();
   const isFocused = useIsFocused();
@@ -324,6 +325,7 @@ function PostCard({
   const { user: currentUser } = useAuth();
   const { colors, isDark } = useTheme();
   const { likePost, unlikePost, repost: repostPost } = usePostActions(currentUser);
+  const { mutateAsync: deletePost } = useDeletePost();
   const { watchSession } = useLive();
 
   const {
@@ -377,7 +379,6 @@ function PostCard({
   const [previewData, setPreviewData] = useState<any>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState(false);
-  const videoRef = useRef<Video>(null);
   const videoViewRecorded = useRef(false);
   const [lightboxVisible, setLightboxVisible] = useState(false);
 
@@ -387,16 +388,116 @@ function PostCard({
   const [durationMs, setDurationMs] = useState(0);
   const [progressBarWidth, setProgressBarWidth] = useState(0);
 
-  // ── Fullscreen video state ──
   const [videoFullscreen, setVideoFullscreen] = useState(false);
-  const fullscreenVideoRef = useRef<Video>(null);
   const fsHasSeekedRef = useRef(false);
+  const fsOpenRef = useRef(false);
   const [fsIsPlaying, setFsIsPlaying] = useState(false);
   const [fsPositionMs, setFsPositionMs] = useState(0);
   const [fsDurationMs, setFsDurationMs] = useState(0);
   const [fsShowControls, setFsShowControls] = useState(true);
   const [fsProgressBarWidth, setFsProgressBarWidth] = useState(0);
   const fsControlsTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const videoPlayer = useVideoPlayer(video ?? null, (player) => {
+    player.loop = false;
+    player.muted = false;
+    player.timeUpdateEventInterval = 0.25;
+    player.pause();
+  });
+
+  const fsVideoPlayer = useVideoPlayer(video ?? null, (player) => {
+    player.loop = false;
+    player.muted = false;
+    player.timeUpdateEventInterval = 0.25;
+    player.pause();
+  });
+
+  useEffect(() => {
+    fsOpenRef.current = videoFullscreen;
+  }, [videoFullscreen]);
+
+  useEffect(() => {
+    const subs = [
+      videoPlayer.addListener('playingChange', ({ isPlaying: p }) => {
+        setIsPlaying(!!p);
+      }),
+
+      videoPlayer.addListener('timeUpdate', ({ currentTime }) => {
+        const posMs = (currentTime ?? 0) * 1000;
+        const durMs = (videoPlayer.duration ?? 0) * 1000;
+        setPositionMs(posMs);
+        if (durMs > 0) setDurationMs(durMs);
+
+        if (videoViewRecorded.current) return;
+        if (durMs > 0 && posMs / durMs > 0.3) {
+          videoViewRecorded.current = true;
+          const watchedSeconds = Math.round(posMs / 1000);
+          const duration = Math.round(durMs / 1000);
+          api.post(`/posts/${id}/video-view`, { watchedSeconds, duration })
+            .then((res) => {
+              const body = res.data?.data ?? res.data ?? {};
+              if (body?.counted && typeof body.views === 'number') {
+                setLocalVideoViews(body.views);
+              }
+            })
+            .catch(() => {});
+        }
+      }),
+
+      videoPlayer.addListener('statusChange', ({ status }) => {
+        if (status === 'readyToPlay') {
+          setDurationMs((videoPlayer.duration ?? 0) * 1000);
+        } else if (status === 'error') {
+          setVideoError(true);
+        }
+      }),
+
+      videoPlayer.addListener('playToEnd', () => {
+        videoPlayer.currentTime = 0;
+        videoPlayer.pause();
+        setIsPlaying(false);
+        setShowVideoOverlay(true);
+        setPositionMs(0);
+      }),
+    ];
+    return () => subs.forEach((s) => s.remove());
+  }, [videoPlayer, id]);
+
+  useEffect(() => {
+    const subs = [
+      fsVideoPlayer.addListener('playingChange', ({ isPlaying: p }) => {
+        setFsIsPlaying(!!p);
+      }),
+
+      fsVideoPlayer.addListener('timeUpdate', ({ currentTime }) => {
+        setFsPositionMs((currentTime ?? 0) * 1000);
+        const durMs = (fsVideoPlayer.duration ?? 0) * 1000;
+        if (durMs > 0) setFsDurationMs(durMs);
+      }),
+
+      fsVideoPlayer.addListener('statusChange', ({ status }) => {
+        if (status === 'readyToPlay') {
+          setFsDurationMs((fsVideoPlayer.duration ?? 0) * 1000);
+
+          if (fsOpenRef.current && !fsHasSeekedRef.current) {
+            fsHasSeekedRef.current = true;
+            if (fsPositionMs > 0) {
+              fsVideoPlayer.currentTime = fsPositionMs / 1000;
+            }
+            fsVideoPlayer.play();
+          }
+        }
+      }),
+
+      fsVideoPlayer.addListener('playToEnd', () => {
+        fsVideoPlayer.currentTime = 0;
+        fsVideoPlayer.pause();
+        setFsIsPlaying(false);
+        setFsShowControls(true);
+      }),
+    ];
+    return () => subs.forEach((s) => s.remove());
+  }, [fsVideoPlayer, fsPositionMs]);
 
   const isMentionedInText = useMemo(() => {
     if (!currentUser || !text) return false;
@@ -410,7 +511,6 @@ function PostCard({
   };
   const goToPostDetail = () => (navigation.navigate as any)('PostDetail', { postId: id });
 
-  // ── Sheet actions ──
   const openMenu = () => setMenuVisible(true);
   const closeMenu = () => setMenuVisible(false);
 
@@ -435,7 +535,35 @@ function PostCard({
     }, 150);
   };
 
-  // ── Rich-text press handlers ──
+  const handleSheetDelete = () => {
+    closeMenu();
+    setTimeout(() => {
+      Alert.alert(
+        'Delete Post?',
+        'This will permanently delete your post. This action cannot be undone.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                await deletePost(id);
+                onDeleteSuccess?.();
+              } catch (err: any) {
+                console.error('Delete post error:', err);
+                Alert.alert(
+                  'Error',
+                  err?.response?.data?.message || 'Could not delete post.'
+                );
+              }
+            },
+          },
+        ]
+      );
+    }, 150);
+  };
+
   const handleMentionPress = (mentionedUsername: string) => {
     if (!mentionedUsername) return;
     (navigation.navigate as any)('Profile', { username: mentionedUsername });
@@ -500,18 +628,13 @@ function PostCard({
     };
   }, [id, text, image, video, isVisible]);
 
-  // ── Pause when scrolled off-screen OR when the screen loses focus ──
-  // `isVisible` handles scroll position within the list; `isFocused`
-  // handles navigating away (the screen stays mounted in the stack
-  // but is no longer on top). Pausing on either condition stops the
-  // video from playing under a new screen.
   useEffect(() => {
     if (!isVisible || !isFocused) {
-      videoRef.current?.pauseAsync?.().catch(() => {});
+      try { videoPlayer.pause(); } catch {}
       setIsPlaying(false);
       setShowVideoOverlay(true);
     }
-  }, [isVisible, isFocused]);
+  }, [isVisible, isFocused, videoPlayer]);
 
   useEffect(() => {
     return () => {
@@ -519,182 +642,93 @@ function PostCard({
     };
   }, []);
 
-  const handleVideoPlaybackStatus = (status: AVPlaybackStatus) => {
-    if (!status.isLoaded) return;
-    setIsPlaying(!!status.isPlaying);
-    setPositionMs(status.positionMillis ?? 0);
-    setDurationMs(status.durationMillis ?? 0);
+  const handleVideoAreaPress = () => {
+    if (videoPlayer.playing) {
+      setShowVideoOverlay((prev) => !prev);
+    } else {
+      const dur = videoPlayer.duration ?? 0;
+      const cur = videoPlayer.currentTime ?? 0;
+      if (dur > 0 && cur >= dur - 0.1) {
+        videoPlayer.currentTime = 0;
+      }
+      videoPlayer.play();
+      setShowVideoOverlay(false);
+    }
+  };
 
-    if (status.didJustFinish) {
-      videoRef.current?.setPositionAsync(0).catch(() => {});
-      videoRef.current?.pauseAsync().catch(() => {});
-      setIsPlaying(false);
+  const handleOverlayButtonPress = () => {
+    if (videoPlayer.playing) {
+      videoPlayer.pause();
       setShowVideoOverlay(true);
-      setPositionMs(0);
-    }
-
-    if (videoViewRecorded.current) return;
-    if (status.durationMillis && status.positionMillis / status.durationMillis > 0.3) {
-      videoViewRecorded.current = true;
-      const watchedSeconds = Math.round(status.positionMillis / 1000);
-      const duration = Math.round(status.durationMillis / 1000);
-      api.post(`/posts/${id}/video-view`, { watchedSeconds, duration })
-        .then((res) => {
-          const body = res.data?.data ?? res.data ?? {};
-          if (body?.counted && typeof body.views === 'number') {
-            setLocalVideoViews(body.views);
-          }
-        })
-        .catch(() => {});
-    }
-  };
-
-  const handleVideoAreaPress = async () => {
-    if (!videoRef.current) return;
-    try {
-      const status = await videoRef.current.getStatusAsync();
-      if (!status.isLoaded) return;
-      if (status.isPlaying) {
-        setShowVideoOverlay((prev) => !prev);
-      } else {
-        if (status.durationMillis && status.positionMillis >= status.durationMillis - 100) {
-          await videoRef.current.setPositionAsync(0);
-        }
-        await videoRef.current.playAsync();
-        setShowVideoOverlay(false);
+    } else {
+      const dur = videoPlayer.duration ?? 0;
+      const cur = videoPlayer.currentTime ?? 0;
+      if (dur > 0 && cur >= dur - 0.1) {
+        videoPlayer.currentTime = 0;
       }
-    } catch (err) {
-      console.warn('Video press error:', err);
+      videoPlayer.play();
+      setShowVideoOverlay(false);
     }
   };
 
-  const handleOverlayButtonPress = async () => {
-    if (!videoRef.current) return;
-    try {
-      const status = await videoRef.current.getStatusAsync();
-      if (!status.isLoaded) return;
-      if (status.isPlaying) {
-        await videoRef.current.pauseAsync();
-        setShowVideoOverlay(true);
-      } else {
-        if (status.durationMillis && status.positionMillis >= status.durationMillis - 100) {
-          await videoRef.current.setPositionAsync(0);
-        }
-        await videoRef.current.playAsync();
-        setShowVideoOverlay(false);
-      }
-    } catch (err) {
-      console.warn('Video button error:', err);
-    }
-  };
-
-  const handleSeek = async (locationX: number) => {
-    if (!videoRef.current || !durationMs || !progressBarWidth) return;
+  const handleSeek = (locationX: number) => {
+    if (!durationMs || !progressBarWidth) return;
     const ratio = Math.max(0, Math.min(1, locationX / progressBarWidth));
     const targetMs = Math.round(ratio * durationMs);
-    try {
-      await videoRef.current.setPositionAsync(targetMs);
-      setPositionMs(targetMs);
-    } catch (err) {
-      console.warn('Seek failed:', err);
-    }
+    videoPlayer.currentTime = targetMs / 1000;
+    setPositionMs(targetMs);
   };
 
-  // ── Fullscreen video handlers ──
   const scheduleFsControlsHide = () => {
     if (fsControlsTimeout.current) clearTimeout(fsControlsTimeout.current);
     fsControlsTimeout.current = setTimeout(() => setFsShowControls(false), 3000);
   };
 
-  const openVideoFullscreen = async () => {
+  const openVideoFullscreen = () => {
     if (!video) return;
     fsHasSeekedRef.current = false;
 
-    try {
-      const status = await videoRef.current?.getStatusAsync();
-      if (status && status.isLoaded) {
-        setFsPositionMs(status.positionMillis ?? 0);
-        setFsDurationMs(status.durationMillis ?? 0);
-        await videoRef.current?.pauseAsync();
-      }
-    } catch {}
+    setFsPositionMs((videoPlayer.currentTime ?? 0) * 1000);
+    setFsDurationMs((videoPlayer.duration ?? 0) * 1000);
+    try { videoPlayer.pause(); } catch {}
 
     setVideoFullscreen(true);
     setFsShowControls(true);
     scheduleFsControlsHide();
+
+    if ((fsVideoPlayer.duration ?? 0) > 0 && !fsHasSeekedRef.current) {
+      fsHasSeekedRef.current = true;
+      const resumeSec = (videoPlayer.currentTime ?? 0);
+      if (resumeSec > 0) {
+        fsVideoPlayer.currentTime = resumeSec;
+      }
+      fsVideoPlayer.play();
+    }
   };
 
-  const closeVideoFullscreen = async () => {
-    let pos = fsPositionMs;
-    try {
-      const status = await fullscreenVideoRef.current?.getStatusAsync();
-      if (status && status.isLoaded) pos = status.positionMillis ?? pos;
-      await fullscreenVideoRef.current?.pauseAsync();
-    } catch {}
+  const closeVideoFullscreen = () => {
+    const pos = (fsVideoPlayer.currentTime ?? 0) * 1000;
+    try { fsVideoPlayer.pause(); } catch {}
 
     setVideoFullscreen(false);
 
-    try {
-      await videoRef.current?.setPositionAsync(pos);
-      setPositionMs(pos);
-    } catch {}
+    videoPlayer.currentTime = pos / 1000;
+    setPositionMs(pos);
     setShowVideoOverlay(true);
   };
 
-  const handleFullscreenStatus = (status: AVPlaybackStatus) => {
-    if (!status.isLoaded) return;
-    setFsIsPlaying(!!status.isPlaying);
-    setFsPositionMs(status.positionMillis ?? 0);
-    setFsDurationMs(status.durationMillis ?? 0);
-
-    if (status.didJustFinish) {
-      fullscreenVideoRef.current?.setPositionAsync(0).catch(() => {});
-      fullscreenVideoRef.current?.pauseAsync().catch(() => {});
-      setFsIsPlaying(false);
-      setFsShowControls(true);
-    }
-
-    if (videoViewRecorded.current) return;
-    if (status.durationMillis && status.positionMillis / status.durationMillis > 0.3) {
-      videoViewRecorded.current = true;
-      const watchedSeconds = Math.round(status.positionMillis / 1000);
-      const duration = Math.round(status.durationMillis / 1000);
-      api.post(`/posts/${id}/video-view`, { watchedSeconds, duration })
-        .then((res) => {
-          const body = res.data?.data ?? res.data ?? {};
-          if (body?.counted && typeof body.views === 'number') {
-            setLocalVideoViews(body.views);
-          }
-        })
-        .catch(() => {});
-    }
-  };
-
-  const handleFullscreenVideoLoad = async () => {
-    if (fsHasSeekedRef.current) return;
-    fsHasSeekedRef.current = true;
-    try {
-      if (fsPositionMs > 0) {
-        await fullscreenVideoRef.current?.setPositionAsync(fsPositionMs);
+  const toggleFsPlayPause = () => {
+    if (fsVideoPlayer.playing) {
+      fsVideoPlayer.pause();
+    } else {
+      const dur = fsVideoPlayer.duration ?? 0;
+      const cur = fsVideoPlayer.currentTime ?? 0;
+      if (dur > 0 && cur >= dur - 0.1) {
+        fsVideoPlayer.currentTime = 0;
       }
-      await fullscreenVideoRef.current?.playAsync();
-    } catch {}
-  };
-
-  const toggleFsPlayPause = async () => {
-    try {
-      const status = await fullscreenVideoRef.current?.getStatusAsync();
-      if (!status || !status.isLoaded) return;
-      if (status.isPlaying) {
-        await fullscreenVideoRef.current?.pauseAsync();
-      } else {
-        if (status.durationMillis && status.positionMillis >= status.durationMillis - 100) {
-          await fullscreenVideoRef.current?.setPositionAsync(0);
-        }
-        await fullscreenVideoRef.current?.playAsync();
-      }
-      scheduleFsControlsHide();
-    } catch {}
+      fsVideoPlayer.play();
+    }
+    scheduleFsControlsHide();
   };
 
   const toggleFsControls = () => {
@@ -706,15 +740,13 @@ function PostCard({
     });
   };
 
-  const handleFsSeek = async (locationX: number) => {
-    if (!fullscreenVideoRef.current || !fsDurationMs || !fsProgressBarWidth) return;
+  const handleFsSeek = (locationX: number) => {
+    if (!fsDurationMs || !fsProgressBarWidth) return;
     const ratio = Math.max(0, Math.min(1, locationX / fsProgressBarWidth));
     const targetMs = Math.round(ratio * fsDurationMs);
-    try {
-      await fullscreenVideoRef.current.setPositionAsync(targetMs);
-      setFsPositionMs(targetMs);
-      scheduleFsControlsHide();
-    } catch {}
+    fsVideoPlayer.currentTime = targetMs / 1000;
+    setFsPositionMs(targetMs);
+    scheduleFsControlsHide();
   };
 
   const handleLike = async () => {
@@ -855,18 +887,13 @@ function PostCard({
                 onPress={handleVideoAreaPress}
                 style={styles.videoTouchable}
               >
-                <Video
-                  ref={videoRef}
-                  source={{ uri: video }}
+                <VideoView
+                  player={videoPlayer}
                   style={styles.mediaPlayer}
-                  resizeMode={ResizeMode.CONTAIN}
-                  shouldPlay={false}
-                  isLooping={false}
-                  isMuted={false}
-                  useNativeControls={false}
-                  progressUpdateIntervalMillis={250}
-                  onError={() => setVideoError(true)}
-                  onPlaybackStatusUpdate={handleVideoPlaybackStatus}
+                  contentFit="contain"
+                  nativeControls={false}
+                  fullscreenOptions={{ enable: false }}
+                  allowsPictureInPicture={false}
                 />
               </TouchableOpacity>
 
@@ -999,7 +1026,6 @@ function PostCard({
     );
   };
 
-  // ── X-style bottom sheet menu ──
   const renderActionSheet = () => {
     const sheetBg = isDark ? '#16181c' : '#ffffff';
     const handleColor = isDark ? '#3a3f45' : '#cfd9de';
@@ -1013,10 +1039,8 @@ function PostCard({
         statusBarTranslucent
       >
         <View style={styles.sheetRoot}>
-          {/* Dim backdrop — tap to dismiss */}
           <Pressable style={styles.sheetBackdrop} onPress={closeMenu} />
 
-          {/* Sheet */}
           <View
             style={[
               styles.sheet,
@@ -1026,12 +1050,10 @@ function PostCard({
               },
             ]}
           >
-            {/* Drag handle */}
             <View style={styles.sheetHandleWrap}>
               <View style={[styles.sheetHandle, { backgroundColor: handleColor }]} />
             </View>
 
-            {/* Actions */}
             <TouchableOpacity
               style={styles.sheetItem}
               activeOpacity={0.6}
@@ -1080,20 +1102,11 @@ function PostCard({
               </TouchableOpacity>
             )}
 
-            {/* Destructive (placeholder — no delete handler yet) */}
             {userId === currentUser?.id && (
               <TouchableOpacity
                 style={styles.sheetItem}
                 activeOpacity={0.6}
-                onPress={() => {
-                  closeMenu();
-                  setTimeout(() => {
-                    Alert.alert(
-                      'Delete Post',
-                      'This action is not implemented yet.',
-                    );
-                  }, 150);
-                }}
+                onPress={handleSheetDelete}
               >
                 <Feather name="trash-2" size={20} color={DESTRUCTIVE} />
                 <Text style={[styles.sheetItemText, { color: DESTRUCTIVE }]}>
@@ -1263,10 +1276,8 @@ function PostCard({
         </View>
       </View>
 
-      {/* ── X-style action sheet menu ── */}
       {renderActionSheet()}
 
-      {/* ── Image lightbox ── */}
       <Modal visible={lightboxVisible} transparent>
         <SafeAreaView style={styles.lightbox}>
           <TouchableOpacity style={styles.lightboxClose} onPress={closeLightbox}>
@@ -1291,7 +1302,6 @@ function PostCard({
         </SafeAreaView>
       </Modal>
 
-      {/* ── Fullscreen video ── */}
       <Modal
         visible={videoFullscreen}
         animationType="fade"
@@ -1309,18 +1319,12 @@ function PostCard({
             style={styles.fsTouchable}
           >
             {hasVideo && (
-              <Video
-                ref={fullscreenVideoRef}
-                source={{ uri: video }}
+              <VideoView
+                player={fsVideoPlayer}
                 style={styles.fsVideo}
-                resizeMode={ResizeMode.CONTAIN}
-                shouldPlay={false}
-                isLooping={false}
-                isMuted={false}
-                useNativeControls={false}
-                progressUpdateIntervalMillis={250}
-                onLoad={handleFullscreenVideoLoad}
-                onPlaybackStatusUpdate={handleFullscreenStatus}
+                contentFit="contain"
+                nativeControls={false}
+                fullscreenOptions={{ enable: false }}
               />
             )}
           </TouchableOpacity>
@@ -1329,7 +1333,10 @@ function PostCard({
             <>
               <TouchableOpacity
                 onPress={closeVideoFullscreen}
-                style={styles.fsClose}
+                style={[
+                  styles.fsClose,
+                  { top: Math.max(insets.top, 12) + 12 },
+                ]}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
                 <Feather name="x" size={26} color="#ffffff" />
@@ -1350,7 +1357,16 @@ function PostCard({
                 </View>
               </TouchableOpacity>
 
-              <View style={styles.fsBottomBar}>
+              <View
+                style={[
+                  styles.fsBottomBar,
+                  {
+                    paddingBottom: Math.max(insets.bottom, 16) + 12,
+                    paddingLeft: 16 + insets.left,
+                    paddingRight: 16 + insets.right,
+                  },
+                ]}
+              >
                 <Text style={styles.fsTime}>{formatDuration(fsPositionMs)}</Text>
                 <TouchableOpacity
                   activeOpacity={1}
@@ -1443,12 +1459,13 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     alignItems: 'center',
     flex: 1,
+    minWidth: 0,
   },
   nameContainer: { flexDirection: 'row', alignItems: 'center' },
   name: { fontSize: 15, fontWeight: '700' },
   verifiedBadge: { marginLeft: 4 },
   username: { fontSize: 13, marginLeft: 4 },
-  time: { fontSize: 13, marginLeft: 4 },
+  time: { fontSize: 13, marginLeft: 4, flexShrink: 1 },
   groupBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12, marginLeft: 6 },
   groupBadgeText: { fontSize: 11 },
 
@@ -1475,7 +1492,11 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
 
-  actionsRow: { flexDirection: 'row', alignItems: 'center' },
+  actionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexShrink: 0,
+  },
   viewCountRow: { flexDirection: 'row', alignItems: 'center', marginRight: 8 },
   viewCountText: { fontSize: 12, marginLeft: 4 },
   reasonButton: { padding: 4 },
@@ -1488,7 +1509,6 @@ const styles = StyleSheet.create({
   reasonTitle: { fontSize: 12, fontWeight: '600', marginBottom: 6 },
   reasonItem: { fontSize: 12, marginTop: 4 },
 
-  // ── Three-dot trigger (compact, muted) ──
   moreButton: {
     padding: 4,
     marginLeft: 2,
@@ -1502,7 +1522,6 @@ const styles = StyleSheet.create({
   postText: { fontSize: 15, lineHeight: 22, marginTop: 6 },
   showMore: { fontSize: 14, marginTop: 4 },
 
-  // ── Inline rich text link styles ──
   inlineLink: {
     fontWeight: '600',
   },
@@ -1730,7 +1749,6 @@ const styles = StyleSheet.create({
   lightboxScroll: { flexGrow: 1, justifyContent: 'center' },
   lightboxImage: { width: SCREEN_WIDTH, height: SCREEN_WIDTH * 1.2 },
 
-  // ── Fullscreen video modal ──
   fsContainer: {
     flex: 1,
     backgroundColor: '#000',
@@ -1746,7 +1764,6 @@ const styles = StyleSheet.create({
   },
   fsClose: {
     position: 'absolute',
-    top: 48,
     left: 20,
     width: 40,
     height: 40,
@@ -1786,7 +1803,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingBottom: 28,
     paddingTop: 12,
     gap: 10,
     backgroundColor: 'rgba(0,0,0,0.45)',
@@ -1836,7 +1852,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.15)',
   },
 
-  // ── X-style action sheet ──
   sheetRoot: {
     flex: 1,
     justifyContent: 'flex-end',

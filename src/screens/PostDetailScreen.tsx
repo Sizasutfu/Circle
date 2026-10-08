@@ -413,7 +413,12 @@ export default function PostDetailScreen() {
             renderItem={renderComment}
             ListHeaderComponent={
               <View style={styles.postContainer}>
-                {post && <PostCard post={post} />}
+                {post && (
+                  <PostCard
+                    post={post}
+                    onDeleteSuccess={() => navigation.goBack()}
+                  />
+                )}
                 <View style={[styles.commentsHeader, { backgroundColor: colors.background }]}>
                   <Text style={[styles.commentsCount, { color: colors.text }]}>
                     {totalComments} {totalComments === 1 ? 'Comment' : 'Comments'}

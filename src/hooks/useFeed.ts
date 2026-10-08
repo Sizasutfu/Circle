@@ -1,5 +1,5 @@
 // src/hooks/useFeed.ts
-import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../api/client';
 import { resolveMediaUrl } from '../lib/media';
 import { Alert } from 'react-native';
@@ -255,4 +255,50 @@ export const usePostActions = (currentUser?: { id: string } | null) => {
   };
 
   return { likePost, unlikePost, repost, addComment };
+};
+
+// ── Delete Post Hook ──
+export const useDeletePost = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (postId: string | number) => {
+      await api.delete(`/posts/${postId}`);
+    },
+    onSuccess: (_data, postId) => {
+      // Remove the post from every cached feed list immediately
+      queryClient.setQueriesData<any>({ queryKey: ['feed'] }, (old: any) => {
+        if (!old) return old;
+        // Infinite query shape: { pages: [{ posts: [...] }] }
+        if (old.pages) {
+          return {
+            ...old,
+            pages: old.pages.map((page: any) => ({
+              ...page,
+              posts: (page.posts || []).filter(
+                (p: any) => String(p.id) !== String(postId)
+              ),
+            })),
+          };
+        }
+        // Flat list shape: { posts: [...] }
+        if (old.posts) {
+          return {
+            ...old,
+            posts: old.posts.filter((p: any) => String(p.id) !== String(postId)),
+          };
+        }
+        return old;
+      });
+
+      // Refresh other caches that might hold the deleted post
+      ['posts', 'profile-posts', 'topic-posts', 'group-posts'].forEach((key) => {
+        queryClient.invalidateQueries({ queryKey: [key] });
+      });
+
+      // Invalidate the individual post query so PostDetailScreen
+      // doesn't keep showing a deleted post
+      queryClient.invalidateQueries({ queryKey: ['post', postId] });
+    },
+  });
 };
