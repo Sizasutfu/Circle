@@ -130,6 +130,30 @@ function throttle(fn: Function, limit: number) {
   };
 }
 
+// ─── Private / non-previewable URL detection ────────────────
+// Whisper share links, API endpoints, and anything on the local
+// network or private IP space should never trigger a preview.
+function isPrivateOrLocalUrl(url: string): boolean {
+  let host = '';
+  try {
+    host = new URL(url).hostname.toLowerCase();
+  } catch {
+    return true; // unparseable → treat as non-previewable
+  }
+
+  if (host === 'localhost') return true;
+  if (host === '127.0.0.1') return true;
+  if (host === '0.0.0.0') return true;
+  if (host.endsWith('.local')) return true;
+
+  // RFC 1918 private ranges
+  if (/^10\./.test(host)) return true;
+  if (/^192\.168\./.test(host)) return true;
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(host)) return true;
+
+  return false;
+}
+
 // ─── Rich text tokenizer ─────────────────────────────────────
 type RichToken =
   | { type: 'text'; value: string }
@@ -595,6 +619,15 @@ function PostCard({
     if (!urlMatch) return;
     const url = urlMatch[0];
 
+    // Skip URLs pointing at our own infra / private network.
+    // Whisper share links and dev-server URLs should never hit
+    // the preview endpoint — it would fail on the self-signed
+    // cert and spam the console.
+    if (isPrivateOrLocalUrl(url)) {
+      previewFetchedRef.current = true;
+      return;
+    }
+
     previewFetchedRef.current = true;
     const controller = new AbortController();
 
@@ -605,6 +638,11 @@ function PostCard({
 
       api.get(`/link-preview?url=${encodeURIComponent(url)}`, { signal: controller.signal })
         .then((res) => {
+          // 204 = server deliberately returned "no preview"
+          if (res.status === 204) {
+            setPreviewData(null);
+            return;
+          }
           const data = res.data;
           if (data && (data.title || data.description || data.image)) {
             setPreviewData({ ...data, url });
@@ -616,6 +654,8 @@ function PostCard({
           if (err?.name === 'CanceledError' || err?.name === 'AbortError') {
             previewFetchedRef.current = false;
           } else {
+            // Server returned 4xx/5xx — expected for many URLs.
+            // No card, no loud error.
             setPreviewError(true);
           }
         })
@@ -823,6 +863,73 @@ function PostCard({
         <Feather name="info" size={12} color="#3b82f6" />
         <Text style={[styles.mentionBadgeText, { color: '#3b82f6' }]}>Mentioned</Text>
       </View>
+    );
+  };
+
+  // ── Link preview card ──
+  const renderLinkPreview = () => {
+    if (!previewData) return null;
+
+    const { title, description, image: previewImage, url } = previewData;
+    if (!title && !description && !previewImage) return null;
+
+    let hostname = '';
+    try {
+      hostname = new URL(url).hostname.replace(/^www\./, '');
+    } catch {}
+
+    return (
+      <TouchableOpacity
+        activeOpacity={0.85}
+        onPress={() => handleUrlPress(url)}
+        style={[
+          styles.linkPreviewCard,
+          {
+            backgroundColor: isDark ? '#1f2937' : '#f8f9fa',
+            borderColor: colors.border,
+          },
+        ]}
+      >
+        {!!previewImage && (
+          <Image
+            source={{ uri: previewImage }}
+            style={[
+              styles.linkPreviewImage,
+              { backgroundColor: isDark ? '#111827' : '#e5e7eb' },
+            ]}
+            contentFit="cover"
+            transition={200}
+            cachePolicy="memory-disk"
+          />
+        )}
+
+        <View style={styles.linkPreviewBody}>
+          {!!hostname && (
+            <Text
+              style={[styles.linkPreviewHost, { color: colors.textMuted }]}
+              numberOfLines={1}
+            >
+              {hostname}
+            </Text>
+          )}
+          {!!title && (
+            <Text
+              style={[styles.linkPreviewTitle, { color: colors.text }]}
+              numberOfLines={2}
+            >
+              {title}
+            </Text>
+          )}
+          {!!description && (
+            <Text
+              style={[styles.linkPreviewDesc, { color: colors.textSecondary }]}
+              numberOfLines={2}
+            >
+              {description}
+            </Text>
+          )}
+        </View>
+      </TouchableOpacity>
     );
   };
 
@@ -1136,6 +1243,7 @@ function PostCard({
   }
 
   const hasMedia = !!(image || video) || isLivePost;
+  const hasLinkPreview = !hasMedia && !!previewData;
 
   return (
     <View style={[styles.card, { borderBottomColor: colors.border }]}>
@@ -1237,10 +1345,16 @@ function PostCard({
         </View>
       )}
 
+      {hasLinkPreview && (
+        <View style={styles.linkPreviewWrapper}>
+          {renderLinkPreview()}
+        </View>
+      )}
+
       <View style={styles.cardInner}>
         <View style={styles.avatarTouch} />
         <View style={styles.content}>
-          <View style={[styles.engagementBar, { marginTop: hasMedia ? 12 : 0 }]}>
+          <View style={[styles.engagementBar, { marginTop: hasMedia || hasLinkPreview ? 12 : 0 }]}>
             <TouchableOpacity style={styles.engagementButton} onPress={handleLike}>
               <Feather name="heart" size={22} color={localLiked ? '#ef4444' : colors.textMuted} />
               <Text style={[
@@ -1530,6 +1644,41 @@ const styles = StyleSheet.create({
   },
 
   fullBleedWrapper: { width: '100%', marginTop: 12 },
+
+  // ── Link preview ──
+  linkPreviewWrapper: {
+    paddingHorizontal: 16,
+    marginTop: 12,
+  },
+  linkPreviewCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  linkPreviewImage: {
+    width: '100%',
+    height: SCREEN_WIDTH * 0.5,
+  },
+  linkPreviewBody: {
+    padding: 12,
+  },
+  linkPreviewHost: {
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'lowercase',
+    letterSpacing: 0.2,
+    marginBottom: 2,
+  },
+  linkPreviewTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    lineHeight: 19,
+  },
+  linkPreviewDesc: {
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 2,
+  },
 
   livePreview: {
     width: '100%',
