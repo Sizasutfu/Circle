@@ -15,6 +15,9 @@ import { GroupsProvider } from "../contexts/GroupsContext";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Platform, View, StyleSheet, Dimensions, Text } from "react-native";
 
+// ── NEW: shared navigation ref for push-tap deep linking ──
+import { navigationRef } from "./navigationRef";
+
 // ----- Screens -----
 import WelcomeScreen from "../screens/WelcomeScreen";
 import LoginScreen from "../screens/LoginScreen";
@@ -236,8 +239,6 @@ function WebNavigator() {
 
 // ============================================================
 //  Drawer Navigator
-//  Groups lives here as a first-class entry so it's reachable
-//  from the sidebar, not the bottom tab bar.
 // ============================================================
 function DrawerNavigator() {
   const { colors } = useTheme();
@@ -353,8 +354,6 @@ function AuthStack() {
 
 // ============================================================
 //  Main Stack
-//  Detail screens that must be reachable from BOTH the Drawer
-//  children and MainStack's own children live here.
 // ============================================================
 function MainStack() {
   const { colors } = useTheme();
@@ -537,7 +536,7 @@ export default function AppNavigator() {
     <View
       style={[styles.rootContainer, { backgroundColor: colors.background }]}
     >
-      <NavigationContainer theme={customTheme}>
+      <NavigationContainer ref={navigationRef} theme={customTheme}>
         <GroupsProvider>
           <TabBarProvider>
             <NotificationsSync />
