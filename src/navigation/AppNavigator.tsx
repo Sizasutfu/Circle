@@ -44,6 +44,7 @@ import CommentDetailScreen from "../screens/CommentDetailScreen";
 import EditPostScreen from "../screens/EditPostScreen";
 import NewMessageScreen from "../screens/NewMessageScreen";
 import WhisperInboxScreen from "../screens/WhisperInboxScreen";
+import WhisperReplyScreen from "../screens/WhisperReplyScreen";
 import DashboardScreen from "../screens/DashboardScreen";
 import GroupsScreen from "../screens/GroupsScreen";
 import GroupDetailScreen from "../screens/GroupDetailScreen";
@@ -230,6 +231,7 @@ function WebNavigator() {
       <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
       <Stack.Screen name="BlockedUsers" component={BlockedUsersScreen} />
       <Stack.Screen name="WhisperInbox" component={WhisperInboxScreen} />
+      <Stack.Screen name="WhisperReply" component={WhisperReplyScreen} />
       <Stack.Screen name="Dashboard" component={DashboardScreen} />
       <Stack.Screen name="Groups" component={GroupsScreen} />
       <Stack.Screen name="GroupDetail" component={GroupDetailScreen} />
@@ -459,6 +461,17 @@ function MainStack() {
         options={{
           headerShown: false,
           cardStyle: { backgroundColor: colors.background },
+        }}
+      />
+      <Stack.Screen
+        name="WhisperReply"
+        component={WhisperReplyScreen}
+        options={{
+          headerShown: false,
+          presentation: "modal",
+          cardOverlayEnabled: true,
+          cardStyle: { backgroundColor: colors.background },
+          ...TransitionPresets.ModalSlideFromBottomIOS,
         }}
       />
       <Stack.Screen

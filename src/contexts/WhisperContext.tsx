@@ -6,7 +6,8 @@ export interface WhisperMessage {
   id: string;
   message: string;
   created_at: string;
-  posted?: boolean;
+  is_reported?: boolean;
+  posted_as?: string | null;  // post ID if already posted, null otherwise
 }
 
 export interface WhisperSettings {

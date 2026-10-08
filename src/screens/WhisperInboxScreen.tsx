@@ -19,7 +19,7 @@ import { useWhisper, WhisperMessage } from '../contexts/WhisperContext';
 import { timeAgo } from '../utils/helpers';
 
 // Public base URL for shareable links (your web app)
-const PUBLIC_WEB_URL = process.env.EXPO_PUBLIC_WEB_URL // ← change to your real URL
+const PUBLIC_WEB_URL = process.env.EXPO_PUBLIC_WEB_URL;
 
 export default function WhisperInboxScreen() {
   const navigation = useNavigation();
@@ -88,12 +88,9 @@ export default function WhisperInboxScreen() {
     );
   };
 
-  // Reply & Post requires react-native-view-shot — needs a rebuilt dev client
-  const handleReplyPress = () => {
-    Alert.alert(
-      'Coming soon',
-      'Reply & Post needs a rebuilt dev client. Rebuild the app to enable this feature.'
-    );
+  // Navigate to the composer modal
+  const handleReplyPress = (item: WhisperMessage) => {
+    (navigation.navigate as any)('WhisperReply', { whisperId: item.id });
   };
 
   const renderItem = ({ item }: { item: WhisperMessage }) => (
@@ -104,16 +101,16 @@ export default function WhisperInboxScreen() {
           <Text style={styles.anonText}>Anonymous</Text>
         </View>
         <Text style={[styles.time, { color: colors.textMuted }]}>{timeAgo(item.created_at)}</Text>
-        {item.posted && <Text style={styles.postedLabel}>✓ Posted</Text>}
+        {!!item.posted_as && <Text style={styles.postedLabel}>✓ Posted</Text>}
       </View>
 
       <Text style={[styles.message, { color: colors.text }]}>{item.message}</Text>
 
       <View style={styles.actions}>
-        {!item.posted && (
+        {!item.posted_as && (
           <TouchableOpacity
-            style={[styles.primaryBtn, { backgroundColor: colors.primary, opacity: 0.5 }]}
-            onPress={handleReplyPress}
+            style={[styles.primaryBtn, { backgroundColor: colors.primary }]}
+            onPress={() => handleReplyPress(item)}
           >
             <Feather name="message-circle" size={14} color="white" />
             <Text style={styles.primaryBtnText}>Reply & Post</Text>
