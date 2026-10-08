@@ -29,6 +29,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useLive } from '../contexts/LiveContext';
 import { Avatar } from './Avatar';
 import VerificationBadge from './VerificationBadge';
+import CommentSheet from './CommentSheet';
 import { timeAgo, formatNumber, safeString } from '../utils/helpers';
 import { extractMentions } from '../lib/formatText';
 import api from '../api/client';
@@ -131,14 +132,12 @@ function throttle(fn: Function, limit: number) {
 }
 
 // ─── Private / non-previewable URL detection ────────────────
-// Whisper share links, API endpoints, and anything on the local
-// network or private IP space should never trigger a preview.
 function isPrivateOrLocalUrl(url: string): boolean {
   let host = '';
   try {
     host = new URL(url).hostname.toLowerCase();
   } catch {
-    return true; // unparseable → treat as non-previewable
+    return true;
   }
 
   if (host === 'localhost') return true;
@@ -146,7 +145,6 @@ function isPrivateOrLocalUrl(url: string): boolean {
   if (host === '0.0.0.0') return true;
   if (host.endsWith('.local')) return true;
 
-  // RFC 1918 private ranges
   if (/^10\./.test(host)) return true;
   if (/^192\.168\./.test(host)) return true;
   if (/^172\.(1[6-9]|2\d|3[01])\./.test(host)) return true;
@@ -398,6 +396,7 @@ function PostCard({
   const [isExpanded, setIsExpanded] = useState(false);
   const [videoError, setVideoError] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
+  const [commentSheetVisible, setCommentSheetVisible] = useState(false);
   const [showReasons, setShowReasons] = useState(false);
   const reasonRef = useRef<View>(null);
   const [previewData, setPreviewData] = useState<any>(null);
@@ -619,10 +618,6 @@ function PostCard({
     if (!urlMatch) return;
     const url = urlMatch[0];
 
-    // Skip URLs pointing at our own infra / private network.
-    // Whisper share links and dev-server URLs should never hit
-    // the preview endpoint — it would fail on the self-signed
-    // cert and spam the console.
     if (isPrivateOrLocalUrl(url)) {
       previewFetchedRef.current = true;
       return;
@@ -638,7 +633,6 @@ function PostCard({
 
       api.get(`/link-preview?url=${encodeURIComponent(url)}`, { signal: controller.signal })
         .then((res) => {
-          // 204 = server deliberately returned "no preview"
           if (res.status === 204) {
             setPreviewData(null);
             return;
@@ -654,8 +648,6 @@ function PostCard({
           if (err?.name === 'CanceledError' || err?.name === 'AbortError') {
             previewFetchedRef.current = false;
           } else {
-            // Server returned 4xx/5xx — expected for many URLs.
-            // No card, no loud error.
             setPreviewError(true);
           }
         })
@@ -841,7 +833,7 @@ function PostCard({
   };
 
   const handleComment = () => {
-    (navigation.navigate as any)('PostDetail', { postId: id, focusComment: true });
+    setCommentSheetVisible(true);
     onComment?.(id);
   };
 
@@ -1391,6 +1383,14 @@ function PostCard({
       </View>
 
       {renderActionSheet()}
+
+      {/* ── Comment sheet ── */}
+      <CommentSheet
+        visible={commentSheetVisible}
+        onClose={() => setCommentSheetVisible(false)}
+        postId={String(id)}
+        commentCount={propCommentCount}
+      />
 
       <Modal visible={lightboxVisible} transparent>
         <SafeAreaView style={styles.lightbox}>
