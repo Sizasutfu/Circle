@@ -34,10 +34,8 @@ const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SHEET_HEIGHT = Math.min(SCREEN_HEIGHT * 0.78, 640);
 
 // Low-end / small-screen devices (e.g. Samsung A03 Core, Android 11 Go)
-// default to `adjustPan` behavior instead of `adjustResize`. The OS
-// pans the whole screen visually, so our bottom-anchored sheet doesn't
-// shift the way it should. We compensate by adding extra bottom offset
-// when the keyboard is up on these devices.
+// default to `adjustPan` behavior instead of `adjustResize`. We add a
+// small extra offset when the keyboard is up on these devices.
 const IS_SMALL_DEVICE = SCREEN_HEIGHT < 720;
 const EXTRA_KEYBOARD_PADDING = IS_SMALL_DEVICE ? 120 : 0;
 
@@ -70,7 +68,7 @@ export default function CommentSheet({
   const inputRef = useRef<TextInput>(null);
   const listRef = useRef<FlatList<FlatComment>>(null);
 
-  // ── Fetch comments when the sheet opens ──
+  // ── Fetch comments ──
   useEffect(() => {
     if (!visible || !postId) return;
 
@@ -104,9 +102,7 @@ export default function CommentSheet({
   // ── Keyboard height tracking ──
   useEffect(() => {
     const showSub = Keyboard.addListener('keyboardDidShow', (e) => {
-      const h = e.endCoordinates?.height ?? 0;
-      console.log('[CommentSheet] keyboardDidShow height:', h);
-      setKbHeight(h);
+      setKbHeight(e.endCoordinates?.height ?? 0);
     });
     const hideSub = Keyboard.addListener('keyboardDidHide', () => {
       setKbHeight(0);
@@ -118,12 +114,11 @@ export default function CommentSheet({
     };
   }, []);
 
-  // Reset when the sheet closes
   useEffect(() => {
     if (!visible) setKbHeight(0);
   }, [visible]);
 
-  // ── Post a comment / reply ──
+  // ── Post comment / reply ──
   const handleSubmit = async () => {
     const trimmed = text.trim();
     if (!trimmed || sending || !postId) return;
@@ -181,6 +176,7 @@ export default function CommentSheet({
   const count = flatComments.length || commentCount;
   const keyboardUp = kbHeight > 0;
 
+  // ── Render one comment (with thread line for replies) ──
   const renderComment = ({ item }: { item: FlatComment }) => {
     const u = item.user || { id: '', name: 'Unknown', username: '', avatar: null };
     const isReply = item._depth > 0;
@@ -193,6 +189,17 @@ export default function CommentSheet({
           { paddingLeft: 16 + indent, paddingRight: 16 },
         ]}
       >
+        {/* Thread line — vertical bar on the left for replies */}
+        {isReply && (
+          <View
+            style={[
+              styles.threadLine,
+              { backgroundColor: colors.border },
+            ]}
+            pointerEvents="none"
+          />
+        )}
+
         <Avatar source={u.avatar} size={isReply ? 28 : 34} />
         <View style={styles.commentBody}>
           <View style={styles.commentHeader}>
@@ -278,7 +285,6 @@ export default function CommentSheet({
       statusBarTranslucent
     >
       <View style={styles.root}>
-        {/* Backdrop */}
         <Pressable
           style={styles.backdrop}
           onPress={() => {
@@ -290,9 +296,6 @@ export default function CommentSheet({
           }}
         />
 
-        {/* Sheet — absolute bottom-anchored. `bottom` shifts it up by the
-            reported keyboard height, plus a small-device compensation for
-            Go Edition devices that use adjustPan instead of adjustResize. */}
         <View
           style={[
             styles.sheet,
@@ -458,6 +461,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     paddingVertical: 10,
     gap: 10,
+    position: 'relative',
+  },
+  // Vertical line connecting replies to their parent thread
+  threadLine: {
+    position: 'absolute',
+    left: 24,
+    top: 0,
+    bottom: 0,
+    width: 2,
+    borderRadius: 1,
   },
   commentBody: { flex: 1, minWidth: 0 },
   commentHeader: {

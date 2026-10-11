@@ -32,7 +32,7 @@ export function normalizeComment(c: any): Comment {
     id: String(c.id || c._id || Math.random()),
     text: c.text || c.content || '',
     createdAt: c.createdAt || c.created_at || new Date().toISOString(),
-    parentId: c.parentId || c.parent_id || null,
+    parentId: c.parentId ?? c.parent_id ?? null,
     replies: rawReplies.map(normalizeComment),
     user: {
       id: String(commentUser.id || c.userId || c.authorId || ''),
@@ -56,6 +56,45 @@ export function normalizeComment(c: any): Comment {
   };
 }
 
+// ── Turn a flat list into a nested tree, keyed by parentId ──
+function nestFlatComments(flat: Comment[]): Comment[] {
+  const byId = new Map<string, Comment & { replies: Comment[] }>();
+
+  // First pass: create a mutable node for every comment
+  for (const c of flat) {
+    byId.set(c.id, { ...c, replies: [] });
+  }
+
+  const roots: Comment[] = [];
+
+  // Second pass: link children to parents
+  for (const c of flat) {
+    const node = byId.get(c.id)!;
+    const parentId = c.parentId != null ? String(c.parentId) : null;
+
+    if (parentId && byId.has(parentId)) {
+      byId.get(parentId)!.replies.push(node);
+    } else {
+      roots.push(node);
+    }
+  }
+
+  // Sort every level chronologically (oldest first). Replies are sorted
+  // within their parent so the thread reads top-down like a conversation.
+  const sortByTime = (a: Comment, b: Comment) =>
+    new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+
+  const sortRecursive = (nodes: Comment[]) => {
+    nodes.sort(sortByTime);
+    for (const n of nodes) {
+      if (n.replies && n.replies.length > 0) sortRecursive(n.replies);
+    }
+  };
+  sortRecursive(roots);
+
+  return roots;
+}
+
 export function flattenComments(
   comments: Comment[],
   depth = 0
@@ -70,7 +109,11 @@ export function flattenComments(
   return result;
 }
 
-// Normalize whichever shape the API returns into a Comment[].
+// Normalize whichever shape the API returns into a nested Comment[].
+// Handles:
+//   - already-nested trees (comments have `replies` arrays with content)
+//   - flat lists (comments carry `parentId` — they get nested here)
+//   - wrapped responses (`{ data: { comments: [...] } }` etc.)
 export function extractCommentsFromResponse(data: any): Comment[] {
   let raw: any = data?.data ?? data;
 
@@ -84,5 +127,16 @@ export function extractCommentsFromResponse(data: any): Comment[] {
   }
 
   if (!Array.isArray(raw)) return [];
-  return raw.map(normalizeComment);
+
+  const normalized = raw.map(normalizeComment);
+
+  // If the backend already returned a nested tree (any comment has
+  // populated replies), trust it and skip re-nesting.
+  const alreadyNested = normalized.some(
+    (c) => Array.isArray(c.replies) && c.replies.length > 0
+  );
+  if (alreadyNested) return normalized;
+
+  // Otherwise build the tree from parentId.
+  return nestFlatComments(normalized);
 }
