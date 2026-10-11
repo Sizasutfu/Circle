@@ -23,6 +23,7 @@ import { useTabBarHeight } from '../hooks/useTabBarHeight';
 import api from '../api/client';
 import { timeAgo } from '../utils/helpers';
 import { resolveMediaUrl } from '../lib/media';
+import { decrypt, publishMyPublicKey } from '../lib/e2e';
 
 interface Conversation {
   id: string;
@@ -109,11 +110,13 @@ export default function MessagesScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   // Set of conversation ids whose other participant is currently typing.
-  // We auto-clear each entry if we don't hear from them again within
-  // TYPING_TIMEOUT_MS, mirroring the server's own timeout so a dropped
-  // "stop typing" event can't leave a stale indicator on screen.
   const [typingConversations, setTypingConversations] = useState<Set<string>>(new Set());
   const typingTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
+  // Decrypted preview cache: conversationId → plaintext preview.
+  // Encrypted last-message bodies are decrypted once and cached here so
+  // re-renders don't hit the crypto layer again.
+  const [decryptedPreviews, setDecryptedPreviews] = useState<Record<string, string>>({});
 
   const {
     data: conversations = [],
@@ -134,6 +137,48 @@ export default function MessagesScreen() {
     },
     enabled: !!user,
   });
+
+  // Publish our public key once the user is signed in — the peer needs
+  // it in order to encrypt. Harmless if already published.
+  useEffect(() => {
+    if (!user?.id) return;
+    publishMyPublicKey(user.id).catch((err) =>
+      console.warn('[MessagesScreen] publishMyPublicKey failed:', err)
+    );
+  }, [user?.id]);
+
+  // ── Decrypt encrypted last-message previews ──
+  useEffect(() => {
+    if (!conversations.length) return;
+    let cancelled = false;
+
+    (async () => {
+      const updates: Record<string, string> = {};
+
+      for (const conv of conversations) {
+        const body = conv.last_message || '';
+        if (!body.startsWith('e2e:')) continue;
+        if (decryptedPreviews[conv.id]) continue;
+        if (!conv.other_id) continue;
+
+        try {
+          const plain = await decrypt(conv.other_id, body);
+          updates[conv.id] = plain;
+        } catch (err) {
+          console.warn('[MessagesScreen] decrypt preview failed for', conv.id, err);
+          updates[conv.id] = '🔒 Encrypted message';
+        }
+      }
+
+      if (!cancelled && Object.keys(updates).length > 0) {
+        setDecryptedPreviews((prev) => ({ ...prev, ...updates }));
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [conversations, decryptedPreviews]);
 
   // ── Typing indicator handling ──
   const clearTyping = (conversationId: string) => {
@@ -172,7 +217,6 @@ export default function MessagesScreen() {
       const conversationId = String(data?.conversationId ?? '');
       if (!conversationId) return;
 
-      // Ignore our own typing events (we don't want "typing…" on our own row)
       if (data?.userId != null && user?.id != null && String(data.userId) === String(user.id)) {
         return;
       }
@@ -184,20 +228,23 @@ export default function MessagesScreen() {
       }
     });
 
-    // When a message actually lands, clear the indicator immediately —
-    // the server may not always emit a matching stop event.
     const unregisterNewDm = registerHandler('new_dm', (data: any) => {
       const conversationId = String(data?.conversationId ?? '');
       if (!conversationId) return;
       clearTyping(conversationId);
-      // Refresh the inbox so the new message preview + ordering update
+      // The preview has changed, so drop the cached plaintext and let
+      // the decryption effect run again for this conversation.
+      setDecryptedPreviews((prev) => {
+        const next = { ...prev };
+        delete next[conversationId];
+        return next;
+      });
       queryClient.invalidateQueries({ queryKey: ['dm-inbox'] });
     });
 
     return () => {
       unregisterTyping();
       unregisterNewDm();
-      // Clean up any pending timers on unmount
       typingTimeoutsRef.current.forEach((t) => clearTimeout(t));
       typingTimeoutsRef.current.clear();
     };
@@ -205,6 +252,9 @@ export default function MessagesScreen() {
 
   const handleRefresh = async () => {
     setRefreshing(true);
+    // Clear cached plaintext so the previews re-decrypt against the
+    // freshly fetched data.
+    setDecryptedPreviews({});
     await refetch();
     setRefreshing(false);
   };
@@ -222,24 +272,40 @@ export default function MessagesScreen() {
     (navigation.navigate as any)('NewMessage');
   };
 
+  // Resolve the preview text: prefer cached plaintext for encrypted
+  // bodies, otherwise show the raw body. Media previews take priority
+  // over encrypted text.
+  const getPreviewText = (conv: Conversation): string => {
+    const raw = conv.last_message || '';
+    const isEncrypted = raw.startsWith('e2e:');
+    const isMine = String(conv.last_sender_id) === String(user?.id);
+    const prefix = isMine ? 'You: ' : '';
+
+    if (isEncrypted) {
+      const plain = decryptedPreviews[conv.id];
+      return prefix + (plain || '🔒 Encrypted message');
+    }
+
+    return prefix + (raw || 'Media');
+  };
+
   const renderConversation = ({ item }: { item: Conversation }) => {
     const isUnread = item.unread_count > 0;
-    const isMine = item.last_sender_id === user?.id;
-    const preview = isMine ? `You: ${item.last_message || 'Media'}` : item.last_message || 'Media';
     const time = timeAgo(item.last_message_at);
     const isTyping = typingConversations.has(String(item.id));
 
     const avatarUrl = resolveMediaUrl(item.other_picture);
-    // Coerce to a real boolean — the API sends other_verified as 0/1 from
-    // MySQL, and `0 && (...)` evaluates to the number 0, which React Native
-    // tries to render as a bare text node outside a <Text>.
     const isVerified = !!item.other_verified;
+    const isEncrypted = (item.last_message || '').startsWith('e2e:');
 
-    // When someone is typing, the preview line shows the animated dots
-    // instead of the last message. The unread tint still wins so an
-    // unread thread doesn't lose its highlight just because it's being
-    // typed in — but the message preview is overridden either way.
     const showTyping = isTyping;
+
+    // Media-type previews short-circuit the text preview entirely.
+    const mediaLabel =
+      item.last_media_type === 'image' ? '📷 Image' :
+      item.last_media_type === 'video' ? '🎬 Video' :
+      item.last_media_type === 'audio' ? '🎵 Audio' :
+      null;
 
     return (
       <TouchableOpacity
@@ -265,6 +331,14 @@ export default function MessagesScreen() {
                   style={styles.verifiedBadge}
                 />
               )}
+              {isEncrypted && (
+                <Feather
+                  name="lock"
+                  size={11}
+                  color={colors.textMuted}
+                  style={{ marginLeft: 4 }}
+                />
+              )}
             </View>
             <Text
               style={[
@@ -278,6 +352,17 @@ export default function MessagesScreen() {
 
           {showTyping ? (
             <TypingPreview color={colors.primary} />
+          ) : mediaLabel ? (
+            <Text
+              style={[
+                styles.lastMessage,
+                { color: colors.textSecondary },
+                isUnread && { color: colors.text, fontWeight: '700' },
+              ]}
+              numberOfLines={1}
+            >
+              {String(item.last_sender_id) === String(user?.id) ? `You: ${mediaLabel}` : mediaLabel}
+            </Text>
           ) : (
             <Text
               style={[
@@ -287,10 +372,7 @@ export default function MessagesScreen() {
               ]}
               numberOfLines={1}
             >
-              {item.last_media_type === 'image' ? '📷 Image' :
-               item.last_media_type === 'video' ? '🎬 Video' :
-               item.last_media_type === 'audio' ? '🎵 Audio' :
-               preview}
+              {getPreviewText(item)}
             </Text>
           )}
         </View>
@@ -435,7 +517,6 @@ const styles = StyleSheet.create({
   timestamp: { fontSize: 12 },
   lastMessage: { fontSize: 14, marginTop: 2 },
 
-  // ── Typing indicator ──
   typingRow: {
     flexDirection: 'row',
     alignItems: 'center',

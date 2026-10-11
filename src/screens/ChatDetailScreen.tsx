@@ -25,6 +25,7 @@ import MessageActionSheet from '../components/MessageActionSheet';
 import api from '../api/client';
 import { timeAgo } from '../utils/helpers';
 import { resolveMediaUrl } from '../lib/media';
+import { publishMyPublicKey, encrypt, decrypt } from '../lib/e2e';
 
 // ── Types ──
 interface RouteParams {
@@ -121,6 +122,9 @@ export default function ChatDetailScreen() {
   const [editingMessage, setEditingMessage] = useState<Message | null>(null);
   const [actionTarget, setActionTarget] = useState<Message | null>(null);
 
+  // Decrypted body cache: messageId → plaintext
+  const [decryptedBodies, setDecryptedBodies] = useState<Record<string, string>>({});
+
   // Presence
   const [otherOnline, setOtherOnline] = useState(false);
   const [otherLastActive, setOtherLastActive] = useState<string | null>(null);
@@ -136,6 +140,14 @@ export default function ChatDetailScreen() {
     const hideSub = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
     return () => { showSub.remove(); hideSub.remove(); };
   }, []);
+
+  // ── Publish our public key on mount ──
+  useEffect(() => {
+    if (!user?.id) return;
+    publishMyPublicKey(user.id).catch((err) =>
+      console.warn('[ChatDetail] publishMyPublicKey failed:', err)
+    );
+  }, [user?.id]);
 
   // ── Presence ──
   const fetchPresence = useCallback(async () => {
@@ -219,6 +231,35 @@ export default function ChatDetailScreen() {
     return () => { if (conversationId) leaveConversation(conversationId); };
   }, [conversationId, joinConversation, leaveConversation]);
 
+  // ── Decrypt any new encrypted messages ──
+  // Runs whenever the message list changes. Each message is decrypted at
+  // most once — the result is cached in `decryptedBodies`.
+  useEffect(() => {
+    if (!messages.length || !otherUserId) return;
+    let cancelled = false;
+
+    (async () => {
+      const newlyDecrypted: Record<string, string> = {};
+
+      for (const m of messages) {
+        if (!m.body || !m.body.startsWith('e2e:')) continue;
+        if (decryptedBodies[m.id]) continue;
+        try {
+          newlyDecrypted[m.id] = await decrypt(otherUserId, m.body);
+        } catch (err) {
+          console.warn('[ChatDetail] decrypt failed for', m.id, err);
+          newlyDecrypted[m.id] = '[🔒 Encrypted message]';
+        }
+      }
+
+      if (!cancelled && Object.keys(newlyDecrypted).length > 0) {
+        setDecryptedBodies((prev) => ({ ...prev, ...newlyDecrypted }));
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [messages, otherUserId, decryptedBodies]);
+
   // ── WebSocket handlers ──
   useEffect(() => {
     const unregNewMessage = registerHandler('new_dm', (data: any) => {
@@ -226,10 +267,8 @@ export default function ChatDetailScreen() {
         const msg = data.message;
 
         setMessages((prev) => {
-          // Exact duplicate already present → nothing to do
           if (prev.some((m) => String(m.id) === String(msg.id))) return prev;
 
-          // Is this the server echo of a message we just sent optimistically?
           const isMine = String(msg.sender_id) === String(user?.id);
           if (isMine) {
             const tempIdx = prev.findIndex(
@@ -240,7 +279,7 @@ export default function ChatDetailScreen() {
             );
             if (tempIdx !== -1) {
               const next = [...prev];
-              next[tempIdx] = msg;   // swap temp → real
+              next[tempIdx] = msg;
               return next;
             }
           }
@@ -279,6 +318,12 @@ export default function ChatDetailScreen() {
               : m
           )
         );
+        // Drop cached plaintext so the new body is re-decrypted
+        setDecryptedBodies((prev) => {
+          const next = { ...prev };
+          delete next[data.messageId];
+          return next;
+        });
       }
     });
 
@@ -304,7 +349,6 @@ export default function ChatDetailScreen() {
       if (messages.length === 0) return;
       const lastMessage = messages[messages.length - 1];
       if (!lastMessage) return;
-      // Skip polling while the last message is still optimistic — the POST is in flight
       if (String(lastMessage.id).startsWith('tmp_')) return;
       try {
         const response = await api.get(
@@ -333,8 +377,21 @@ export default function ChatDetailScreen() {
     if (editingMessage) {
       setSending(true);
       const original = editingMessage;
+
+      // Encrypt the new body
+      let encryptedBody = trimmed;
+      try {
+        encryptedBody = await encrypt(otherUserId, trimmed);
+      } catch (e) {
+        console.warn('[ChatDetail] edit encrypt failed:', e);
+      }
+
       setMessages((prev) =>
-        prev.map((m) => (m.id === original.id ? { ...m, body: trimmed, edited_at: new Date().toISOString() } : m))
+        prev.map((m) =>
+          m.id === original.id
+            ? { ...m, body: encryptedBody, edited_at: new Date().toISOString() }
+            : m
+        )
       );
       setEditingMessage(null);
       setInput('');
@@ -342,7 +399,7 @@ export default function ChatDetailScreen() {
       try {
         const response = await api.patch(
           `/dm/conversations/${conversationId}/messages/${original.id}`,
-          { body: trimmed }
+          { body: encryptedBody }
         );
         const updated = response.data?.data || response.data;
         if (updated && updated.body) {
@@ -353,7 +410,7 @@ export default function ChatDetailScreen() {
             type: 'edit_message',
             conversationId,
             messageId: original.id,
-            body: trimmed,
+            body: encryptedBody,
           });
         }
         Keyboard.dismiss();
@@ -371,35 +428,58 @@ export default function ChatDetailScreen() {
     sendTyping(conversationId, false);
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
 
+    // Encrypt before creating the optimistic row so the bubble shows the
+    // same wire-format body that will land on the server.
+    let encryptedBody = trimmed;
+    try {
+      encryptedBody = await encrypt(otherUserId, trimmed);
+    } catch (e) {
+      console.warn('[ChatDetail] encrypt failed, sending plaintext:', e);
+    }
+
     const tempId = `tmp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const tempMsg: Message = {
       id: tempId,
       sender_id: user?.id || '',
-      body: trimmed,
+      body: encryptedBody,
       created_at: new Date().toISOString(),
       is_read: false,
+      is_encrypted: encryptedBody.startsWith('e2e:'),
     };
     setMessages((prev) => [...prev, tempMsg]);
+
+    // Immediately decrypt locally so the sender sees their own plaintext
+    if (encryptedBody.startsWith('e2e:')) {
+      setDecryptedBodies((prev) => ({ ...prev, [tempId]: trimmed }));
+    }
+
     setInput('');
 
     try {
       const response = await api.post(`/dm/conversations/${conversationId}/messages`, {
-        body: trimmed,
+        body: encryptedBody,
         media: null,
       });
       const saved = response.data?.data || response.data || response;
 
       setMessages((prev) => {
-        // Always remove the optimistic temp row
         const withoutTemp = prev.filter((m) => m.id !== tempId);
-
-        // If the WS echo already landed, don't append a second copy
         if (saved && saved.id && withoutTemp.some((m) => String(m.id) === String(saved.id))) {
           return withoutTemp;
         }
-
         return saved && saved.id ? [...withoutTemp, saved] : withoutTemp;
       });
+
+      // Carry the plaintext cache over to the real ID so we don't decrypt
+      // our own message unnecessarily.
+      if (saved && saved.id && encryptedBody.startsWith('e2e:')) {
+        setDecryptedBodies((prev) => {
+          const next = { ...prev };
+          next[String(saved.id)] = trimmed;
+          delete next[tempId];
+          return next;
+        });
+      }
 
       if (isAlive() && saved && saved.id) {
         sendMessage({ type: 'send_message', conversationId, message: saved });
@@ -407,6 +487,11 @@ export default function ChatDetailScreen() {
       Keyboard.dismiss();
     } catch {
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
+      setDecryptedBodies((prev) => {
+        const next = { ...prev };
+        delete next[tempId];
+        return next;
+      });
       Alert.alert('Error', 'Failed to send message. Please try again.');
     } finally {
       setSending(false);
@@ -425,7 +510,11 @@ export default function ChatDetailScreen() {
   // ── Edit flow ──
   const startEditing = (item: Message) => {
     setEditingMessage(item);
-    setInput(item.body || item._plain || '');
+    // Prefer the decrypted plaintext for editing
+    const plain =
+      decryptedBodies[item.id] ||
+      (item.body?.startsWith('e2e:') ? '' : item.body || item._plain || '');
+    setInput(plain);
     setTimeout(() => inputRef.current?.focus(), 80);
   };
 
@@ -490,6 +579,14 @@ export default function ChatDetailScreen() {
     const isBeingEdited = editingMessage?.id === item.id;
     const time = timeAgo(item.created_at);
 
+    // Decryption: cached plaintext if we have it, else fall back to the
+    // wire-format body (which for encrypted messages shows a lock).
+    const rawBody = item.body || item._plain || '';
+    const isEncrypted = rawBody.startsWith('e2e:');
+    const displayBody = isEncrypted
+      ? decryptedBodies[item.id] || '🔒 Decrypting…'
+      : rawBody || '(empty message)';
+
     return (
       <View style={[styles.messageRow, isMine ? styles.messageRowRight : styles.messageRowLeft]}>
         <TouchableOpacity
@@ -508,9 +605,16 @@ export default function ChatDetailScreen() {
           ]}
         >
           <Text style={[styles.messageText, { color: isMine ? 'white' : colors.text }]}>
-            {item.body || item._plain || '(empty message)'}
+            {displayBody}
           </Text>
           <View style={styles.messageMeta}>
+            {isEncrypted && (
+              <Feather
+                name="lock"
+                size={10}
+                color={isMine ? 'rgba(255,255,255,0.7)' : colors.textMuted}
+              />
+            )}
             {item.edited_at && (
               <Text style={[styles.editedLabel, {
                 color: isMine ? 'rgba(255,255,255,0.7)' : colors.textMuted,
@@ -597,7 +701,6 @@ export default function ChatDetailScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
       >
-        {/* Header */}
         <View style={[styles.header, { backgroundColor: colors.background }]}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
             <Feather name="arrow-left" size={24} color={colors.text} />
@@ -608,7 +711,15 @@ export default function ChatDetailScreen() {
           >
             <Avatar source={otherAvatarUrl} size={36} />
             <View style={styles.headerText}>
-              <Text style={[styles.headerName, { color: colors.text }]}>{otherName || 'User'}</Text>
+              <View style={styles.headerNameRow}>
+                <Text style={[styles.headerName, { color: colors.text }]}>{otherName || 'User'}</Text>
+                <Feather
+                  name="lock"
+                  size={11}
+                  color={colors.textMuted}
+                  style={{ marginLeft: 5 }}
+                />
+              </View>
               <View style={styles.headerStatus}>
                 <View style={[styles.statusDot, { backgroundColor: statusDotColor }]} />
                 <Text style={[styles.headerStatusText, { color: colors.textSecondary }]}>{statusText}</Text>
@@ -618,7 +729,6 @@ export default function ChatDetailScreen() {
           <View style={styles.headerRight} />
         </View>
 
-        {/* Messages */}
         <FlatList
           ref={flatListRef}
           data={messages}
@@ -640,7 +750,6 @@ export default function ChatDetailScreen() {
           style={{ flex: 1 }}
         />
 
-        {/* Editing banner */}
         {editingMessage && (
           <View style={[styles.editingBanner, {
             backgroundColor: isDark ? '#1f2937' : '#f3f4f6',
@@ -655,7 +764,6 @@ export default function ChatDetailScreen() {
           </View>
         )}
 
-        {/* Input Bar */}
         <View
           style={[
             styles.inputBar,
@@ -697,7 +805,6 @@ export default function ChatDetailScreen() {
         </View>
       </KeyboardAvoidingView>
 
-      {/* ── Themed action sheet for message edit/delete ── */}
       <MessageActionSheet
         visible={!!actionTarget}
         onClose={() => setActionTarget(null)}
@@ -741,6 +848,7 @@ const styles = StyleSheet.create({
   backButton: { padding: 4 },
   headerInfo: { flex: 1, flexDirection: 'row', alignItems: 'center', marginLeft: 8 },
   headerText: { marginLeft: 10 },
+  headerNameRow: { flexDirection: 'row', alignItems: 'center' },
   headerName: { fontSize: 16, fontWeight: '600' },
   headerStatus: { flexDirection: 'row', alignItems: 'center', marginTop: 1 },
   statusDot: { width: 8, height: 8, borderRadius: 4, marginRight: 4 },
@@ -766,7 +874,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-end',
     marginTop: 4,
-    gap: 6,
+    gap: 4,
   },
   messageTime: { fontSize: 10, alignSelf: 'flex-end' },
   editedLabel: { fontSize: 10, fontStyle: 'italic' },

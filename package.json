@@ -11,6 +11,8 @@
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
     "@gorhom/bottom-sheet": "^5.2.14",
+    "@noble/ciphers": "^2.4.0",
+    "@noble/curves": "^2.4.0",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-navigation/bottom-tabs": "^7.18.17",
     "@react-navigation/drawer": "^7.13.10",
@@ -29,6 +31,7 @@
     "expo-clipboard": "~8.0.8",
     "expo-constants": "~18.0.14",
     "expo-contacts": "~15.0.11",
+    "expo-crypto": "~15.0.9",
     "expo-dev-client": "~6.0.21",
     "expo-device": "~8.0.10",
     "expo-document-picker": "~14.0.8",
