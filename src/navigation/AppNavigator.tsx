@@ -394,6 +394,14 @@ function MainStack() {
           cardStyle: { backgroundColor: colors.background },
         }}
       />
+       <Stack.Screen
+        name="Login"
+        component={LoginScreen}
+        options={{
+          headerShown: false,
+          cardStyle: { backgroundColor: colors.background },
+        }}
+      />
       <Stack.Screen
         name="TopicDetail"
         component={TopicDetailScreen}
