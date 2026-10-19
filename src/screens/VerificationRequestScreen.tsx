@@ -155,7 +155,7 @@ export default function VerificationRequestScreen() {
             </Text>
             <TouchableOpacity
               style={[styles.primaryBtn, { backgroundColor: colors.primary }]}
-              onPress={() => (navigation.navigate as any)('MyProfile')}
+              onPress={() => (navigation.navigate as any)('Profile')}
             >
               <Text style={styles.primaryBtnText}>View my profile</Text>
             </TouchableOpacity>
