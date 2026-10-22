@@ -564,7 +564,7 @@ export default function DashboardScreen() {
           <FadeInUp delay={260}>
             <View style={styles.sectionHeader}>
               <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 0 }]}>
-                🏆 Top Post
+                Top Post
               </Text>
             </View>
 
