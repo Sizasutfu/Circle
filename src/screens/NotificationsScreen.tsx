@@ -131,34 +131,10 @@ export default function NotificationsScreen() {
         case 'mention':    actionText = 'mentioned you in a post'; break;
         case 'verified':   actionText = 'your account was verified'; break;
         case 'unverified': actionText = 'your verification was removed'; break;
-        default:           actionText = 'interacted with you';
+       // default:           actionText = 'interacted with you';
       }
 
-      Alert.alert(
-        '🔔 New Notification',
-        isSystem ? actionText.charAt(0).toUpperCase() + actionText.slice(1) : `${displayName} ${actionText}`,
-        [
-          {
-            text: 'View',
-            onPress: () => {
-              if (notification.type === 'verified' || notification.type === 'unverified') {
-                (navigation.navigate as any)('VerificationRequest');
-              } else if (notification.type === 'reply' && notification.parentCommentId) {
-                (navigation.navigate as any)('CommentDetail', {
-                  commentId: String(notification.parentCommentId),
-                  postId: notification.postId ? String(notification.postId) : undefined,
-                });
-              } else if (notification.postId) {
-                (navigation.navigate as any)('PostDetail', { postId: notification.postId });
-              } else if (notification.userId) {
-                (navigation.navigate as any)('Profile', { userId: notification.userId });
-              }
-              setNewNotification(null);
-            },
-          },
-          { text: 'Dismiss', onPress: () => setNewNotification(null) },
-        ]
-      );
+      
 
       refetch();
     });
