@@ -31,7 +31,7 @@ interface AppHeaderProps {
 }
 
 export default function AppHeader({
-  title = 'Circle',
+  title = 'CircleNet',
   showBack = false,
   showMenu = true,
   showNotifications = false,
@@ -102,7 +102,7 @@ export default function AppHeader({
       paddingBottom: 12,
       // Always transparent — matches PostCard treatment
       backgroundColor: 'transparent',
-      borderBottomWidth: 1,
+      borderBottomWidth: 0,
       borderBottomColor: isDark
         ? colors.border || 'rgba(255,255,255,0.1)'
         : colors.border || 'rgba(0,0,0,0.08)',
