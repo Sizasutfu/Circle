@@ -1,5 +1,6 @@
 // src/hooks/useFeed.ts
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import type { QueryClient } from '@tanstack/react-query';
 import api from '../api/client';
 import { resolveMediaUrl } from '../lib/media';
 import { Alert } from 'react-native';
@@ -96,12 +97,71 @@ export const useFeed = (tab: 'global' | 'following' = 'global') => {
     },
     getNextPageParam: (lastPage) => lastPage.nextPage,
     initialPageParam: 1,
+    // The feed is ranked, so a background refetch can reorder it under the
+    // user's thumb. Only refetch when the user asks (pull-to-refresh) or the
+    // data is genuinely old.
+    staleTime: 60_000,
   });
 };
+
+// ── Cache helper ──
+// Patches ONE post in every cached feed (['feed','global'], ['feed','following'], ...).
+// Pages/posts that didn't change keep their object identity, so React.memo
+// on PostCard skips them. (The old code wrote to the key ['feed'], which is not
+// a real cache entry -> the optimistic update silently did nothing.)
+function patchPostInFeeds(
+  queryClient: QueryClient,
+  postId: string,
+  patch: (post: any) => any,
+) {
+  queryClient.setQueriesData<any>({ queryKey: ['feed'] }, (old: any) => {
+    if (!old?.pages) return old;
+    let changed = false;
+    const pages = old.pages.map((page: any) => {
+      const idx = (page.posts || []).findIndex((p: any) => String(p.id) === String(postId));
+      if (idx === -1) return page;
+      changed = true;
+      const posts = page.posts.slice();
+      posts[idx] = patch(posts[idx]);
+      return { ...page, posts };
+    });
+    return changed ? { ...old, pages } : old;
+  });
+}
+
+const includesId = (list: any, id: string) =>
+  Array.isArray(list) && list.some((x: any) => String(x?.id ?? x) === String(id));
+
+const withoutId = (list: any, id: string) =>
+  (Array.isArray(list) ? list : []).filter((x: any) => String(x?.id ?? x) !== String(id));
+
+// Marks feeds stale WITHOUT refetching them now. They refresh next time the
+// user pulls to refresh or the data ages out - never mid-interaction.
+const markFeedsStale = (queryClient: QueryClient) =>
+  queryClient.invalidateQueries({ queryKey: ['feed'], refetchType: 'none' });
 
 // ── Post Actions Hook with currentUser parameter ──
 export const usePostActions = (currentUser?: { id: string } | null) => {
   const queryClient = useQueryClient();
+
+  // Both toggles are self-inverse, so calling them twice = rollback.
+  const toggleLike = (userId: string) => (post: any) => {
+    const isLiked = includesId(post.likes, userId);
+    return {
+      ...post,
+      likes: isLiked ? withoutId(post.likes, userId) : [...(post.likes || []), userId],
+    };
+  };
+
+  const toggleRepost = (userId: string) => (post: any) => {
+    const isReposted = includesId(post.reposts, userId);
+    const count = post.repostCount ?? (post.reposts ? post.reposts.length : 0);
+    return {
+      ...post,
+      reposts: isReposted ? withoutId(post.reposts, userId) : [...(post.reposts || []), userId],
+      repostCount: isReposted ? Math.max(0, count - 1) : count + 1,
+    };
+  };
 
   const likePost = async (postId: string) => {
     const userId = currentUser?.id;
@@ -112,41 +172,21 @@ export const usePostActions = (currentUser?: { id: string } | null) => {
     }
 
     // Optimistic update
-    queryClient.setQueryData(['feed'], (oldData: any) => {
-      if (!oldData) return oldData;
-
-      return {
-        ...oldData,
-        pages: oldData.pages.map((page: any) => ({
-          ...page,
-          posts: page.posts.map((post: any) => {
-            if (post.id === postId) {
-              const isLiked = post.likes?.includes(userId) || false;
-              const newLikes = isLiked
-                ? (post.likes || []).filter((id: string) => id !== userId)
-                : [...(post.likes || []), userId];
-              return {
-                ...post,
-                likes: newLikes,
-              };
-            }
-            return post;
-          }),
-        })),
-      };
-    });
+    patchPostInFeeds(queryClient, postId, toggleLike(userId));
 
     try {
       const response = await api.post(`/posts/${postId}/like`);
-      queryClient.invalidateQueries({ queryKey: ['feed'] });
+      markFeedsStale(queryClient);
       return response.data;
     } catch (error) {
-      queryClient.invalidateQueries({ queryKey: ['feed'] });
+      // Roll back locally - no refetch, so the list doesn't move
+      patchPostInFeeds(queryClient, postId, toggleLike(userId));
       console.error('Like failed:', error);
       throw error;
     }
   };
 
+  // Server endpoint toggles, so unlike === like
   const unlikePost = async (postId: string) => {
     await likePost(postId);
   };
@@ -159,70 +199,12 @@ export const usePostActions = (currentUser?: { id: string } | null) => {
       throw new Error('User not logged in');
     }
 
-    console.log('🔄 Repost action started for post:', postId);
-    console.log('👤 Current user ID:', userId);
-
-    // Find current post state for proper toggle
-    let wasReposted = false;
-    let currentRepostCount = 0;
-    let currentReposts: string[] = [];
-
-    const feedData = queryClient.getQueryData(['feed']) as any;
-    if (feedData?.pages) {
-      for (const page of feedData.pages) {
-        const found = page.posts?.find((p: any) => p.id === postId);
-        if (found) {
-          wasReposted = found.reposts?.includes(userId) || false;
-          currentRepostCount = found.repostCount || found.reposts?.length || 0;
-          currentReposts = found.reposts || [];
-          break;
-        }
-      }
-    }
-
-    console.log('📊 Current repost state:', { wasReposted, currentRepostCount });
-
     // Optimistic update - toggle repost state
-    queryClient.setQueryData(['feed'], (oldData: any) => {
-      if (!oldData) return oldData;
-
-      return {
-        ...oldData,
-        pages: oldData.pages.map((page: any) => ({
-          ...page,
-          posts: page.posts.map((post: any) => {
-            if (post.id === postId) {
-              const isCurrentlyReposted = post.reposts?.includes(userId) || false;
-              const newReposts = isCurrentlyReposted
-                ? (post.reposts || []).filter((id: string) => id !== userId)
-                : [...(post.reposts || []), userId];
-              const newRepostCount = isCurrentlyReposted
-                ? Math.max(0, (post.repostCount || 0) - 1)
-                : (post.repostCount || 0) + 1;
-
-              console.log(`📊 Optimistic update: ${isCurrentlyReposted ? 'Unrepost' : 'Repost'}`, {
-                oldCount: post.repostCount,
-                newCount: newRepostCount,
-              });
-
-              return {
-                ...post,
-                reposts: newReposts,
-                repostCount: newRepostCount,
-              };
-            }
-            return post;
-          }),
-        })),
-      };
-    });
+    patchPostInFeeds(queryClient, postId, toggleRepost(userId));
 
     try {
-      console.log(`📤 Sending repost request for post ${postId}`);
       const response = await api.post(`/posts/${postId}/repost`);
-      console.log('✅ Repost response:', response.data);
-
-      queryClient.invalidateQueries({ queryKey: ['feed'] });
+      markFeedsStale(queryClient);
       return response.data;
     } catch (error: any) {
       console.error('❌ Repost failed:', error);
@@ -232,8 +214,8 @@ export const usePostActions = (currentUser?: { id: string } | null) => {
         console.error('📊 Error response status:', error.response.status);
       }
 
-      // Rollback optimistic update
-      queryClient.invalidateQueries({ queryKey: ['feed'] });
+      // Rollback optimistic update (no refetch)
+      patchPostInFeeds(queryClient, postId, toggleRepost(userId));
 
       const errorMessage = error.response?.data?.error ||
         error.response?.data?.message ||
@@ -246,10 +228,20 @@ export const usePostActions = (currentUser?: { id: string } | null) => {
   };
 
   const addComment = async (postId: string, text: string) => {
+    const bump = (delta: number) => (post: any) => ({
+      ...post,
+      commentCount: Math.max(
+        0,
+        (post.commentCount ?? (post.comments ? post.comments.length : 0)) + delta,
+      ),
+    });
+
+    patchPostInFeeds(queryClient, postId, bump(1));
     try {
       await api.post(`/posts/${postId}/comment`, { text });
-      queryClient.invalidateQueries({ queryKey: ['feed'] });
+      markFeedsStale(queryClient);
     } catch (error) {
+      patchPostInFeeds(queryClient, postId, bump(-1));
       throw error;
     }
   };
