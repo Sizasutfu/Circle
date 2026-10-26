@@ -8,7 +8,7 @@ import { WhisperProvider } from './src/contexts/WhisperContext';
 import { LiveProvider } from './src/contexts/LiveContext';
 import { GroupsProvider } from './src/contexts/GroupsContext';
 import AppNavigator from './src/navigation/AppNavigator';
-//import { usePushNotifications } from './src/hooks/usePushNotifications';
+import { usePushNotifications } from './src/hooks/usePushNotifications';
 
 const queryClient = new QueryClient({
   defaultOptions: {

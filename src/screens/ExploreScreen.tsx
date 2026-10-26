@@ -330,8 +330,8 @@ export default function ExploreScreen() {
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Trending Topics</Text>
-          <TouchableOpacity onPress={() => (navigation.navigate as any)('Topics')}>
-            <Text style={[styles.seeAllText, { color: colors.primary }]}>See All</Text>
+          <TouchableOpacity>
+            <Text style={[styles.seeAllText, { color: colors.primary }]}>View All</Text>
           </TouchableOpacity>
         </View>
         {topicsLoading ? (

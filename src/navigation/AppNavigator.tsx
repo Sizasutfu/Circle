@@ -219,7 +219,7 @@ function WebNavigator() {
       <Stack.Screen name="Profile" component={ProfileScreen} />
       <Stack.Screen name="FollowList" component={FollowListScreen} />
       <Stack.Screen name="Settings" component={SettingsScreen} />
-      <Stack.Screen name="Topics" component={TopicsScreen} />
+      
       <Stack.Screen name="TopicDetail" component={TopicDetailScreen} />
       <Stack.Screen name="PostDetail" component={PostDetailScreen} />
       <Stack.Screen name="CommentDetail" component={CommentDetailScreen} />
@@ -280,15 +280,7 @@ function DrawerNavigator() {
           ),
         }}
       />
-      <Drawer.Screen
-        name="Topics"
-        component={TopicsScreen}
-        options={{
-          drawerIcon: ({ color, size }) => (
-            <Feather name="hash" size={size} color={color} />
-          ),
-        }}
-      />
+      
 
       {/* Hidden screens — reachable via navigation.navigate */}
       <Drawer.Screen

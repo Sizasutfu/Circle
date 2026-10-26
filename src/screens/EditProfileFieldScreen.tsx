@@ -379,7 +379,7 @@ const styles = StyleSheet.create({
   saveButton: {
     paddingHorizontal: 18,
     paddingVertical: 7,
-    borderRadius: 20,
+    borderRadius: 10,
     minWidth: 60,
     alignItems: 'center',
   },

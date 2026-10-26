@@ -1288,7 +1288,7 @@ const styles = StyleSheet.create({
   postButton: {
     paddingHorizontal: 20,
     paddingVertical: 8,
-    borderRadius: 20,
+    borderRadius: 10,
     minWidth: 60,
     alignItems: 'center',
   },
